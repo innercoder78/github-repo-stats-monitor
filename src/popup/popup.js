@@ -6,6 +6,8 @@ const lastUpdated = document.getElementById('last-updated');
 const totalStars = document.getElementById('total-stars');
 const totalSubscribers = document.getElementById('total-subscribers');
 const totalForks = document.getElementById('total-forks');
+const totalViews = document.getElementById('total-views');
+const totalUniqueVisitors = document.getElementById('total-unique-visitors');
 
 document.getElementById('open-dashboard').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html') });
@@ -26,9 +28,21 @@ function hasCachedMetadata(stats) {
     && Number.isFinite(stats.subscribers);
 }
 
+function hasCachedTraffic(stats) {
+  return Boolean(stats?.trafficFetchedAt)
+    && Number.isFinite(stats.views)
+    && Number.isFinite(stats.uniqueVisitors);
+}
+
 function formatLastUpdated(latestStats, repositories) {
   const timestamps = repositories
-    .map((repository) => (hasCachedMetadata(latestStats[repository]) ? latestStats[repository].fetchedAt : ''))
+    .flatMap((repository) => {
+      const stats = latestStats[repository];
+      return [
+        hasCachedMetadata(stats) ? stats.fetchedAt : '',
+        hasCachedTraffic(stats) ? stats.trafficFetchedAt : '',
+      ];
+    })
     .filter(Boolean)
     .sort();
 
@@ -52,9 +66,16 @@ async function renderSettingsSummary() {
         accumulator.forks += stats.forks;
       }
 
+      if (hasCachedTraffic(stats)) {
+        accumulator.trafficCount += 1;
+        accumulator.views += stats.views;
+        accumulator.uniqueVisitors += stats.uniqueVisitors;
+      }
+
       return accumulator;
-    }, { cachedCount: 0, stars: 0, subscribers: 0, forks: 0 });
+    }, { cachedCount: 0, trafficCount: 0, stars: 0, subscribers: 0, forks: 0, views: 0, uniqueVisitors: 0 });
     const hasAnyCachedMetadata = totals.cachedCount > 0;
+    const hasAnyCachedTraffic = totals.trafficCount > 0;
 
     repositoryCount.textContent = `Repositories configured: ${settings.repositories.length}`;
     tokenStatus.textContent = `Token saved: ${settings.githubToken ? 'Yes' : 'No'}`;
@@ -62,6 +83,8 @@ async function renderSettingsSummary() {
     totalStars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
     totalSubscribers.textContent = hasAnyCachedMetadata ? formatNumber(totals.subscribers) : '—';
     totalForks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
+    totalViews.textContent = hasAnyCachedTraffic ? formatNumber(totals.views) : '—';
+    totalUniqueVisitors.textContent = hasAnyCachedTraffic ? formatNumber(totals.uniqueVisitors) : '—';
   } catch (error) {
     repositoryCount.textContent = 'Repositories configured: unavailable';
     tokenStatus.textContent = 'Token saved: unavailable';

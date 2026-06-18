@@ -69,13 +69,26 @@ function normalizeStatsEntry(repository, stats) {
     return null;
   }
 
+  const dailyViews = Array.isArray(stats?.dailyViews)
+    ? stats.dailyViews.map((entry) => ({
+      date: typeof entry?.date === 'string' ? entry.date : '',
+      views: Number(entry?.views) || 0,
+      uniqueVisitors: Number(entry?.uniqueVisitors) || 0,
+    })).filter((entry) => entry.date)
+    : [];
+
   return {
     repository: normalizedRepository,
     stars: Number(stats?.stars) || 0,
     forks: Number(stats?.forks) || 0,
     subscribers: Number(stats?.subscribers) || 0,
+    views: Number.isFinite(Number(stats?.views)) ? Number(stats.views) : null,
+    uniqueVisitors: Number.isFinite(Number(stats?.uniqueVisitors)) ? Number(stats.uniqueVisitors) : null,
+    dailyViews,
     fetchedAt: typeof stats?.fetchedAt === 'string' ? stats.fetchedAt : '',
+    trafficFetchedAt: typeof stats?.trafficFetchedAt === 'string' ? stats.trafficFetchedAt : '',
     error: typeof stats?.error === 'string' ? stats.error : '',
+    trafficError: typeof stats?.trafficError === 'string' ? stats.trafficError : '',
   };
 }
 
