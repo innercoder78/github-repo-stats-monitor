@@ -1,0 +1,21 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# Future build output, if tooling is ever added
+dist/
+build/
+
+# Future Node dependencies, if tooling is ever added
+node_modules/

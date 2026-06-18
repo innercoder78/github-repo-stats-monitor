@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "GitHub Repo Stats Monitor",
+  "description": "A personal Chrome extension for tracking GitHub repository statistics.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "src/popup/popup.html"
+  },
+  "options_page": "src/options/options.html",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.github.com/*"]
+}

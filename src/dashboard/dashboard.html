@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard - GitHub Repo Stats Monitor</title>
+    <link rel="stylesheet" href="../shared/base.css">
+    <link rel="stylesheet" href="dashboard.css">
+  </head>
+  <body>
+    <main class="dashboard-shell">
+      <header class="topbar">
+        <div>
+          <h1>Repository Dashboard</h1>
+          <p class="muted">Status: Waiting for GitHub integration • Last updated: Not connected yet</p>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" disabled>Refresh Now</button>
+          <button id="open-settings" class="secondary" type="button">Settings</button>
+        </div>
+      </header>
+
+      <section class="card summary-card" aria-labelledby="summary-title">
+        <h2 id="summary-title">All repositories</h2>
+        <div class="metric-grid summary-grid">
+          <div class="metric"><span>Total stars</span><strong>—</strong></div>
+          <div class="metric"><span>Real watchers</span><strong>—</strong></div>
+          <div class="metric"><span>Total forks</span><strong>—</strong></div>
+          <div class="metric"><span>Views, last 14 days</span><strong>—</strong></div>
+          <div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div>
+        </div>
+      </section>
+
+      <section class="repo-grid" aria-label="Repository cards">
+        <article class="card repo-card">
+          <h2>owner/repository-one</h2>
+          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
+          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
+        </article>
+        <article class="card repo-card">
+          <h2>owner/repository-two</h2>
+          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
+          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
+        </article>
+        <article class="card repo-card">
+          <h2>owner/repository-three</h2>
+          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
+          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
+        </article>
+        <article class="card repo-card">
+          <h2>owner/repository-four</h2>
+          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
+          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
+        </article>
+      </section>
+    </main>
+    <script src="dashboard.js"></script>
+  </body>
+</html>
