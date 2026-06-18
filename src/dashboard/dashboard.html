@@ -12,10 +12,10 @@
       <header class="topbar">
         <div>
           <h1>Repository Dashboard</h1>
-          <p class="muted">Status: Waiting for GitHub integration • Last updated: Not connected yet</p>
+          <p id="status-line" class="muted status-line">Status: Waiting for repository metadata</p>
         </div>
         <div class="topbar-actions">
-          <button type="button" disabled>Refresh Now</button>
+          <button id="refresh-now" type="button">Refresh Now</button>
           <button id="open-settings" class="secondary" type="button">Settings</button>
         </div>
       </header>
@@ -23,9 +23,9 @@
       <section class="card summary-card" aria-labelledby="summary-title">
         <h2 id="summary-title">All repositories</h2>
         <div class="metric-grid summary-grid">
-          <div class="metric"><span>Total stars</span><strong>—</strong></div>
-          <div class="metric"><span>Real watchers</span><strong>—</strong></div>
-          <div class="metric"><span>Total forks</span><strong>—</strong></div>
+          <div class="metric"><span>Total stars</span><strong id="total-stars">—</strong></div>
+          <div class="metric"><span>Real watchers</span><strong id="total-subscribers">—</strong></div>
+          <div class="metric"><span>Total forks</span><strong id="total-forks">—</strong></div>
           <div class="metric"><span>Views, last 14 days</span><strong>—</strong></div>
           <div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div>
         </div>
@@ -33,7 +33,7 @@
 
       <section id="empty-state" class="card empty-state" hidden>
         <h2>No repositories configured yet</h2>
-        <p class="muted">Open Settings to add repositories in the owner/repo format. GitHub data fetching will be added later.</p>
+        <p class="muted">Open Settings to add repositories in the owner/repo format. Repository metadata will appear here after a token and repositories are saved.</p>
         <button id="empty-open-settings" type="button">Open Settings</button>
       </section>
 

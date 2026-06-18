@@ -11,7 +11,7 @@
     <main class="popup-shell">
       <header>
         <h1>GitHub Repo Stats Monitor</h1>
-        <p class="muted">Last updated: Not connected yet</p>
+        <p id="last-updated" class="muted">Last updated: —</p>
       </header>
 
       <section class="card settings-summary" aria-label="Saved settings summary">
@@ -20,9 +20,9 @@
       </section>
 
       <section class="metric-grid" aria-label="Repository statistics summary">
-        <div class="metric"><span>Stars</span><strong>—</strong></div>
-        <div class="metric"><span>Real watchers</span><strong>—</strong></div>
-        <div class="metric"><span>Forks</span><strong>—</strong></div>
+        <div class="metric"><span>Stars</span><strong id="total-stars">—</strong></div>
+        <div class="metric"><span>Real watchers</span><strong id="total-subscribers">—</strong></div>
+        <div class="metric"><span>Forks</span><strong id="total-forks">—</strong></div>
         <div class="metric"><span>Views</span><strong>—</strong></div>
         <div class="metric"><span>Unique visitors</span><strong>—</strong></div>
       </section>
