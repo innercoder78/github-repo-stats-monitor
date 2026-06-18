@@ -11,6 +11,13 @@ header { margin-bottom: 24px; }
   padding: 22px;
 }
 
+.section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
 label {
   color: var(--muted);
   display: grid;
@@ -27,17 +34,46 @@ input {
   padding: 11px 12px;
 }
 
-input:disabled {
-  background: var(--surface-muted);
-  color: var(--muted);
+.repository-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
 }
 
-.repo-fields {
+.repository-row {
+  align-items: end;
   display: grid;
-  gap: 4px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.repository-label { margin-bottom: 0; }
+
+.field-note { font-size: 0.9rem; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.message {
+  font-weight: 700;
+  margin: 10px 0 0;
+  min-height: 1.2em;
+}
+
+.message.error { color: #b42318; }
+.message.success { color: #1a7f37; }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 @media (max-width: 640px) {
-  .repo-fields { grid-template-columns: 1fr; }
+  .section-heading,
+  .repository-row { grid-template-columns: 1fr; }
+
+  .section-heading { display: grid; }
 }

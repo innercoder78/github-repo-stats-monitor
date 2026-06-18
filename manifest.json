@@ -7,6 +7,5 @@
     "default_popup": "src/popup/popup.html"
   },
   "options_page": "src/options/options.html",
-  "permissions": ["storage"],
-  "host_permissions": ["https://api.github.com/*"]
+  "permissions": ["storage"]
 }

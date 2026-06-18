@@ -14,6 +14,11 @@
         <p class="muted">Last updated: Not connected yet</p>
       </header>
 
+      <section class="card settings-summary" aria-label="Saved settings summary">
+        <p id="repository-count">Repositories configured: —</p>
+        <p id="token-status">Token saved: —</p>
+      </section>
+
       <section class="metric-grid" aria-label="Repository statistics summary">
         <div class="metric"><span>Stars</span><strong>—</strong></div>
         <div class="metric"><span>Real watchers</span><strong>—</strong></div>
@@ -27,6 +32,6 @@
         <button id="open-settings" class="secondary" type="button">Settings</button>
       </div>
     </main>
-    <script src="popup.js"></script>
+    <script type="module" src="popup.js"></script>
   </body>
 </html>
