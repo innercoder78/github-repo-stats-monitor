@@ -1,5 +1,6 @@
 import { fetchRepositoryMetadata, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getLatestStats, getSettings, saveLatestStats } from '../shared/storage.js';
+import { createSvgBarChart } from '../shared/svg-bar-chart.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -62,6 +63,24 @@ function createMetric(label, value = '—') {
   return metric;
 }
 
+function createChartPanel(label, stats, metricKey) {
+  const panel = document.createElement('section');
+  panel.className = 'chart-panel';
+  panel.setAttribute('aria-label', label);
+
+  const heading = document.createElement('h3');
+  heading.textContent = label;
+
+  const chart = createSvgBarChart(stats?.dailyViews, {
+    metricKey,
+    metricLabel: label.replace(', last 14 days', ''),
+    title: `${label} for ${stats?.repository || 'repository'}`,
+  });
+
+  panel.append(heading, chart);
+  return panel;
+}
+
 function createRepositoryCard(repository, stats) {
   const card = document.createElement('article');
   card.className = 'card repo-card';
@@ -89,12 +108,10 @@ function createRepositoryCard(repository, stats) {
 
   const charts = document.createElement('div');
   charts.className = 'charts';
-  ['Views, last 14 days', 'Unique visitors, last 14 days'].forEach((label) => {
-    const placeholder = document.createElement('div');
-    placeholder.className = 'chart-placeholder';
-    placeholder.textContent = `${label}: traffic data is now fetched; charts are coming later.`;
-    charts.append(placeholder);
-  });
+  charts.append(
+    createChartPanel('Views, last 14 days', stats, 'views'),
+    createChartPanel('Unique visitors, last 14 days', stats, 'uniqueVisitors'),
+  );
 
   card.append(title, meta, metricGrid);
 
