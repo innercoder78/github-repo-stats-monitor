@@ -19,9 +19,16 @@ function formatNumber(value) {
   return Number.isFinite(value) ? value.toLocaleString() : '—';
 }
 
+function hasCachedMetadata(stats) {
+  return Boolean(stats?.fetchedAt)
+    && Number.isFinite(stats.stars)
+    && Number.isFinite(stats.forks)
+    && Number.isFinite(stats.subscribers);
+}
+
 function formatLastUpdated(latestStats, repositories) {
   const timestamps = repositories
-    .map((repository) => latestStats[repository]?.fetchedAt)
+    .map((repository) => (hasCachedMetadata(latestStats[repository]) ? latestStats[repository].fetchedAt : ''))
     .filter(Boolean)
     .sort();
 
@@ -38,7 +45,7 @@ async function renderSettingsSummary() {
     const totals = settings.repositories.reduce((accumulator, repository) => {
       const stats = latestStats[repository];
 
-      if (stats) {
+      if (hasCachedMetadata(stats)) {
         accumulator.cachedCount += 1;
         accumulator.stars += stats.stars;
         accumulator.subscribers += stats.subscribers;

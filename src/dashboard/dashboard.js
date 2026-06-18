@@ -33,6 +33,13 @@ function setStatus(message, type = '') {
   statusLine.className = `muted status-line${type ? ` ${type}` : ''}`;
 }
 
+function hasCachedMetadata(stats) {
+  return Boolean(stats?.fetchedAt)
+    && Number.isFinite(stats.stars)
+    && Number.isFinite(stats.forks)
+    && Number.isFinite(stats.subscribers);
+}
+
 function createMetric(label, value = '—') {
   const metric = document.createElement('div');
   metric.className = 'metric';
@@ -58,12 +65,13 @@ function createRepositoryCard(repository, stats) {
   meta.className = 'muted repo-meta';
   meta.textContent = stats?.fetchedAt ? `Last fetched: ${formatRefreshTime(stats.fetchedAt)}` : 'Last fetched: —';
 
+  const cachedStats = hasCachedMetadata(stats) ? stats : null;
   const metricGrid = document.createElement('div');
   metricGrid.className = 'metric-grid';
   metricGrid.append(
-    createMetric('Stars', stats ? formatNumber(stats.stars) : '—'),
-    createMetric('Real watchers', stats ? formatNumber(stats.subscribers) : '—'),
-    createMetric('Forks', stats ? formatNumber(stats.forks) : '—'),
+    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—'),
+    createMetric('Real watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—'),
+    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—'),
     createMetric('Views, last 14 days'),
     createMetric('Unique visitors, last 14 days'),
   );
@@ -94,7 +102,7 @@ function renderSummary() {
   const totals = currentSettings.repositories.reduce((accumulator, repository) => {
     const stats = currentLatestStats[repository];
 
-    if (stats) {
+    if (hasCachedMetadata(stats)) {
       accumulator.cachedCount += 1;
       accumulator.stars += stats.stars;
       accumulator.subscribers += stats.subscribers;
@@ -148,13 +156,12 @@ async function refreshRepositoryMetadata() {
       const metadata = await fetchRepositoryMetadata(repository, currentSettings.githubToken);
       return { repository, stats: { ...metadata, fetchedAt, error: '' } };
     } catch (error) {
-      return {
-        repository,
-        stats: {
-          ...(currentLatestStats[repository] || { repository, stars: 0, forks: 0, subscribers: 0, fetchedAt: '' }),
-          error: error.message,
-        },
-      };
+      const previousStats = currentLatestStats[repository];
+      const stats = hasCachedMetadata(previousStats)
+        ? { ...previousStats, error: error.message }
+        : { repository, fetchedAt: '', error: error.message };
+
+      return { repository, stats };
     }
   }));
 
