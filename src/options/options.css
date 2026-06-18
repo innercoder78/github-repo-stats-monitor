@@ -77,3 +77,31 @@ button:disabled {
 
   .section-heading { display: grid; }
 }
+
+.connection-test .section-heading { align-items: center; }
+
+.test-results {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.test-result-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  padding: 14px;
+}
+
+.test-result-card h3 {
+  font-size: 1rem;
+  margin: 0 0 10px;
+}
+
+.test-result-status {
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+
+.test-result-status.success { color: #1a7f37; }
+.test-result-status.error { color: #b42318; }
