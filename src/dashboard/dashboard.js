@@ -111,11 +111,11 @@ function renderSummary() {
 
     return accumulator;
   }, { cachedCount: 0, stars: 0, subscribers: 0, forks: 0 });
-  const hasCachedMetadata = totals.cachedCount > 0;
+  const hasAnyCachedMetadata = totals.cachedCount > 0;
 
-  summaryValues.stars.textContent = hasCachedMetadata ? formatNumber(totals.stars) : '—';
-  summaryValues.subscribers.textContent = hasCachedMetadata ? formatNumber(totals.subscribers) : '—';
-  summaryValues.forks.textContent = hasCachedMetadata ? formatNumber(totals.forks) : '—';
+  summaryValues.stars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
+  summaryValues.subscribers.textContent = hasAnyCachedMetadata ? formatNumber(totals.subscribers) : '—';
+  summaryValues.forks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
 }
 
 function renderRepositories() {
