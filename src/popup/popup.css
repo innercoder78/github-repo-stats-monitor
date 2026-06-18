@@ -12,6 +12,18 @@ h1 {
 
 header { margin-bottom: 16px; }
 
+.settings-summary {
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
+.settings-summary p {
+  font-weight: 700;
+  margin: 0;
+}
+
+.settings-summary p + p { margin-top: 6px; }
+
 .metric-grid { margin-bottom: 16px; }
 
 .metric:last-child { grid-column: 1 / -1; }

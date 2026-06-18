@@ -31,29 +31,14 @@
         </div>
       </section>
 
-      <section class="repo-grid" aria-label="Repository cards">
-        <article class="card repo-card">
-          <h2>owner/repository-one</h2>
-          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
-          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
-        </article>
-        <article class="card repo-card">
-          <h2>owner/repository-two</h2>
-          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
-          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
-        </article>
-        <article class="card repo-card">
-          <h2>owner/repository-three</h2>
-          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
-          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
-        </article>
-        <article class="card repo-card">
-          <h2>owner/repository-four</h2>
-          <div class="metric-grid"><div class="metric"><span>Stars</span><strong>—</strong></div><div class="metric"><span>Real watchers</span><strong>—</strong></div><div class="metric"><span>Forks</span><strong>—</strong></div><div class="metric"><span>Views, last 14 days</span><strong>—</strong></div><div class="metric"><span>Unique visitors, last 14 days</span><strong>—</strong></div></div>
-          <div class="charts"><div class="chart-placeholder">Views, last 14 days</div><div class="chart-placeholder">Unique visitors, last 14 days</div></div>
-        </article>
+      <section id="empty-state" class="card empty-state" hidden>
+        <h2>No repositories configured yet</h2>
+        <p class="muted">Open Settings to add repositories in the owner/repo format. GitHub data fetching will be added later.</p>
+        <button id="empty-open-settings" type="button">Open Settings</button>
       </section>
+
+      <section id="repo-grid" class="repo-grid" aria-label="Repository cards"></section>
     </main>
-    <script src="dashboard.js"></script>
+    <script type="module" src="dashboard.js"></script>
   </body>
 </html>

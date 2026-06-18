@@ -11,26 +11,37 @@
     <main class="options-shell">
       <header>
         <h1>Settings</h1>
-        <p class="muted">Settings functionality will be added in a later PR. Nothing is saved yet.</p>
+        <p class="muted">Configure local settings for the repositories you want to monitor.</p>
       </header>
 
-      <section class="card settings-card" aria-labelledby="token-title">
-        <h2 id="token-title">GitHub fine-grained personal access token</h2>
-        <label for="token">Token placeholder</label>
-        <input id="token" type="password" placeholder="Token storage is not implemented yet" disabled>
-        <p class="muted">Token entry and secure storage will be implemented later.</p>
-      </section>
+      <form id="settings-form" novalidate>
+        <section class="card settings-card" aria-labelledby="token-title">
+          <h2 id="token-title">GitHub fine-grained personal access token</h2>
+          <label for="github-token">Token</label>
+          <input id="github-token" name="github-token" type="password" autocomplete="off" placeholder="github_pat_...">
+          <p class="muted field-note">The token is stored locally in Chrome extension storage and is not displayed outside this password field.</p>
+        </section>
 
-      <section class="card settings-card" aria-labelledby="repos-title">
-        <h2 id="repos-title">Repositories</h2>
-        <div class="repo-fields">
-          <label>Repository 1<input type="text" placeholder="owner/repository-one" disabled></label>
-          <label>Repository 2<input type="text" placeholder="owner/repository-two" disabled></label>
-          <label>Repository 3<input type="text" placeholder="owner/repository-three" disabled></label>
-          <label>Repository 4<input type="text" placeholder="owner/repository-four" disabled></label>
+        <section class="card settings-card" aria-labelledby="repos-title">
+          <div class="section-heading">
+            <div>
+              <h2 id="repos-title">Repositories</h2>
+              <p class="muted">Use the <code>owner/repo</code> format. You can configure up to 20 repositories.</p>
+            </div>
+            <button id="add-repository" class="secondary" type="button">+ Add repository</button>
+          </div>
+
+          <p id="repo-message" class="message" role="alert" aria-live="polite"></p>
+          <div id="repository-list" class="repository-list"></div>
+        </section>
+
+        <div class="actions">
+          <button type="submit">Save settings</button>
+          <button id="reset-settings" class="secondary" type="button">Reset</button>
         </div>
-      </section>
+        <p id="status-message" class="message" role="status" aria-live="polite"></p>
+      </form>
     </main>
-    <script src="options.js"></script>
+    <script type="module" src="options.js"></script>
   </body>
 </html>
