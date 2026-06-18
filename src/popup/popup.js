@@ -8,6 +8,7 @@ const totalSubscribers = document.getElementById('total-subscribers');
 const totalForks = document.getElementById('total-forks');
 const totalViews = document.getElementById('total-views');
 const totalUniqueVisitors = document.getElementById('total-unique-visitors');
+const popupStatus = document.getElementById('popup-status');
 
 document.getElementById('open-dashboard').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html') });
@@ -80,6 +81,9 @@ async function renderSettingsSummary() {
     repositoryCount.textContent = `Repositories configured: ${settings.repositories.length}`;
     tokenStatus.textContent = `Token saved: ${settings.githubToken ? 'Yes' : 'No'}`;
     lastUpdated.textContent = formatLastUpdated(latestStats, settings.repositories);
+    popupStatus.textContent = settings.repositories.length === 0
+      ? 'Add repositories in Settings, then open the dashboard to fetch data.'
+      : 'Open the dashboard to refresh data.';
     totalStars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
     totalSubscribers.textContent = hasAnyCachedMetadata ? formatNumber(totals.subscribers) : '—';
     totalForks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
@@ -89,6 +93,7 @@ async function renderSettingsSummary() {
     repositoryCount.textContent = 'Repositories configured: unavailable';
     tokenStatus.textContent = 'Token saved: unavailable';
     lastUpdated.textContent = 'Last updated: unavailable';
+    popupStatus.textContent = 'Unable to read cached data.';
   }
 }
 

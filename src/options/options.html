@@ -11,7 +11,7 @@
     <main class="options-shell">
       <header>
         <h1>Settings</h1>
-        <p class="muted">Configure local settings for the repositories you want to monitor.</p>
+        <p class="muted">Save a GitHub token and the repositories you want to monitor. The dashboard fetches data; the popup only reads cached values.</p>
       </header>
 
       <form id="settings-form" novalidate>
@@ -20,7 +20,7 @@
           <label for="github-token">Token</label>
           <input id="github-token" name="github-token" type="password" autocomplete="off" placeholder="github_pat_...">
           <p class="muted field-note">The token is stored locally in Chrome extension storage and is not displayed outside this password field.</p>
-          <p class="muted field-note">Traffic stats require the fine-grained token to have access to each selected repository and Administration read permission.</p>
+          <p class="muted field-note">Repository traffic stats require suitable access to each selected repository and Administration read permission for fine-grained tokens.</p>
         </section>
 
         <section class="card settings-card" aria-labelledby="repos-title">
