@@ -39,20 +39,22 @@ async function renderSettingsSummary() {
       const stats = latestStats[repository];
 
       if (stats) {
+        accumulator.cachedCount += 1;
         accumulator.stars += stats.stars;
         accumulator.subscribers += stats.subscribers;
         accumulator.forks += stats.forks;
       }
 
       return accumulator;
-    }, { stars: 0, subscribers: 0, forks: 0 });
+    }, { cachedCount: 0, stars: 0, subscribers: 0, forks: 0 });
+    const hasCachedMetadata = totals.cachedCount > 0;
 
     repositoryCount.textContent = `Repositories configured: ${settings.repositories.length}`;
     tokenStatus.textContent = `Token saved: ${settings.githubToken ? 'Yes' : 'No'}`;
     lastUpdated.textContent = formatLastUpdated(latestStats, settings.repositories);
-    totalStars.textContent = formatNumber(totals.stars);
-    totalSubscribers.textContent = formatNumber(totals.subscribers);
-    totalForks.textContent = formatNumber(totals.forks);
+    totalStars.textContent = hasCachedMetadata ? formatNumber(totals.stars) : '—';
+    totalSubscribers.textContent = hasCachedMetadata ? formatNumber(totals.subscribers) : '—';
+    totalForks.textContent = hasCachedMetadata ? formatNumber(totals.forks) : '—';
   } catch (error) {
     repositoryCount.textContent = 'Repositories configured: unavailable';
     tokenStatus.textContent = 'Token saved: unavailable';

@@ -95,17 +95,19 @@ function renderSummary() {
     const stats = currentLatestStats[repository];
 
     if (stats) {
+      accumulator.cachedCount += 1;
       accumulator.stars += stats.stars;
       accumulator.subscribers += stats.subscribers;
       accumulator.forks += stats.forks;
     }
 
     return accumulator;
-  }, { stars: 0, subscribers: 0, forks: 0 });
+  }, { cachedCount: 0, stars: 0, subscribers: 0, forks: 0 });
+  const hasCachedMetadata = totals.cachedCount > 0;
 
-  summaryValues.stars.textContent = formatNumber(totals.stars);
-  summaryValues.subscribers.textContent = formatNumber(totals.subscribers);
-  summaryValues.forks.textContent = formatNumber(totals.forks);
+  summaryValues.stars.textContent = hasCachedMetadata ? formatNumber(totals.stars) : '—';
+  summaryValues.subscribers.textContent = hasCachedMetadata ? formatNumber(totals.subscribers) : '—';
+  summaryValues.forks.textContent = hasCachedMetadata ? formatNumber(totals.forks) : '—';
 }
 
 function renderRepositories() {
