@@ -2,7 +2,7 @@
 
 GitHub Repo Stats Monitor is a personal Chrome extension for tracking GitHub repository statistics from one place.
 
-This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence, repository metadata fetching, and GitHub traffic page view fetching are available now, while chart rendering is planned for a later PR.
+This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence, repository metadata fetching, GitHub traffic page view fetching, and native SVG traffic trend charts are available now.
 
 ## Load unpacked in Chrome
 
@@ -22,7 +22,7 @@ Repositories must use the `owner/repo` format, for example:
 - `owner/repo`
 - `innercoder78/github-repo-stats-monitor`
 
-The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after the dashboard has fetched repository data.
+The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after the dashboard has fetched repository data. The popup remains cache-only and does not render charts.
 
 Traffic API access requires the token to have access to the repository and Administration read permission for the selected repositories.
 
@@ -44,10 +44,10 @@ The dashboard also fetches traffic page views from GitHub's traffic API for each
 
 - Views, last 14 days
 - Unique visitors, last 14 days
-- Daily view records for future chart rendering
+- Native SVG bar charts for daily views and unique visitors
 
-Traffic values are cached alongside repository metadata. If traffic fetching fails but metadata succeeds, cached metadata remains visible and the dashboard shows a traffic-specific error. If prior traffic data exists, it remains visible when a later traffic refresh fails.
+Traffic values and daily records are cached alongside repository metadata. Dashboard charts are based on GitHub's 14-day traffic API data, show up to 14 daily bars, and require no chart library, external assets, build step, or package tooling. If traffic fetching fails but metadata succeeds, cached metadata remains visible and the dashboard shows a traffic-specific error. If prior traffic data exists, it remains visible when a later traffic refresh fails.
 
 ## Current status
 
-Repository metadata fetching and GitHub traffic page view fetching are implemented. Chart rendering is still planned for a later PR.
+Repository metadata fetching, GitHub traffic page view fetching, and dependency-free native SVG chart rendering are implemented. The extension remains loadable directly with Chrome’s “Load unpacked.”
