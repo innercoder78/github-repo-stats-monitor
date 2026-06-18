@@ -2,7 +2,7 @@
 
 GitHub Repo Stats Monitor is a personal Chrome extension for tracking GitHub repository statistics from one place.
 
-This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence and repository metadata fetching are available now, while traffic statistics and charts are planned for later PRs.
+This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence, repository metadata fetching, and GitHub traffic page view fetching are available now, while chart rendering is planned for a later PR.
 
 ## Load unpacked in Chrome
 
@@ -22,7 +22,9 @@ Repositories must use the `owner/repo` format, for example:
 - `owner/repo`
 - `innercoder78/github-repo-stats-monitor`
 
-The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, and forks after the dashboard has fetched repository metadata.
+The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after the dashboard has fetched repository data.
+
+Traffic API access requires the token to have access to the repository and Administration read permission for the selected repositories.
 
 ## Repository metadata
 
@@ -36,6 +38,16 @@ Fetched metadata includes:
 
 Real watchers intentionally use `subscribers_count`, not `watchers_count`, because GitHub's `watchers_count` often mirrors stars instead of actual repository subscribers.
 
+## Repository traffic
+
+The dashboard also fetches traffic page views from GitHub's traffic API for each configured repository. GitHub traffic stats cover the last 14 days, and the extension displays:
+
+- Views, last 14 days
+- Unique visitors, last 14 days
+- Daily view records for future chart rendering
+
+Traffic values are cached alongside repository metadata. If traffic fetching fails but metadata succeeds, cached metadata remains visible and the dashboard shows a traffic-specific error. If prior traffic data exists, it remains visible when a later traffic refresh fails.
+
 ## Current status
 
-Repository metadata fetching is implemented. GitHub traffic stats, including views and unique visitors, are still placeholders and will be added in a later PR. Chart rendering is also planned for a later PR.
+Repository metadata fetching and GitHub traffic page view fetching are implemented. Chart rendering is still planned for a later PR.

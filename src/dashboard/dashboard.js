@@ -1,4 +1,4 @@
-import { fetchRepositoryMetadata } from '../shared/github-api.js';
+import { fetchRepositoryMetadata, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getLatestStats, getSettings, saveLatestStats } from '../shared/storage.js';
 
 const repoGrid = document.getElementById('repo-grid');
@@ -9,6 +9,8 @@ const summaryValues = {
   stars: document.getElementById('total-stars'),
   subscribers: document.getElementById('total-subscribers'),
   forks: document.getElementById('total-forks'),
+  views: document.getElementById('total-views'),
+  uniqueVisitors: document.getElementById('total-unique-visitors'),
 };
 
 let currentSettings = { githubToken: '', repositories: [] };
@@ -40,6 +42,12 @@ function hasCachedMetadata(stats) {
     && Number.isFinite(stats.subscribers);
 }
 
+function hasCachedTraffic(stats) {
+  return Boolean(stats?.trafficFetchedAt)
+    && Number.isFinite(stats.views)
+    && Number.isFinite(stats.uniqueVisitors);
+}
+
 function createMetric(label, value = '—') {
   const metric = document.createElement('div');
   metric.className = 'metric';
@@ -63,17 +71,20 @@ function createRepositoryCard(repository, stats) {
 
   const meta = document.createElement('p');
   meta.className = 'muted repo-meta';
-  meta.textContent = stats?.fetchedAt ? `Last fetched: ${formatRefreshTime(stats.fetchedAt)}` : 'Last fetched: —';
+  const metadataTime = stats?.fetchedAt ? formatRefreshTime(stats.fetchedAt) : '—';
+  const trafficTime = stats?.trafficFetchedAt ? formatRefreshTime(stats.trafficFetchedAt) : '—';
+  meta.textContent = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime}`;
 
   const cachedStats = hasCachedMetadata(stats) ? stats : null;
+  const cachedTraffic = hasCachedTraffic(stats) ? stats : null;
   const metricGrid = document.createElement('div');
   metricGrid.className = 'metric-grid';
   metricGrid.append(
     createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—'),
     createMetric('Real watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—'),
     createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—'),
-    createMetric('Views, last 14 days'),
-    createMetric('Unique visitors, last 14 days'),
+    createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—'),
+    createMetric('Unique visitors, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.uniqueVisitors) : '—'),
   );
 
   const charts = document.createElement('div');
@@ -81,7 +92,7 @@ function createRepositoryCard(repository, stats) {
   ['Views, last 14 days', 'Unique visitors, last 14 days'].forEach((label) => {
     const placeholder = document.createElement('div');
     placeholder.className = 'chart-placeholder';
-    placeholder.textContent = label;
+    placeholder.textContent = `${label}: traffic data is now fetched; charts are coming later.`;
     charts.append(placeholder);
   });
 
@@ -90,8 +101,15 @@ function createRepositoryCard(repository, stats) {
   if (stats?.error) {
     const errorMessage = document.createElement('p');
     errorMessage.className = 'repo-error';
-    errorMessage.textContent = stats.error;
+    errorMessage.textContent = `Metadata error: ${stats.error}`;
     card.append(errorMessage);
+  }
+
+  if (stats?.trafficError) {
+    const trafficErrorMessage = document.createElement('p');
+    trafficErrorMessage.className = 'repo-error';
+    trafficErrorMessage.textContent = `Traffic error: ${stats.trafficError}`;
+    card.append(trafficErrorMessage);
   }
 
   card.append(charts);
@@ -103,19 +121,26 @@ function renderSummary() {
     const stats = currentLatestStats[repository];
 
     if (hasCachedMetadata(stats)) {
-      accumulator.cachedCount += 1;
+      accumulator.metadataCount += 1;
       accumulator.stars += stats.stars;
       accumulator.subscribers += stats.subscribers;
       accumulator.forks += stats.forks;
     }
 
-    return accumulator;
-  }, { cachedCount: 0, stars: 0, subscribers: 0, forks: 0 });
-  const hasAnyCachedMetadata = totals.cachedCount > 0;
+    if (hasCachedTraffic(stats)) {
+      accumulator.trafficCount += 1;
+      accumulator.views += stats.views;
+      accumulator.uniqueVisitors += stats.uniqueVisitors;
+    }
 
-  summaryValues.stars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
-  summaryValues.subscribers.textContent = hasAnyCachedMetadata ? formatNumber(totals.subscribers) : '—';
-  summaryValues.forks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
+    return accumulator;
+  }, { metadataCount: 0, trafficCount: 0, stars: 0, subscribers: 0, forks: 0, views: 0, uniqueVisitors: 0 });
+
+  summaryValues.stars.textContent = totals.metadataCount > 0 ? formatNumber(totals.stars) : '—';
+  summaryValues.subscribers.textContent = totals.metadataCount > 0 ? formatNumber(totals.subscribers) : '—';
+  summaryValues.forks.textContent = totals.metadataCount > 0 ? formatNumber(totals.forks) : '—';
+  summaryValues.views.textContent = totals.trafficCount > 0 ? formatNumber(totals.views) : '—';
+  summaryValues.uniqueVisitors.textContent = totals.trafficCount > 0 ? formatNumber(totals.uniqueVisitors) : '—';
 }
 
 function renderRepositories() {
@@ -137,9 +162,9 @@ function renderRepositories() {
   renderSummary();
 }
 
-async function refreshRepositoryMetadata() {
+async function refreshRepositoryStats() {
   if (!currentSettings.githubToken) {
-    setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata.', 'warning');
+    setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata and traffic.', 'warning');
     refreshButton.disabled = true;
     return;
   }
@@ -148,21 +173,34 @@ async function refreshRepositoryMetadata() {
 
   isRefreshing = true;
   refreshButton.disabled = true;
-  setStatus('Loading repository metadata from GitHub...', 'loading');
+  setStatus('Loading repository metadata and traffic from GitHub...', 'loading');
 
   const fetchedAt = new Date().toISOString();
   const results = await Promise.all(currentSettings.repositories.map(async (repository) => {
+    const previousStats = currentLatestStats[repository] || { repository };
+    const stats = { ...previousStats, repository };
+
     try {
       const metadata = await fetchRepositoryMetadata(repository, currentSettings.githubToken);
-      return { repository, stats: { ...metadata, fetchedAt, error: '' } };
+      Object.assign(stats, metadata, { fetchedAt, error: '' });
     } catch (error) {
-      const previousStats = currentLatestStats[repository];
-      const stats = hasCachedMetadata(previousStats)
-        ? { ...previousStats, error: error.message }
-        : { repository, fetchedAt: '', error: error.message };
-
-      return { repository, stats };
+      stats.error = error.message;
     }
+
+    try {
+      const traffic = await fetchRepositoryTrafficViews(repository, currentSettings.githubToken);
+      Object.assign(stats, traffic, { trafficFetchedAt: fetchedAt, trafficError: '' });
+    } catch (error) {
+      stats.trafficError = error.message;
+      if (!hasCachedTraffic(stats)) {
+        stats.views = null;
+        stats.uniqueVisitors = null;
+        stats.dailyViews = [];
+        stats.trafficFetchedAt = '';
+      }
+    }
+
+    return { repository, stats };
   }));
 
   const nextLatestStats = { ...currentLatestStats };
@@ -171,15 +209,15 @@ async function refreshRepositoryMetadata() {
   });
   currentLatestStats = await saveLatestStats(nextLatestStats);
 
-  const failureCount = results.filter(({ stats }) => stats.error).length;
+  const failureCount = results.filter(({ stats }) => stats.error || stats.trafficError).length;
   const successCount = results.length - failureCount;
 
   if (failureCount === 0) {
     setStatus(`Last successful refresh: ${formatRefreshTime(fetchedAt)}`, 'success');
   } else if (successCount > 0) {
-    setStatus(`Partial refresh: ${successCount} succeeded and ${failureCount} failed. See repository cards for details.`, 'warning');
+    setStatus(`Partial refresh: ${successCount} repositories fully refreshed and ${failureCount} had metadata or traffic errors. See repository cards for details.`, 'warning');
   } else {
-    setStatus('Refresh failed for all repositories. See repository cards for details.', 'error');
+    setStatus('Refresh finished with errors for all repositories. Cached values are shown where available.', 'error');
   }
 
   isRefreshing = false;
@@ -197,11 +235,11 @@ async function initializeDashboard() {
     }
 
     if (!currentSettings.githubToken) {
-      setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata.', 'warning');
+      setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata and traffic.', 'warning');
       return;
     }
 
-    await refreshRepositoryMetadata();
+    await refreshRepositoryStats();
   } catch (error) {
     setStatus('Unable to load dashboard data from local storage.', 'error');
     repoGrid.textContent = '';
@@ -212,6 +250,6 @@ async function initializeDashboard() {
 
 document.getElementById('open-settings').addEventListener('click', openSettings);
 document.getElementById('empty-open-settings').addEventListener('click', openSettings);
-refreshButton.addEventListener('click', refreshRepositoryMetadata);
+refreshButton.addEventListener('click', refreshRepositoryStats);
 
 initializeDashboard();
