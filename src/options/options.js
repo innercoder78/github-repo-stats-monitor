@@ -25,7 +25,7 @@ function updateAddButtonState() {
   addRepositoryButton.title = rowCount >= MAX_REPOSITORIES ? 'Maximum of 20 repositories reached.' : '';
 }
 
-function createRepositoryRow(value = '') {
+function createRepositoryRow(value = '', shouldFocus = false) {
   const row = document.createElement('div');
   row.className = 'repository-row';
 
@@ -44,9 +44,14 @@ function createRepositoryRow(value = '') {
   removeButton.type = 'button';
   removeButton.textContent = 'Remove';
   removeButton.addEventListener('click', () => {
+    const nextFocusTarget = row.nextElementSibling?.querySelector('.repository-input')
+      || row.previousElementSibling?.querySelector('.repository-input')
+      || addRepositoryButton;
     row.remove();
     if (getRepositoryInputs().length === 0) {
-      addRepositoryRow();
+      addRepositoryRow('', true);
+    } else {
+      nextFocusTarget.focus();
     }
     setMessage(repoMessage, '', '');
     setMessage(statusMessage, '', '');
@@ -57,22 +62,26 @@ function createRepositoryRow(value = '') {
   row.append(label, removeButton);
   repositoryList.append(row);
   updateAddButtonState();
+
+  if (shouldFocus) {
+    input.focus();
+  }
 }
 
-function addRepositoryRow(value = '') {
+function addRepositoryRow(value = '', shouldFocus = false) {
   if (getRepositoryInputs().length >= MAX_REPOSITORIES) {
     setMessage(repoMessage, 'You can configure up to 20 repositories.', 'error');
     updateAddButtonState();
     return;
   }
 
-  createRepositoryRow(value);
+  createRepositoryRow(value, shouldFocus);
 }
 
 function renderRepositories(repositories) {
   repositoryList.textContent = '';
   const values = repositories.length > 0 ? repositories : [''];
-  values.forEach(addRepositoryRow);
+  values.forEach((value) => addRepositoryRow(value));
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   updateAddButtonState();
@@ -136,7 +145,7 @@ async function loadSettings() {
 }
 
 addRepositoryButton.addEventListener('click', () => {
-  addRepositoryRow();
+  addRepositoryRow('', true);
   setMessage(statusMessage, '', '');
 });
 

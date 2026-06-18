@@ -12,7 +12,7 @@
       <header class="topbar">
         <div>
           <h1>Repository Dashboard</h1>
-          <p id="status-line" class="muted status-line">Status: Waiting for repository metadata and traffic</p>
+          <p id="status-line" class="muted status-line" role="status" aria-live="polite">Status: Waiting for repository metadata and traffic</p>
         </div>
         <div class="topbar-actions">
           <button id="refresh-now" type="button">Refresh Now</button>
@@ -20,7 +20,7 @@
         </div>
       </header>
 
-      <section class="card summary-card" aria-labelledby="summary-title">
+      <section id="summary-card" class="card summary-card" aria-labelledby="summary-title">
         <h2 id="summary-title">All repositories</h2>
         <div class="metric-grid summary-grid">
           <div class="metric"><span>Total stars</span><strong id="total-stars">—</strong></div>
@@ -31,9 +31,9 @@
         </div>
       </section>
 
-      <section id="empty-state" class="card empty-state" hidden>
-        <h2>No repositories configured yet</h2>
-        <p class="muted">Open Settings to add repositories in the owner/repo format. Repository metadata and traffic will appear here after a token and repositories are saved.</p>
+      <section id="empty-state" class="card empty-state" aria-live="polite" hidden>
+        <h2 id="empty-title">No repositories configured yet</h2>
+        <p id="empty-message" class="muted">Open Settings to add repositories in the owner/repo format. Repository metadata and traffic will appear here after a token and repositories are saved.</p>
         <button id="empty-open-settings" type="button">Open Settings</button>
       </section>
 
