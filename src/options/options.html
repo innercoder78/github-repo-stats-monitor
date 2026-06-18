@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings - GitHub Repo Stats Monitor</title>
+    <link rel="stylesheet" href="../shared/base.css">
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="options-shell">
+      <header>
+        <h1>Settings</h1>
+        <p class="muted">Settings functionality will be added in a later PR. Nothing is saved yet.</p>
+      </header>
+
+      <section class="card settings-card" aria-labelledby="token-title">
+        <h2 id="token-title">GitHub fine-grained personal access token</h2>
+        <label for="token">Token placeholder</label>
+        <input id="token" type="password" placeholder="Token storage is not implemented yet" disabled>
+        <p class="muted">Token entry and secure storage will be implemented later.</p>
+      </section>
+
+      <section class="card settings-card" aria-labelledby="repos-title">
+        <h2 id="repos-title">Repositories</h2>
+        <div class="repo-fields">
+          <label>Repository 1<input type="text" placeholder="owner/repository-one" disabled></label>
+          <label>Repository 2<input type="text" placeholder="owner/repository-two" disabled></label>
+          <label>Repository 3<input type="text" placeholder="owner/repository-three" disabled></label>
+          <label>Repository 4<input type="text" placeholder="owner/repository-four" disabled></label>
+        </div>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

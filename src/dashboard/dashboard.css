@@ -1,0 +1,70 @@
+.dashboard-shell {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 32px 20px;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+h1 { margin-bottom: 8px; }
+
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.summary-card,
+.repo-card { padding: 20px; }
+
+.summary-card { margin-bottom: 22px; }
+
+.summary-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.repo-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.repo-card h2 { font-size: 1.1rem; }
+
+.repo-card .metric:last-child { grid-column: 1 / -1; }
+
+.charts {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.chart-placeholder {
+  align-items: center;
+  background: linear-gradient(135deg, #eef6ff, #f6f8fa);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  display: flex;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 120px;
+  padding: 16px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .topbar { align-items: flex-start; flex-direction: column; }
+  .repo-grid, .summary-grid { grid-template-columns: 1fr; }
+}

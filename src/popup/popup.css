@@ -1,0 +1,22 @@
+body { min-width: 340px; }
+
+.popup-shell {
+  padding: 18px;
+  width: 340px;
+}
+
+h1 {
+  font-size: 1.05rem;
+  margin-bottom: 6px;
+}
+
+header { margin-bottom: 16px; }
+
+.metric-grid { margin-bottom: 16px; }
+
+.metric:last-child { grid-column: 1 / -1; }
+
+.actions {
+  display: grid;
+  gap: 10px;
+}

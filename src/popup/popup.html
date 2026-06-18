@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GitHub Repo Stats Monitor</title>
+    <link rel="stylesheet" href="../shared/base.css">
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header>
+        <h1>GitHub Repo Stats Monitor</h1>
+        <p class="muted">Last updated: Not connected yet</p>
+      </header>
+
+      <section class="metric-grid" aria-label="Repository statistics summary">
+        <div class="metric"><span>Stars</span><strong>—</strong></div>
+        <div class="metric"><span>Real watchers</span><strong>—</strong></div>
+        <div class="metric"><span>Forks</span><strong>—</strong></div>
+        <div class="metric"><span>Views</span><strong>—</strong></div>
+        <div class="metric"><span>Unique visitors</span><strong>—</strong></div>
+      </section>
+
+      <div class="actions">
+        <button id="open-dashboard" type="button">Open Dashboard</button>
+        <button id="open-settings" class="secondary" type="button">Settings</button>
+      </div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
