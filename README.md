@@ -19,14 +19,15 @@ Extension icon PNG files live in `assets/icons/` and are referenced by the Manif
 
 Settings are stored locally with `chrome.storage.local` in Chrome extension storage. The options page lets you save a GitHub fine-grained personal access token and configure any repository list up to 20 repositories. It also includes a connection test that checks the token and the currently entered repository rows before you save settings.
 
-Repositories must use the `owner/repo` format, for example:
+Repositories can be entered as `owner/repo` or as a GitHub repository URL. Settings normalizes and stores values as `owner/repo`, for example:
 
 - `owner/repo`
+- `https://github.com/owner/repo`
 - `innercoder78/github-repo-stats-monitor`
 
 The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after the dashboard has fetched repository data. The popup remains cache-only and does not render charts.
 
-Traffic API access requires the token to have access to the repository and Administration read permission for the selected repositories. Settings tests repository data and traffic data separately because stars, forks, and watcher metadata can load even when traffic access fails.
+Settings includes concise token setup guidance near the token field. Traffic API access requires the token to have access to the repository and Administration read permission for the selected repositories. Settings tests repository data and traffic data separately because stars, forks, and watcher metadata can load even when traffic access fails.
 
 ## Repository metadata
 
