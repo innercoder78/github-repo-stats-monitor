@@ -1,5 +1,6 @@
 import { fetchRepositoryMetadata, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, saveSettings } from '../shared/storage.js';
+import { getRepositoryUrl } from '../shared/repository-url.js';
 
 const MAX_REPOSITORIES = 20;
 
@@ -153,6 +154,25 @@ function getSafeErrorMessage(error) {
   return message || 'Unable to complete this GitHub request.';
 }
 
+function createRepositoryNameElement(repository) {
+  const title = document.createElement('h3');
+  const repositoryUrl = getRepositoryUrl(repository);
+
+  if (!repositoryUrl) {
+    title.textContent = repository || 'Repository';
+    return title;
+  }
+
+  const link = document.createElement('a');
+  link.className = 'test-result-repo-link';
+  link.href = repositoryUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = repository;
+  title.append(link);
+  return title;
+}
+
 function createStatusLine(label, result) {
   const line = document.createElement('p');
   line.className = `test-result-status ${result.ok ? 'success' : 'error'}`;
@@ -164,11 +184,8 @@ function renderTestResult(result) {
   const card = document.createElement('article');
   card.className = 'test-result-card';
 
-  const title = document.createElement('h3');
-  title.textContent = result.repository;
-
   card.append(
-    title,
+    createRepositoryNameElement(result.repository),
     createStatusLine('Repository data', result.metadata),
     createStatusLine('Traffic data', result.traffic),
   );

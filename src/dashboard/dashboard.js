@@ -1,6 +1,7 @@
 import { fetchRepositoryMetadata, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getLatestStats, getSettings, saveLatestStats } from '../shared/storage.js';
 import { createSvgBarChart } from '../shared/svg-bar-chart.js';
+import { getRepositoryUrl } from '../shared/repository-url.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -86,6 +87,25 @@ function createMetric(label, value = '—') {
   return metric;
 }
 
+function createRepositoryNameElement(repository) {
+  const title = document.createElement('h2');
+  const repositoryUrl = getRepositoryUrl(repository);
+
+  if (!repositoryUrl) {
+    title.textContent = repository || 'Repository';
+    return title;
+  }
+
+  const link = document.createElement('a');
+  link.className = 'repo-title-link';
+  link.href = repositoryUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = repository;
+  title.append(link);
+  return title;
+}
+
 function createChartPanel(label, stats, metricKey) {
   const panel = document.createElement('section');
   panel.className = 'chart-panel';
@@ -111,9 +131,7 @@ function createRepositoryCard(repository, stats) {
   const header = document.createElement('div');
   header.className = 'repo-card-header';
 
-  const title = document.createElement('h2');
-  title.textContent = repository;
-  header.append(title);
+  header.append(createRepositoryNameElement(repository));
 
   const meta = document.createElement('p');
   meta.className = 'muted repo-meta';
