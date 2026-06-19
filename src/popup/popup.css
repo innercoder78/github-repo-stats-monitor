@@ -40,3 +40,15 @@ header { margin-bottom: 16px; }
   display: grid;
   gap: 10px;
 }
+
+.popup-status { white-space: pre-line; }
+
+.popup-refresh {
+  margin-top: 10px;
+  width: 100%;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}

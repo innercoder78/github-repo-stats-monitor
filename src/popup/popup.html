@@ -12,7 +12,8 @@
       <header>
         <h1>GitHub Repo Stats Monitor</h1>
         <p id="last-updated" class="muted">Last updated: —</p>
-        <p id="popup-status" class="muted popup-status" role="status">Open the dashboard to refresh data.</p>
+        <p id="popup-status" class="muted popup-status" role="status" aria-live="polite"></p>
+        <button id="refresh-stats" class="popup-refresh" type="button">Refresh</button>
       </header>
 
       <section class="card settings-summary" aria-label="Saved settings summary">

@@ -1,5 +1,5 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
-import { getLatestStats, getSettings, saveLatestStats } from '../shared/storage.js';
+import { getLatestStats, getSettings } from '../shared/storage.js';
+import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgBarChart } from '../shared/svg-bar-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 
@@ -317,77 +317,24 @@ async function refreshRepositoryStats() {
   setRefreshButtonState();
   setStatus('Loading repository metadata, traffic, and referrers from GitHub…', 'loading');
 
-  const fetchedAt = new Date().toISOString();
-  let results = [];
-
   try {
-    results = await Promise.all(currentSettings.repositories.map(async (repository) => {
-      const previousStats = currentLatestStats[repository] || { repository };
-      const stats = { ...previousStats, repository };
+    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats);
+    currentLatestStats = refreshResult.latestStats;
 
-      try {
-        const metadata = await fetchRepositoryMetadata(repository, currentSettings.githubToken);
-        Object.assign(stats, metadata, { fetchedAt, error: '' });
-      } catch (error) {
-        stats.error = error.message;
-      }
+    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.referrersError).length;
+    const successCount = refreshResult.results.length - failureCount;
 
-      try {
-        const traffic = await fetchRepositoryTrafficViews(repository, currentSettings.githubToken);
-        Object.assign(stats, traffic, { trafficFetchedAt: fetchedAt, trafficError: '' });
-      } catch (error) {
-        stats.trafficError = error.message;
-        if (!hasCachedTraffic(stats)) {
-          stats.views = null;
-          stats.uniqueVisitors = null;
-          stats.dailyViews = [];
-          stats.trafficFetchedAt = '';
-        }
-      }
-
-      try {
-        const referrers = await fetchRepositoryTrafficReferrers(repository, currentSettings.githubToken);
-        Object.assign(stats, referrers, { referrersFetchedAt: fetchedAt, referrersError: '' });
-      } catch (error) {
-        stats.referrersError = error.message;
-        if (!hasCachedReferrers(stats)) {
-          stats.referrers = [];
-          stats.referrersFetchedAt = '';
-        }
-      }
-
-      return { repository, stats };
-    }));
+    if (failureCount === 0) {
+      setStatus(`Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+    } else if (successCount > 0) {
+      setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository, traffic, or referrer errors. See repository cards for details.`, 'warning');
+    } else {
+      setStatus('Refresh finished with errors for all repositories. Cached values are shown where available.', 'error');
+    }
   } catch (error) {
-    setStatus('Refresh could not finish. Cached values are shown where available.', 'error');
-    isRefreshing = false;
-    renderRepositories();
-    return;
-  }
-
-  const nextLatestStats = { ...currentLatestStats };
-  results.forEach(({ repository, stats }) => {
-    nextLatestStats[repository] = stats;
-  });
-
-  try {
-    currentLatestStats = await saveLatestStats(nextLatestStats);
-  } catch (error) {
-    setStatus('Refresh finished, but the latest results could not be saved locally.', 'error');
-    isRefreshing = false;
-    renderRepositories();
-    return;
-  }
-
-  const failureCount = results.filter(({ stats }) => stats.error || stats.trafficError || stats.referrersError).length;
-  const successCount = results.length - failureCount;
-
-  if (failureCount === 0) {
-    setStatus(`Last successful refresh: ${formatRefreshTime(fetchedAt)}`, 'success');
-  } else if (successCount > 0) {
-    setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository, traffic, or referrer errors. See repository cards for details.`, 'warning');
-  } else {
-    setStatus('Refresh finished with errors for all repositories. Cached values are shown where available.', 'error');
+    setStatus(error.message === 'No repositories configured. Open Settings and add at least one repository.'
+      ? 'Setup needed: no repositories configured yet. Open Settings to add repositories.'
+      : 'Refresh could not finish. Cached values are shown where available.', 'error');
   }
 
   isRefreshing = false;
