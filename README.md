@@ -2,7 +2,7 @@
 
 GitHub Repo Stats Monitor is a personal Chrome extension for tracking GitHub repository statistics from one place.
 
-This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence, repository metadata fetching, GitHub traffic page view fetching, referring sites for the last 14 days, and native SVG traffic trend charts are available now.
+This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. It saves settings locally, fetches repository metadata, fetches GitHub traffic page views and referring sites for the last 14 days, and renders native SVG traffic trend charts without external dependencies.
 
 ## Load unpacked in Chrome
 
@@ -27,7 +27,7 @@ Repositories can be entered as `owner/repo` or as a GitHub repository URL. Setti
 
 The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after repository data has been fetched. The popup remains cache-only on normal open, includes a manual Refresh button for updating cached stats, and does not render charts.
 
-Settings includes concise token setup guidance near the token field. Traffic and referrer API access requires the token to have access to the repository and the fine-grained token repository permission `Administration: Read-only` for the selected repositories. Settings tests repository data, traffic data, and referrers separately because stars, forks, and watcher metadata can load even when traffic or referrers access fails.
+Settings includes concise token setup guidance near the token field. Create a GitHub fine-grained personal access token scoped to the repositories you want to monitor. Traffic and referrer API access requires the token to have access to the repository and the fine-grained token repository permission `Administration: Read-only` for the selected repositories. Settings tests repository data, traffic data, and referrers separately because stars, forks, and watcher metadata can load even when traffic or referrers access fails.
 
 ## Repository metadata
 
