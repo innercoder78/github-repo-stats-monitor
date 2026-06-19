@@ -24,6 +24,10 @@ document.getElementById('open-settings').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
+document.getElementById('close-popup').addEventListener('click', () => {
+  window.close();
+});
+
 refreshButton.addEventListener('click', refreshStats);
 
 function formatNumber(value) {
