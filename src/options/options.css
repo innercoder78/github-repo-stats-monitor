@@ -63,6 +63,8 @@ input {
   gap: 10px;
 }
 
+.actions button { flex: 0 1 auto; }
+
 .message {
   font-weight: 700;
   margin: 10px 0 0;
@@ -82,6 +84,8 @@ button:disabled {
   .repository-row { grid-template-columns: 1fr; }
 
   .section-heading { display: grid; }
+
+  .actions button { flex: 1 1 100%; }
 }
 
 .connection-test .section-heading { align-items: center; }

@@ -9,6 +9,7 @@ const tokenInput = document.getElementById('github-token');
 const repositoryList = document.getElementById('repository-list');
 const addRepositoryButton = document.getElementById('add-repository');
 const resetButton = document.getElementById('reset-settings');
+const openDashboardButton = document.getElementById('open-dashboard');
 const testConnectionButton = document.getElementById('test-connection');
 const repoMessage = document.getElementById('repo-message');
 const statusMessage = document.getElementById('status-message');
@@ -284,6 +285,9 @@ addRepositoryButton.addEventListener('click', () => {
 });
 
 resetButton.addEventListener('click', loadSettings);
+openDashboardButton.addEventListener('click', () => {
+  window.location.href = chrome.runtime.getURL('src/dashboard/dashboard.html');
+});
 testConnectionButton.addEventListener('click', handleConnectionTest);
 
 form.addEventListener('submit', async (event) => {
