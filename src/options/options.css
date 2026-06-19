@@ -51,6 +51,12 @@ input {
 
 .field-note { font-size: 0.9rem; }
 
+.token-instructions { margin-top: 12px; }
+
+.token-instructions .field-note { margin-bottom: 8px; }
+
+.token-instructions .field-note:last-child { margin-bottom: 0; }
+
 .actions {
   display: flex;
   flex-wrap: wrap;

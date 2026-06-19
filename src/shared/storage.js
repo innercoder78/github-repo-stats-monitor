@@ -12,7 +12,14 @@ function getChromeStorage() {
 }
 
 export function normalizeRepositoryName(value) {
-  return String(value || '').trim().toLowerCase();
+  const trimmedValue = String(value || '').trim().toLowerCase();
+  const githubUrlMatch = trimmedValue.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/?$/);
+
+  if (githubUrlMatch) {
+    return `${githubUrlMatch[1]}/${githubUrlMatch[2]}`;
+  }
+
+  return trimmedValue;
 }
 
 export function isValidRepositoryName(value) {

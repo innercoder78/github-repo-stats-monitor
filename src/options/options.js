@@ -47,7 +47,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
   const input = document.createElement('input');
   input.className = 'repository-input';
   input.type = 'text';
-  input.placeholder = 'owner/repo';
+  input.placeholder = 'owner/repo or https://github.com/owner/repo';
   input.value = value;
 
   const removeButton = document.createElement('button');
@@ -120,7 +120,7 @@ function validateRepositories() {
   if (invalidValue) {
     return {
       isValid: false,
-      message: `Invalid repository "${invalidValue}". Use owner/repo, for example innercoder78/github-repo-stats-monitor.`,
+      message: `Invalid repository "${invalidValue}". Use owner/repo or a GitHub repository URL, for example innercoder78/github-repo-stats-monitor or https://github.com/innercoder78/github-repo-stats-monitor.`,
     };
   }
 

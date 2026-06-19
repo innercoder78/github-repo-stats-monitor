@@ -19,15 +19,18 @@
           <h2 id="token-title">GitHub fine-grained personal access token</h2>
           <label for="github-token">Token</label>
           <input id="github-token" name="github-token" type="password" autocomplete="off" placeholder="github_pat_...">
-          <p class="muted field-note">The token is stored locally in Chrome extension storage and is not displayed outside this password field.</p>
-          <p class="muted field-note">Repository traffic stats require suitable access to each selected repository and Administration read permission for fine-grained tokens.</p>
+          <div class="token-instructions">
+            <p class="muted field-note">To create a token, open GitHub, then go to Settings → Developer settings → Personal access tokens → Fine-grained tokens. Select the repositories you want to monitor, then grant repository Administration: Read-only permission so traffic stats can be read.</p>
+            <p class="muted field-note">The token is stored locally in Chrome extension storage and should not be committed or shared.</p>
+            <p class="muted field-note">The connection test can verify repository data and traffic access separately.</p>
+          </div>
         </section>
 
         <section class="card settings-card" aria-labelledby="repos-title">
           <div class="section-heading">
             <div>
               <h2 id="repos-title">Repositories</h2>
-              <p class="muted">Use the <code>owner/repo</code> format. You can configure up to 20 repositories.</p>
+              <p class="muted">Use <code>owner/repo</code> or a GitHub repository URL. Values are saved as <code>owner/repo</code>. You can configure up to 20 repositories.</p>
             </div>
             <button id="add-repository" class="secondary" type="button">+ Add repository</button>
           </div>
