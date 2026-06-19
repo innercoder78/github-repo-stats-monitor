@@ -48,12 +48,20 @@ header { margin-bottom: 16px; }
   width: 100%;
 }
 
+.utility-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 .popup-close {
   background: #f3f4f6;
   border: 1px solid #d1d5db;
   color: #374151;
-  font-size: 0.9rem;
-  padding: 8px 12px;
+  font-size: 0.85rem;
+  min-width: 72px;
+  padding: 6px 10px;
+  width: auto;
 }
 
 .popup-close:hover { background: #e5e7eb; }
