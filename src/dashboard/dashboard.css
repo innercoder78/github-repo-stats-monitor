@@ -171,3 +171,15 @@ button:disabled {
   .repo-grid,
   .summary-grid { grid-template-columns: 1fr; }
 }
+
+.repo-title-link {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.repo-title-link:hover,
+.repo-title-link:focus-visible {
+  color: #0969da;
+  text-decoration: underline;
+}
