@@ -105,7 +105,9 @@ function renderStatsSummary(settings, latestStats) {
   const hasAnyCachedTraffic = totals.trafficCount > 0;
 
   repositoryCount.textContent = `Repositories configured: ${settings.repositories.length}`;
-  tokenStatus.textContent = `Token saved: ${settings.githubToken ? 'Yes' : 'No'}`;
+  tokenStatus.textContent = settings.githubToken
+    ? 'Token saved: Yes'
+    : 'Token saved: No. Open Settings to add one.';
   lastUpdated.textContent = formatLastUpdated(latestStats, settings.repositories);
   totalStars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
   totalSubscribers.textContent = hasAnyCachedMetadata ? formatNumber(totals.subscribers) : '—';
