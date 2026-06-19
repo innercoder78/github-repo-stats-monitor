@@ -115,3 +115,35 @@ export async function fetchRepositoryTrafficViews(repository, token) {
     dailyViews,
   };
 }
+
+
+export async function fetchRepositoryTrafficReferrers(repository, token) {
+  const { normalizedRepository, safeToken } = assertRepositoryAndToken(repository, token, 'traffic referrers');
+  let response;
+
+  try {
+    response = await fetch(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/popular/referrers`, {
+      headers: getGitHubHeaders(safeToken),
+    });
+  } catch (error) {
+    throw new Error('Network failure while contacting GitHub traffic referrers API. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    throw new Error(getTrafficErrorMessage(response.status));
+  }
+
+  const data = await response.json();
+  const referrers = Array.isArray(data)
+    ? data.map((entry) => ({
+      referrer: String(entry?.referrer || '').trim(),
+      count: Number(entry?.count) || 0,
+      uniques: Number(entry?.uniques) || 0,
+    })).filter((entry) => entry.referrer)
+    : [];
+
+  return {
+    repository: normalizedRepository,
+    referrers,
+  };
+}

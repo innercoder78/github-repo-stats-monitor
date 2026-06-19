@@ -1,4 +1,4 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficViews } from '../shared/github-api.js';
+import { fetchRepositoryMetadata, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getLatestStats, getSettings, saveLatestStats } from '../shared/storage.js';
 import { createSvgBarChart } from '../shared/svg-bar-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -73,6 +73,10 @@ function hasCachedTraffic(stats) {
     && Number.isFinite(stats.uniqueVisitors);
 }
 
+function hasCachedReferrers(stats) {
+  return Boolean(stats?.referrersFetchedAt) && Array.isArray(stats.referrers);
+}
+
 function createMetric(label, value = '—') {
   const metric = document.createElement('div');
   metric.className = 'metric';
@@ -106,6 +110,66 @@ function createRepositoryNameElement(repository) {
   return title;
 }
 
+function createReferrersSection(stats) {
+  const section = document.createElement('section');
+  section.className = 'referrers-panel';
+
+  const heading = document.createElement('h3');
+  heading.textContent = 'Referring sites, last 14 days';
+  section.append(heading);
+
+  const cachedReferrers = hasCachedReferrers(stats) ? stats.referrers.slice(0, 10) : null;
+
+  if (stats?.referrersError && !cachedReferrers) {
+    const error = document.createElement('p');
+    error.className = 'referrers-message error';
+    error.textContent = `Referring sites error: ${stats.referrersError}`;
+    section.append(error);
+    return section;
+  }
+
+  if (stats?.referrersError && cachedReferrers) {
+    const warning = document.createElement('p');
+    warning.className = 'referrers-message warning';
+    warning.textContent = 'Showing last saved referring sites because the latest referrers request failed.';
+    section.append(warning);
+  }
+
+  if (!cachedReferrers || cachedReferrers.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'referrers-message';
+    empty.textContent = 'No referring sites reported for the last 14 days.';
+    section.append(empty);
+    return section;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'referrers-list';
+
+  const header = document.createElement('div');
+  header.className = 'referrer-row referrer-row-header';
+  header.append(
+    Object.assign(document.createElement('span'), { textContent: 'Referrer' }),
+    Object.assign(document.createElement('span'), { textContent: 'Views' }),
+    Object.assign(document.createElement('span'), { textContent: 'Unique visitors' }),
+  );
+  list.append(header);
+
+  cachedReferrers.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'referrer-row';
+    row.append(
+      Object.assign(document.createElement('span'), { textContent: entry.referrer }),
+      Object.assign(document.createElement('span'), { textContent: formatNumber(entry.count) }),
+      Object.assign(document.createElement('span'), { textContent: formatNumber(entry.uniques) }),
+    );
+    list.append(row);
+  });
+
+  section.append(list);
+  return section;
+}
+
 function createChartPanel(label, stats, metricKey) {
   const panel = document.createElement('section');
   panel.className = 'chart-panel';
@@ -137,7 +201,8 @@ function createRepositoryCard(repository, stats) {
   meta.className = 'muted repo-meta';
   const metadataTime = stats?.fetchedAt ? formatRefreshTime(stats.fetchedAt) : '—';
   const trafficTime = stats?.trafficFetchedAt ? formatRefreshTime(stats.trafficFetchedAt) : '—';
-  meta.textContent = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime}`;
+  const referrersTime = stats?.referrersFetchedAt ? formatRefreshTime(stats.referrersFetchedAt) : '—';
+  meta.textContent = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Referrers fetched: ${referrersTime}`;
 
   const cachedStats = hasCachedMetadata(stats) ? stats : null;
   const cachedTraffic = hasCachedTraffic(stats) ? stats : null;
@@ -160,8 +225,8 @@ function createRepositoryCard(repository, stats) {
 
   card.append(header, meta, metricGrid);
 
-  const hasError = Boolean(stats?.error || stats?.trafficError);
-  if (hasError && (cachedStats || cachedTraffic)) {
+  const hasError = Boolean(stats?.error || stats?.trafficError || stats?.referrersError);
+  if (hasError && (cachedStats || cachedTraffic || hasCachedReferrers(stats))) {
     const cachedNotice = document.createElement('p');
     cachedNotice.className = 'repo-cache-note';
     cachedNotice.textContent = 'Showing last saved values.';
@@ -182,7 +247,7 @@ function createRepositoryCard(repository, stats) {
     card.append(trafficErrorMessage);
   }
 
-  card.append(charts);
+  card.append(charts, createReferrersSection(stats));
   return card;
 }
 
@@ -250,7 +315,7 @@ async function refreshRepositoryStats() {
 
   isRefreshing = true;
   setRefreshButtonState();
-  setStatus('Loading repository metadata and traffic from GitHub…', 'loading');
+  setStatus('Loading repository metadata, traffic, and referrers from GitHub…', 'loading');
 
   const fetchedAt = new Date().toISOString();
   let results = [];
@@ -280,6 +345,17 @@ async function refreshRepositoryStats() {
         }
       }
 
+      try {
+        const referrers = await fetchRepositoryTrafficReferrers(repository, currentSettings.githubToken);
+        Object.assign(stats, referrers, { referrersFetchedAt: fetchedAt, referrersError: '' });
+      } catch (error) {
+        stats.referrersError = error.message;
+        if (!hasCachedReferrers(stats)) {
+          stats.referrers = [];
+          stats.referrersFetchedAt = '';
+        }
+      }
+
       return { repository, stats };
     }));
   } catch (error) {
@@ -303,13 +379,13 @@ async function refreshRepositoryStats() {
     return;
   }
 
-  const failureCount = results.filter(({ stats }) => stats.error || stats.trafficError).length;
+  const failureCount = results.filter(({ stats }) => stats.error || stats.trafficError || stats.referrersError).length;
   const successCount = results.length - failureCount;
 
   if (failureCount === 0) {
     setStatus(`Last successful refresh: ${formatRefreshTime(fetchedAt)}`, 'success');
   } else if (successCount > 0) {
-    setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository or traffic errors. See repository cards for details.`, 'warning');
+    setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository, traffic, or referrer errors. See repository cards for details.`, 'warning');
   } else {
     setStatus('Refresh finished with errors for all repositories. Cached values are shown where available.', 'error');
   }

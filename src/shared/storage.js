@@ -84,6 +84,14 @@ function normalizeStatsEntry(repository, stats) {
     })).filter((entry) => entry.date)
     : [];
 
+  const referrers = Array.isArray(stats?.referrers)
+    ? stats.referrers.map((entry) => ({
+      referrer: String(entry?.referrer || '').trim(),
+      count: Number(entry?.count) || 0,
+      uniques: Number(entry?.uniques) || 0,
+    })).filter((entry) => entry.referrer)
+    : [];
+
   return {
     repository: normalizedRepository,
     stars: Number(stats?.stars) || 0,
@@ -94,8 +102,11 @@ function normalizeStatsEntry(repository, stats) {
     dailyViews,
     fetchedAt: typeof stats?.fetchedAt === 'string' ? stats.fetchedAt : '',
     trafficFetchedAt: typeof stats?.trafficFetchedAt === 'string' ? stats.trafficFetchedAt : '',
+    referrers,
+    referrersFetchedAt: typeof stats?.referrersFetchedAt === 'string' ? stats.referrersFetchedAt : '',
     error: typeof stats?.error === 'string' ? stats.error : '',
     trafficError: typeof stats?.trafficError === 'string' ? stats.trafficError : '',
+    referrersError: typeof stats?.referrersError === 'string' ? stats.referrersError : '',
   };
 }
 
