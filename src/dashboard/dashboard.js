@@ -2,6 +2,7 @@ import { getLatestStats, getSettings } from '../shared/storage.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgBarChart } from '../shared/svg-bar-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
+import { openQuickSummary } from '../shared/quick-summary.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -10,6 +11,8 @@ const emptyMessage = document.getElementById('empty-message');
 const summaryCard = document.getElementById('summary-card');
 const statusLine = document.getElementById('status-line');
 const refreshButton = document.getElementById('refresh-now');
+const openQuickSummaryButton = document.getElementById('open-quick-summary');
+const quickSummaryMessage = document.getElementById('quick-summary-message');
 const summaryValues = {
   stars: document.getElementById('total-stars'),
   subscribers: document.getElementById('total-subscribers'),
@@ -368,5 +371,6 @@ async function initializeDashboard() {
 document.getElementById('open-settings').addEventListener('click', openSettings);
 document.getElementById('empty-open-settings').addEventListener('click', openSettings);
 refreshButton.addEventListener('click', refreshRepositoryStats);
+openQuickSummaryButton.addEventListener('click', () => openQuickSummary(quickSummaryMessage));
 
 initializeDashboard();

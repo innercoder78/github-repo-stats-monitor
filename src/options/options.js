@@ -1,6 +1,7 @@
 import { fetchRepositoryMetadata, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
+import { openQuickSummary } from '../shared/quick-summary.js';
 
 const MAX_REPOSITORIES = 20;
 
@@ -10,11 +11,13 @@ const repositoryList = document.getElementById('repository-list');
 const addRepositoryButton = document.getElementById('add-repository');
 const resetButton = document.getElementById('reset-settings');
 const openDashboardButton = document.getElementById('open-dashboard');
+const openQuickSummaryButton = document.getElementById('open-quick-summary');
 const testConnectionButton = document.getElementById('test-connection');
 const repoMessage = document.getElementById('repo-message');
 const statusMessage = document.getElementById('status-message');
 const testMessage = document.getElementById('test-message');
 const testResults = document.getElementById('test-results');
+const quickSummaryMessage = document.getElementById('quick-summary-message');
 
 let isTestingConnection = false;
 
@@ -353,6 +356,7 @@ openDashboardButton.addEventListener('click', () => {
   window.location.href = chrome.runtime.getURL('src/dashboard/dashboard.html');
 });
 testConnectionButton.addEventListener('click', handleConnectionTest);
+openQuickSummaryButton.addEventListener('click', () => openQuickSummary(quickSummaryMessage));
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
