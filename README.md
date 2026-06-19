@@ -8,6 +8,8 @@ This repository contains a Manifest V3 Chrome extension that can be loaded direc
 
 No build step is required. The extension can be loaded directly from this repository folder:
 
+Extension icon PNG files live in `assets/icons/` and are referenced by the Manifest V3 configuration.
+
 1. Open `chrome://extensions`
 2. Enable Developer mode
 3. Click “Load unpacked”
