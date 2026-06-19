@@ -38,6 +38,58 @@ function formatRefreshTime(value) {
   return new Date(value).toLocaleString();
 }
 
+function getLocalMinuteKey(date) {
+  return [
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+  ].join('-');
+}
+
+function getValidDate(value) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatCompactRefreshTime(date) {
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatFetchedSummary(stats) {
+  const metadataFetchedAt = getValidDate(stats?.fetchedAt);
+  const trafficFetchedAt = getValidDate(stats?.trafficFetchedAt);
+  const referrersFetchedAt = getValidDate(stats?.referrersFetchedAt);
+
+  const metadataTime = metadataFetchedAt ? formatRefreshTime(metadataFetchedAt) : '—';
+  const trafficTime = trafficFetchedAt ? formatRefreshTime(trafficFetchedAt) : '—';
+  const referrersTime = referrersFetchedAt ? formatRefreshTime(referrersFetchedAt) : '—';
+  const detailedSummary = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Referrers fetched: ${referrersTime}`;
+
+  if (!metadataFetchedAt || !trafficFetchedAt || !referrersFetchedAt) {
+    return detailedSummary;
+  }
+
+  const metadataMinute = getLocalMinuteKey(metadataFetchedAt);
+  const trafficMinute = getLocalMinuteKey(trafficFetchedAt);
+  const referrersMinute = getLocalMinuteKey(referrersFetchedAt);
+
+  if (metadataMinute === trafficMinute && metadataMinute === referrersMinute) {
+    return `Data from ${formatCompactRefreshTime(metadataFetchedAt)}`;
+  }
+
+  return detailedSummary;
+}
+
 function setStatus(message, type = '') {
   statusLine.textContent = message;
   statusLine.className = `muted status-line${type ? ` ${type}` : ''}`;
@@ -202,10 +254,7 @@ function createRepositoryCard(repository, stats) {
 
   const meta = document.createElement('p');
   meta.className = 'muted repo-meta';
-  const metadataTime = stats?.fetchedAt ? formatRefreshTime(stats.fetchedAt) : '—';
-  const trafficTime = stats?.trafficFetchedAt ? formatRefreshTime(stats.trafficFetchedAt) : '—';
-  const referrersTime = stats?.referrersFetchedAt ? formatRefreshTime(stats.referrersFetchedAt) : '—';
-  meta.textContent = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Referrers fetched: ${referrersTime}`;
+  meta.textContent = formatFetchedSummary(stats);
 
   const cachedStats = hasCachedMetadata(stats) ? stats : null;
   const cachedTraffic = hasCachedTraffic(stats) ? stats : null;
