@@ -26,7 +26,7 @@ let currentLatestStats = {};
 let isRefreshing = false;
 
 function openSettings() {
-  chrome.runtime.openOptionsPage();
+  window.location.href = chrome.runtime.getURL('src/options/options.html');
 }
 
 function formatNumber(value) {
