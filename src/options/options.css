@@ -49,6 +49,13 @@ input {
 
 .repository-label { margin-bottom: 0; }
 
+.repository-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .field-note { font-size: 0.9rem; }
 
 .token-instructions { margin-top: 12px; }
@@ -85,6 +92,9 @@ button:disabled {
 
   .section-heading { display: grid; }
 
+  .repository-controls { justify-content: stretch; }
+
+  .repository-controls button,
   .actions button { flex: 1 1 100%; }
 }
 

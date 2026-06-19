@@ -32,10 +32,32 @@ function getRepositoryInputs() {
   return Array.from(repositoryList.querySelectorAll('.repository-input'));
 }
 
+function updateRepositoryControls() {
+  const rows = Array.from(repositoryList.querySelectorAll('.repository-row'));
+
+  rows.forEach((row, index) => {
+    const moveUpButton = row.querySelector('.move-repository-up');
+    const moveDownButton = row.querySelector('.move-repository-down');
+
+    moveUpButton.disabled = index === 0;
+    moveDownButton.disabled = index === rows.length - 1;
+  });
+
+  addRepositoryButton.disabled = rows.length >= MAX_REPOSITORIES;
+  addRepositoryButton.title = rows.length >= MAX_REPOSITORIES ? 'Maximum of 20 repositories reached.' : '';
+}
+
 function updateAddButtonState() {
-  const rowCount = getRepositoryInputs().length;
-  addRepositoryButton.disabled = rowCount >= MAX_REPOSITORIES;
-  addRepositoryButton.title = rowCount >= MAX_REPOSITORIES ? 'Maximum of 20 repositories reached.' : '';
+  updateRepositoryControls();
+}
+
+function focusMovedRow(row, fallbackButton) {
+  if (fallbackButton && !fallbackButton.disabled) {
+    fallbackButton.focus();
+    return;
+  }
+
+  row.querySelector('.repository-input').focus();
 }
 
 function createRepositoryRow(value = '', shouldFocus = false) {
@@ -51,6 +73,47 @@ function createRepositoryRow(value = '', shouldFocus = false) {
   input.type = 'text';
   input.placeholder = 'owner/repo or https://github.com/owner/repo';
   input.value = value;
+
+  const controls = document.createElement('div');
+  controls.className = 'repository-controls';
+
+  const moveUpButton = document.createElement('button');
+  moveUpButton.className = 'secondary move-repository-up';
+  moveUpButton.type = 'button';
+  moveUpButton.textContent = 'Move Up';
+  moveUpButton.addEventListener('click', () => {
+    const previousRow = row.previousElementSibling;
+
+    if (!previousRow) {
+      return;
+    }
+
+    repositoryList.insertBefore(row, previousRow);
+    setMessage(repoMessage, '', '');
+    setMessage(statusMessage, '', '');
+    clearTestResults();
+    updateRepositoryControls();
+    focusMovedRow(row, moveUpButton);
+  });
+
+  const moveDownButton = document.createElement('button');
+  moveDownButton.className = 'secondary move-repository-down';
+  moveDownButton.type = 'button';
+  moveDownButton.textContent = 'Move Down';
+  moveDownButton.addEventListener('click', () => {
+    const nextRow = row.nextElementSibling;
+
+    if (!nextRow) {
+      return;
+    }
+
+    repositoryList.insertBefore(nextRow, row);
+    setMessage(repoMessage, '', '');
+    setMessage(statusMessage, '', '');
+    clearTestResults();
+    updateRepositoryControls();
+    focusMovedRow(row, moveDownButton);
+  });
 
   const removeButton = document.createElement('button');
   removeButton.className = 'secondary remove-repository';
@@ -69,13 +132,14 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     setMessage(repoMessage, '', '');
     setMessage(statusMessage, '', '');
     clearTestResults();
-    updateAddButtonState();
+    updateRepositoryControls();
   });
 
+  controls.append(moveUpButton, moveDownButton, removeButton);
   label.append(input);
-  row.append(label, removeButton);
+  row.append(label, controls);
   repositoryList.append(row);
-  updateAddButtonState();
+  updateRepositoryControls();
 
   if (shouldFocus) {
     input.focus();
