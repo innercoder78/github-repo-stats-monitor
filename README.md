@@ -2,7 +2,7 @@
 
 GitHub Repo Stats Monitor is a personal Chrome extension for tracking GitHub repository statistics from one place.
 
-This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence, repository metadata fetching, GitHub traffic page view fetching, and native SVG traffic trend charts are available now.
+This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. Settings persistence, repository metadata fetching, GitHub traffic page view fetching, referring sites for the last 14 days, and native SVG traffic trend charts are available now.
 
 ## Load unpacked in Chrome
 
@@ -27,7 +27,7 @@ Repositories can be entered as `owner/repo` or as a GitHub repository URL. Setti
 
 The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after the dashboard has fetched repository data. The popup remains cache-only and does not render charts.
 
-Settings includes concise token setup guidance near the token field. Traffic API access requires the token to have access to the repository and Administration read permission for the selected repositories. Settings tests repository data and traffic data separately because stars, forks, and watcher metadata can load even when traffic access fails.
+Settings includes concise token setup guidance near the token field. Traffic and referrer API access requires the token to have access to the repository and the fine-grained token repository permission `Administration: Read-only` for the selected repositories. Settings tests repository data, traffic data, and referrers separately because stars, forks, and watcher metadata can load even when traffic or referrers access fails.
 
 ## Repository metadata
 
@@ -48,9 +48,10 @@ The dashboard also fetches traffic page views from GitHub's traffic API for each
 - Views, last 14 days
 - Unique visitors, last 14 days
 - Native SVG bar charts for daily views and unique visitors
+- Referring sites, last 14 days, when the saved token has access
 
-Traffic values and daily records are cached alongside repository metadata. Dashboard charts are based on GitHub's 14-day traffic API data, show up to 14 daily bars, and require no chart library, external assets, build step, or package tooling. If traffic fetching fails but metadata succeeds, cached metadata remains visible and the dashboard shows a traffic-specific error. If prior traffic data exists, it remains visible when a later traffic refresh fails.
+Traffic values, daily records, and the latest GitHub-provided referrers list are cached alongside repository metadata. Dashboard charts are based on GitHub's 14-day traffic API data, show up to 14 daily bars, and require no chart library, external assets, build step, or package tooling. If traffic or referrers fetching fails but metadata succeeds, cached metadata remains visible and the dashboard shows a specific traffic or referrers error. If prior traffic or referrers data exists, it remains visible when a later refresh fails.
 
 ## Current status
 
-Repository metadata fetching, GitHub traffic page view fetching, and dependency-free native SVG chart rendering are implemented. The extension remains loadable directly with Chrome’s “Load unpacked.”
+Repository metadata fetching, GitHub traffic page view fetching, referring sites, and dependency-free native SVG chart rendering are implemented. The extension remains loadable directly with Chrome’s “Load unpacked.”

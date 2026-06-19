@@ -1,4 +1,4 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficViews } from '../shared/github-api.js';
+import { fetchRepositoryMetadata, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 
@@ -188,14 +188,16 @@ function renderTestResult(result) {
     createRepositoryNameElement(result.repository),
     createStatusLine('Repository data', result.metadata),
     createStatusLine('Traffic data', result.traffic),
+    createStatusLine('Referrers data', result.referrers),
   );
   testResults.append(card);
 }
 
 async function testRepositoryConnection(repository, token) {
-  const [metadataResult, trafficResult] = await Promise.allSettled([
+  const [metadataResult, trafficResult, referrersResult] = await Promise.allSettled([
     fetchRepositoryMetadata(repository, token),
     fetchRepositoryTrafficViews(repository, token),
+    fetchRepositoryTrafficReferrers(repository, token),
   ]);
 
   return {
@@ -206,6 +208,9 @@ async function testRepositoryConnection(repository, token) {
     traffic: trafficResult.status === 'fulfilled'
       ? { ok: true }
       : { ok: false, message: getSafeErrorMessage(trafficResult.reason) },
+    referrers: referrersResult.status === 'fulfilled'
+      ? { ok: true }
+      : { ok: false, message: getSafeErrorMessage(referrersResult.reason) },
   };
 }
 
@@ -247,11 +252,11 @@ async function handleConnectionTest() {
 
     testResults.textContent = '';
     results.forEach(renderTestResult);
-    const hasFailure = results.some((result) => !result.metadata.ok || !result.traffic.ok);
+    const hasFailure = results.some((result) => !result.metadata.ok || !result.traffic.ok || !result.referrers.ok);
     setMessage(
       testMessage,
       hasFailure
-        ? 'Connection test finished. Review the repository and traffic results below.'
+        ? 'Connection test finished. Review the repository, traffic, and referrers results below.'
         : 'Connection test succeeded for all repositories.',
       hasFailure ? 'error' : 'success',
     );
