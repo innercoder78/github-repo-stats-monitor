@@ -1,57 +1,99 @@
 # GitHub Repo Stats Monitor
 
-GitHub Repo Stats Monitor is a personal Chrome extension for tracking GitHub repository statistics from one place.
+GitHub Repo Stats Monitor is a personal Chrome extension for keeping an eye on your GitHub repositories from one local dashboard.
 
-This repository contains a Manifest V3 Chrome extension that can be loaded directly from the repository folder. It saves settings locally, fetches repository metadata, fetches GitHub traffic page views and referring sites for the last 14 days, and renders native SVG traffic trend charts without external dependencies.
+It shows repo stats, recent traffic, unique visitors, and referring sites without making you open each repository’s GitHub Insights page one by one.
 
-## Load unpacked in Chrome
+## What It Shows
 
-No build step is required. The extension can be loaded directly from this repository folder:
+* Stars
+* Forks
+* Real watchers
+* Views from the last 14 days
+* Unique visitors from the last 14 days
+* Referring sites from the last 14 days
+* Simple traffic charts
+* Last refreshed information
 
-Extension icon PNG files live in `assets/icons/` and are referenced by the Manifest V3 configuration.
+The extension uses GitHub’s real watcher count from `subscribers_count`, not the misleading `watchers_count` value that often mirrors stars.
 
-1. Open `chrome://extensions`
-2. Enable Developer mode
-3. Click “Load unpacked”
-4. Select the repository folder
+## Main Features
 
-## Settings
+* Dashboard page with one card per repository
+* Quick Summary popup from the Chrome toolbar
+* Settings page for your GitHub token and repository list
+* Manual refresh from the popup
+* Manual refresh from the dashboard
+* Repository reordering in Settings
+* Repository links that open on GitHub
+* Connection test for repo data, traffic, and referrers
+* Helpful error messages when part of a refresh fails
+* Local storage only
+* No build step
+* No external libraries
+* No analytics or telemetry
 
-Settings are stored locally with `chrome.storage.local` in Chrome extension storage. The options page lets you save a GitHub fine-grained personal access token and configure any repository list up to 20 repositories. It also includes a connection test that checks the token and the currently entered repository rows before you save settings.
+## Installing
 
-Repositories can be entered as `owner/repo` or as a GitHub repository URL. Settings normalizes and stores values as `owner/repo`, for example:
+This extension is meant to be loaded manually in Chrome.
 
-- `owner/repo`
-- `https://github.com/owner/repo`
-- `innercoder78/github-repo-stats-monitor`
+1. Download or clone this repository.
+2. Open Chrome.
+3. Go to `chrome://extensions`.
+4. Turn on **Developer mode**.
+5. Click **Load unpacked**.
+6. Select the repository folder.
 
-The popup shows how many repositories are configured and whether a token is saved without displaying the token. It also shows cached totals for stars, real watchers, forks, views from the last 14 days, and unique visitors from the last 14 days after repository data has been fetched. The popup remains cache-only on normal open, includes a manual Refresh button for updating cached stats, and does not render charts.
+After that, the extension icon should appear in Chrome.
 
-Settings includes concise token setup guidance near the token field. Create a GitHub fine-grained personal access token scoped to the repositories you want to monitor. Traffic and referrer API access requires the token to have access to the repository and the fine-grained token repository permission `Administration: Read-only` for the selected repositories. Settings tests repository data, traffic data, and referrers separately because stars, forks, and watcher metadata can load even when traffic or referrers access fails.
+## Setting It Up
 
-## Repository metadata
+Open **Settings** from the extension popup or dashboard.
 
-The dashboard fetches repository metadata from the GitHub repository API for each configured repository when a token is saved. The “Refresh Now” button fetches the latest metadata again and stores the newest successful values in local extension storage so the popup and dashboard can show cached totals later.
+Add your repositories using either format:
 
-Fetched metadata includes:
+```text
+owner/repo
+```
 
-- Stars from `stargazers_count`
-- Forks from `forks_count`
-- Real watchers from `subscribers_count`
+or:
 
-Real watchers intentionally use `subscribers_count`, not `watchers_count`, because GitHub's `watchers_count` often mirrors stars instead of actual repository subscribers.
+```text
+https://github.com/owner/repo
+```
 
-## Repository traffic
+The extension saves them internally as `owner/repo`.
 
-The dashboard also fetches traffic page views from GitHub's traffic API for each configured repository. GitHub traffic stats cover the last 14 days, and the extension displays:
+You can add up to 20 repositories.
 
-- Views, last 14 days
-- Unique visitors, last 14 days
-- Native SVG bar charts for daily views and unique visitors
-- Referring sites, last 14 days, when the saved token has access
+## GitHub Token
 
-Traffic values, daily records, and the latest GitHub-provided referrers list are cached alongside repository metadata. Dashboard charts are based on GitHub's 14-day traffic API data, show up to 14 daily bars, and require no chart library, external assets, build step, or package tooling. If traffic or referrers fetching fails but metadata succeeds, cached metadata remains visible and the dashboard shows a specific traffic or referrers error. If prior traffic or referrers data exists, it remains visible when a later refresh fails.
+To use the extension fully, create a GitHub fine-grained personal access token for the repositories you want to monitor.
 
-## Current status
+For normal repository stats, the token needs access to the selected repositories.
 
-Repository metadata fetching, GitHub traffic page view fetching, referring sites, and dependency-free native SVG chart rendering are implemented. The extension remains loadable directly with Chrome’s “Load unpacked.”
+For traffic views and referring sites, GitHub requires the token to have:
+
+```text
+Administration: Read-only
+```
+
+for those repositories.
+
+The token is stored locally in Chrome extension storage. It is not hard-coded into the extension, and it is not shown outside the password field.
+
+## How Refreshing Works
+
+The dashboard refreshes data when you open it or click **Refresh Now**.
+
+The Quick Summary uses cached data when opened, but it also has a **Refresh** button if you want to update the stats from the popup.
+
+GitHub traffic data only covers the last 14 days, so this extension follows that same limit.
+
+## Notes
+
+This extension is not published in the Chrome Web Store. Chrome will not auto-update it like a Web Store extension.
+
+Everything stays local in your browser except the requests made directly to GitHub’s API.
+
+The extension does not use outside servers, tracking, analytics, telemetry, CDNs, package managers, or a build system.
