@@ -184,3 +184,61 @@ button:disabled {
   color: var(--accent);
   text-decoration: underline;
 }
+
+button.danger-button,
+button.secondary.danger-button {
+  background: #b42318;
+  border: 1px solid #b42318;
+  color: #ffffff;
+}
+
+button.danger-button:hover,
+button.secondary.danger-button:hover,
+button.danger-button:focus-visible,
+button.secondary.danger-button:focus-visible {
+  background: #8f1d13;
+  border-color: #8f1d13;
+  color: #ffffff;
+}
+
+button.danger-button:active,
+button.secondary.danger-button:active {
+  background: #6e160f;
+  border-color: #6e160f;
+  color: #ffffff;
+}
+
+.confirmation-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  max-width: min(90vw, 360px);
+  padding: 0;
+}
+
+.confirmation-dialog::backdrop {
+  background: rgba(31, 35, 40, 0.45);
+}
+
+.confirmation-dialog-content {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.confirmation-dialog-content p {
+  font-weight: 700;
+  margin: 0;
+}
+
+.confirmation-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+html[data-appearance="dark"] .confirmation-dialog::backdrop {
+  background: rgba(1, 4, 9, 0.7);
+}
