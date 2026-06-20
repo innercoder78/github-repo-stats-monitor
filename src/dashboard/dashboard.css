@@ -83,7 +83,7 @@ button:disabled {
 }
 
 .chart-panel {
-  background: linear-gradient(135deg, #ffffff, #f6f8fa);
+  background: var(--chart-panel-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
   min-width: 0;
@@ -105,28 +105,28 @@ button:disabled {
 }
 
 .svg-line-chart__grid line {
-  stroke: #d8dee4;
+  stroke: var(--chart-grid);
   stroke-width: 1;
 }
 
 .svg-line-chart__line {
   fill: none;
-  stroke: #0969da;
+  stroke: var(--accent);
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 3;
 }
 
 .svg-line-chart__point {
-  fill: #ffffff;
-  stroke: #0969da;
+  fill: var(--chart-point-fill);
+  stroke: var(--accent);
   stroke-width: 2;
 }
 
 .svg-line-chart__point:hover,
 .svg-line-chart__point:focus {
-  fill: #1f883d;
-  stroke: #1f883d;
+  fill: var(--success-hover);
+  stroke: var(--success-hover);
 }
 
 .svg-line-chart__label,
@@ -148,10 +148,10 @@ button:disabled {
   padding-left: 10px;
 }
 
-.status-line.loading { border-color: #0969da; color: #0969da; }
-.status-line.success { border-color: #1a7f37; color: #1a7f37; }
-.status-line.warning { border-color: #9a6700; color: #9a6700; }
-.status-line.error { border-color: #cf222e; color: #cf222e; }
+.status-line.loading { border-color: var(--accent); color: var(--accent); }
+.status-line.success { border-color: var(--success); color: var(--success); }
+.status-line.warning { border-color: var(--warning); color: var(--warning); }
+.status-line.error { border-color: var(--error); color: var(--error); }
 
 .repo-cache-note,
 .repo-error {
@@ -162,16 +162,16 @@ button:disabled {
 }
 
 .repo-cache-note {
-  background: #fff8c5;
-  border: 1px solid #eed888;
-  color: #7d4e00;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning);
   font-weight: 700;
 }
 
 .repo-error {
-  background: #ffebe9;
-  border: 1px solid #ffcecb;
-  color: #b42318;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error);
   font-weight: 700;
 }
 
@@ -189,12 +189,12 @@ button:disabled {
 
 .repo-title-link:hover,
 .repo-title-link:focus-visible {
-  color: #0969da;
+  color: var(--accent);
   text-decoration: underline;
 }
 
 .referrers-panel {
-  background: linear-gradient(135deg, #ffffff, #f6f8fa);
+  background: var(--chart-panel-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
   margin-top: 16px;
@@ -245,26 +245,26 @@ button:disabled {
 }
 
 .referrers-message.warning {
-  background: #fff8c5;
-  border: 1px solid #eed888;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
   border-radius: 8px;
-  color: #7d4e00;
+  color: var(--warning);
   font-weight: 700;
   margin-bottom: 10px;
   padding: 8px 10px;
 }
 
 .referrers-message.error {
-  background: #ffebe9;
-  border: 1px solid #ffcecb;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
   border-radius: 8px;
-  color: #b42318;
+  color: var(--error);
   font-weight: 700;
   padding: 8px 10px;
 }
 
 .quick-summary-message {
-  color: #9a6700;
+  color: var(--warning);
   font-weight: 700;
   margin: 8px 0 0;
   min-height: 1.2em;

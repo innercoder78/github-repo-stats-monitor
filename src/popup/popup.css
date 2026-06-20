@@ -56,16 +56,16 @@ header { margin-bottom: 16px; }
 
 button.popup-close {
   appearance: none;
-  background-color: #e5e7eb;
-  border: 1px solid #9ca3af;
-  color: #374151;
+  background-color: var(--popup-close-bg);
+  border: 1px solid var(--popup-close-border);
+  color: var(--popup-close-text);
   font-size: 0.85rem;
   min-width: 72px;
   padding: 6px 10px;
   width: auto;
 }
 
-button.popup-close:hover { background-color: #d1d5db; }
+button.popup-close:hover { background-color: var(--popup-close-hover); }
 
 button:disabled {
   cursor: not-allowed;

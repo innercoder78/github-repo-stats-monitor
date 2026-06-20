@@ -2,11 +2,13 @@ import { fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryT
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
+import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
 const MAX_REPOSITORIES = 20;
 
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
+const appearanceInputs = Array.from(document.querySelectorAll('input[name="appearance"]'));
 const repositoryList = document.getElementById('repository-list');
 const addRepositoryButton = document.getElementById('add-repository');
 const resetButton = document.getElementById('reset-settings');
@@ -20,6 +22,8 @@ const testResults = document.getElementById('test-results');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 
 let isTestingConnection = false;
+
+applySavedAppearance();
 
 function setMessage(element, text, type = '') {
   element.textContent = text;
@@ -344,6 +348,10 @@ async function loadSettings() {
   try {
     const settings = await getSettings();
     tokenInput.value = settings.githubToken;
+    appearanceInputs.forEach((input) => {
+      input.checked = input.value === settings.appearance;
+    });
+    applyAppearance(settings.appearance);
     renderRepositories(settings.repositories);
   } catch (error) {
     setMessage(statusMessage, 'Unable to load saved settings. Please try again.', 'error');
@@ -376,10 +384,13 @@ form.addEventListener('submit', async (event) => {
   }
 
   try {
+    const selectedAppearance = appearanceInputs.find((input) => input.checked)?.value || 'light';
     const savedSettings = await saveSettings({
       githubToken: tokenInput.value,
       repositories: validation.repositories,
+      appearance: selectedAppearance,
     });
+    applyAppearance(savedSettings.appearance);
     renderRepositories(savedSettings.repositories);
     setMessage(statusMessage, 'Settings saved successfully.', 'success');
   } catch (error) {
