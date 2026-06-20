@@ -45,7 +45,7 @@ button:disabled {
   max-width: 620px;
 }
 
-.summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 .repo-grid {
   display: grid;
@@ -69,8 +69,6 @@ button:disabled {
   font-size: 1.1rem;
   overflow-wrap: anywhere;
 }
-
-.repo-card .metric:last-child { grid-column: 1 / -1; }
 
 .repo-meta {
   font-size: 0.88rem;
@@ -98,7 +96,7 @@ button:disabled {
   margin: 0 0 10px;
 }
 
-.svg-bar-chart {
+.svg-line-chart {
   display: block;
   height: auto;
   max-width: 100%;
@@ -106,27 +104,38 @@ button:disabled {
   width: 100%;
 }
 
-.svg-bar-chart__grid line {
+.svg-line-chart__grid line {
   stroke: #d8dee4;
   stroke-width: 1;
 }
 
-.svg-bar-chart__bar {
-  fill: #0969da;
-  stroke: #054da7;
-  stroke-width: 1;
+.svg-line-chart__line {
+  fill: none;
+  stroke: #0969da;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
 }
 
-.svg-bar-chart__bar:hover,
-.svg-bar-chart__bar:focus { fill: #1f883d; }
+.svg-line-chart__point {
+  fill: #ffffff;
+  stroke: #0969da;
+  stroke-width: 2;
+}
 
-.svg-bar-chart__label,
-.svg-bar-chart__axis-value {
+.svg-line-chart__point:hover,
+.svg-line-chart__point:focus {
+  fill: #1f883d;
+  stroke: #1f883d;
+}
+
+.svg-line-chart__label,
+.svg-line-chart__axis-value {
   fill: var(--muted);
   font-size: 0.68rem;
 }
 
-.svg-bar-chart__empty text {
+.svg-line-chart__empty text {
   fill: var(--muted);
   font-size: 0.95rem;
   font-weight: 700;
