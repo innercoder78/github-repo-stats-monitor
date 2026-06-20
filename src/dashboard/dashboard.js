@@ -1,6 +1,6 @@
 import { getLatestStats, getSettings } from '../shared/storage.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
-import { createSvgBarChart } from '../shared/svg-bar-chart.js';
+import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 
@@ -238,7 +238,7 @@ function createChartPanel(label, stats, metricKey, entriesKey = 'dailyViews') {
   const heading = document.createElement('h3');
   heading.textContent = label;
 
-  const chart = createSvgBarChart(stats?.[entriesKey], {
+  const chart = createSvgLineChart(stats?.[entriesKey], {
     metricKey,
     metricLabel: label.replace(', last 14 days', ''),
     title: `${label} for ${stats?.repository || 'repository'}`,

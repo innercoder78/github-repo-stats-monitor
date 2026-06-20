@@ -53,13 +53,23 @@ function addLine(parent, attributes = {}) {
   return line;
 }
 
-export function createSvgBarChart(data, options = {}) {
+function getPointCoordinates(records, margin, plotWidth, plotHeight, scaleMax) {
+  const denominator = Math.max(1, records.length - 1);
+
+  return records.map((record, index) => ({
+    ...record,
+    x: margin.left + ((plotWidth * index) / denominator),
+    y: margin.top + plotHeight - ((record.value / scaleMax) * plotHeight),
+  }));
+}
+
+export function createSvgLineChart(data, options = {}) {
   const metricKey = options.metricKey || 'views';
   const metricLabel = options.metricLabel || 'Value';
   const titleText = options.title || `${metricLabel} chart`;
   const width = 640;
   const height = 220;
-  const margin = { top: 20, right: 16, bottom: 42, left: 36 };
+  const margin = { top: 20, right: 16, bottom: 46, left: 36 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const records = (Array.isArray(data) ? data : [])
@@ -70,7 +80,7 @@ export function createSvgBarChart(data, options = {}) {
   const maxValue = Math.max(0, ...records.map((record) => record.value));
   const scaleMax = maxValue > 0 ? maxValue : 1;
   const svg = createSvgElement('svg');
-  svg.classList.add('svg-bar-chart');
+  svg.classList.add('svg-line-chart');
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', titleText);
@@ -80,8 +90,14 @@ export function createSvgBarChart(data, options = {}) {
   title.textContent = titleText;
   svg.append(title);
 
+  const description = createSvgElement('desc');
+  description.textContent = records.length > 0
+    ? `${metricLabel} for ${records.length} available day${records.length === 1 ? '' : 's'} in GitHub's 14-day traffic window.`
+    : `No daily ${metricLabel.toLowerCase()} data is available in GitHub's 14-day traffic window.`;
+  svg.append(description);
+
   const grid = createSvgElement('g');
-  grid.classList.add('svg-bar-chart__grid');
+  grid.classList.add('svg-line-chart__grid');
   svg.append(grid);
 
   [0, 0.5, 1].forEach((step) => {
@@ -96,9 +112,9 @@ export function createSvgBarChart(data, options = {}) {
 
   if (records.length === 0) {
     const emptyGroup = createSvgElement('g');
-    emptyGroup.classList.add('svg-bar-chart__empty');
+    emptyGroup.classList.add('svg-line-chart__empty');
     svg.append(emptyGroup);
-    addText(emptyGroup, 'No traffic data yet', {
+    addText(emptyGroup, `No daily ${metricLabel.toLowerCase()} data yet`, {
       x: width / 2,
       y: height / 2,
       'text-anchor': 'middle',
@@ -107,49 +123,45 @@ export function createSvgBarChart(data, options = {}) {
     return svg;
   }
 
-  const bars = createSvgElement('g');
-  bars.classList.add('svg-bar-chart__bars');
-  svg.append(bars);
+  const points = getPointCoordinates(records, margin, plotWidth, plotHeight, scaleMax);
+  const lineGroup = createSvgElement('g');
+  lineGroup.classList.add('svg-line-chart__series');
+  svg.append(lineGroup);
 
-  const slotWidth = plotWidth / records.length;
-  const barWidth = Math.max(4, Math.min(28, slotWidth * 0.56));
-  const zeroBarHeight = 2;
+  const path = createSvgElement('path');
+  path.classList.add('svg-line-chart__line');
+  path.setAttribute('d', points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' '));
+  lineGroup.append(path);
 
-  records.forEach((record, index) => {
-    const valueHeight = (record.value / scaleMax) * plotHeight;
-    const barHeight = record.value > 0 ? valueHeight : zeroBarHeight;
-    const x = margin.left + (index * slotWidth) + ((slotWidth - barWidth) / 2);
-    const y = margin.top + plotHeight - barHeight;
-    const rect = createSvgElement('rect');
-    rect.classList.add('svg-bar-chart__bar');
-    rect.setAttribute('x', x);
-    rect.setAttribute('y', y);
-    rect.setAttribute('width', barWidth);
-    rect.setAttribute('height', barHeight);
-    rect.setAttribute('rx', '3');
-    rect.setAttribute('aria-label', `${record.date}, ${metricLabel}: ${record.value}`);
+  points.forEach((point, index) => {
+    const circle = createSvgElement('circle');
+    circle.classList.add('svg-line-chart__point');
+    circle.setAttribute('cx', point.x);
+    circle.setAttribute('cy', point.y);
+    circle.setAttribute('r', '4');
+    circle.setAttribute('aria-label', `${point.date}, ${metricLabel}: ${point.value}`);
 
-    const barTitle = createSvgElement('title');
-    barTitle.textContent = `${record.date}\n${metricLabel}: ${record.value}`;
-    rect.append(barTitle);
-    bars.append(rect);
+    const pointTitle = createSvgElement('title');
+    pointTitle.textContent = `${point.date}\n${metricLabel}: ${point.value}`;
+    circle.append(pointTitle);
+    lineGroup.append(circle);
 
-    addText(svg, formatDateLabel(record.date, records[index - 1]?.date), {
-      class: 'svg-bar-chart__label',
-      x: margin.left + (index * slotWidth) + (slotWidth / 2),
-      y: height - 14,
+    addText(svg, formatDateLabel(point.date, points[index - 1]?.date), {
+      class: 'svg-line-chart__label',
+      x: point.x,
+      y: height - 16,
       'text-anchor': 'middle',
     });
   });
 
   addText(svg, String(maxValue), {
-    class: 'svg-bar-chart__axis-value',
+    class: 'svg-line-chart__axis-value',
     x: margin.left - 8,
     y: margin.top + 4,
     'text-anchor': 'end',
   });
   addText(svg, '0', {
-    class: 'svg-bar-chart__axis-value',
+    class: 'svg-line-chart__axis-value',
     x: margin.left - 8,
     y: margin.top + plotHeight + 4,
     'text-anchor': 'end',
