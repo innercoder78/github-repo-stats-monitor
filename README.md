@@ -1,33 +1,41 @@
 # GitHub Repo Stats Monitor
 
-GitHub Repo Stats Monitor is a personal Chrome extension for keeping an eye on your GitHub repositories from one local dashboard.
+GitHub Repo Stats Monitor is a personal Chrome extension for monitoring GitHub repository stats from one local dashboard.
 
-It shows repo stats, recent traffic, unique visitors, and referring sites without making you open each repository’s GitHub Insights page one by one.
+It is designed for manual review, not real-time monitoring. Data updates when you open the dashboard or use a refresh button. GitHub traffic data covers only the last 14 days, so views, clones, charts, and referring sites follow that same limit.
+
+## Current Version
+
+2.0.0
 
 ## What It Shows
 
+Main metrics:
+
+* Views from the last 14 days
 * Stars
 * Forks
-* Real watchers
-* Views from the last 14 days
-* Unique visitors from the last 14 days
-* Referring sites from the last 14 days
-* Simple traffic charts
-* Last refreshed information
+* Clones from the last 14 days
 
-The extension uses GitHub’s real watcher count from `subscribers_count`, not the misleading `watchers_count` value that often mirrors stars.
+Additional dashboard details:
+
+* Referring Sites / referrers from the last 14 days
+* 14-day line charts for Views and Clones
+* Last refreshed information for saved data
 
 ## Main Features
 
-* Dashboard page with one card per repository
-* Quick Summary popup from the Chrome toolbar
-* Settings page for your GitHub token and repository list
+* Redesigned Dashboard with summary totals, repository cards, traffic charts, and referring sites
+* Redesigned Quick Summary popup from the Chrome toolbar
+* Settings page for your GitHub token, repositories, appearance, connection test, and reset
+* Light Mode and Dark Mode
 * Manual refresh from the popup
 * Manual refresh from the dashboard
 * Repository reordering in Settings
 * Repository links that open on GitHub
-* Connection test for repo data, traffic, and referrers
+* Connection test for repo data, traffic views, traffic clones, and referrers
 * Helpful error messages when part of a refresh fails
+* Reset button that clears the saved token, repositories, appearance preference, and cached stats
 * Local storage only
 * No build step
 * No external libraries
@@ -66,13 +74,15 @@ The extension saves them internally as `owner/repo`.
 
 You can add up to 20 repositories.
 
+Use the **Appearance** setting to choose **Light Mode** or **Dark Mode**.
+
 ## GitHub Token
 
 To use the extension fully, create a GitHub fine-grained personal access token for the repositories you want to monitor.
 
 For normal repository stats, the token needs access to the selected repositories.
 
-For traffic views and referring sites, GitHub requires the token to have:
+For traffic views, traffic clones, and referring sites, GitHub requires the token to have:
 
 ```text
 Administration: Read-only
@@ -88,7 +98,13 @@ The dashboard refreshes data when you open it or click **Refresh Now**.
 
 The Quick Summary uses cached data when opened, but it also has a **Refresh** button if you want to update the stats from the popup.
 
-GitHub traffic data only covers the last 14 days, so this extension follows that same limit.
+GitHub traffic data only covers the last 14 days, so this extension follows that same limit for Views, Clones, Referring Sites, and the Views and Clones line charts.
+
+The extension does not send notifications and does not update stats in the background automatically.
+
+## Resetting Saved Data
+
+The **Reset** button in Settings clears the saved GitHub token, repository list, appearance preference, and cached repository stats from local Chrome extension storage.
 
 ## Notes
 
