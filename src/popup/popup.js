@@ -118,7 +118,7 @@ function renderStatsSummary(settings, latestStats) {
   const hasAnyCachedTraffic = totals.trafficCount > 0;
   const hasAnyCachedClones = totals.clonesCount > 0;
 
-  repositoryCount.textContent = `Repositories configured: ${settings.repositories.length}`;
+  repositoryCount.textContent = `Repositories monitored: ${settings.repositories.length}`;
   tokenStatus.textContent = settings.githubToken
     ? 'Token saved: Yes'
     : 'Token saved: No. Open Settings to add one.';
@@ -137,7 +137,7 @@ async function renderSettingsSummary() {
     setGuidanceStatus(currentSettings);
     setRefreshButtonState();
   } catch (error) {
-    repositoryCount.textContent = 'Repositories configured: unavailable';
+    repositoryCount.textContent = 'Repositories monitored: unavailable';
     tokenStatus.textContent = 'Token saved: unavailable';
     lastUpdated.textContent = 'Last updated: unavailable';
     popupStatus.textContent = 'Unable to read cached data.';
