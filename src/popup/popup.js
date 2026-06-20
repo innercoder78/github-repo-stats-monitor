@@ -89,7 +89,7 @@ function setGuidanceStatus(settings) {
     return;
   }
 
-  popupStatus.textContent = 'Updates when you refresh. Use Refresh for the latest saved summary.';
+  popupStatus.textContent = 'Updates when you refresh.';
 }
 
 function renderStatsSummary(settings, latestStats) {

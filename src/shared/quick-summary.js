@@ -1,5 +1,4 @@
 const QUICK_SUMMARY_FALLBACK_MESSAGE = 'Click the toolbar icon to open Quick Summary.';
-const QUICK_SUMMARY_SUCCESS_MESSAGE = 'Quick Summary opened.';
 
 function showMessage(messageElement, message) {
   if (!messageElement) {
@@ -26,6 +25,5 @@ export async function openQuickSummary(messageElement) {
     return false;
   }
 
-  showMessage(messageElement, QUICK_SUMMARY_SUCCESS_MESSAGE);
   return true;
 }
