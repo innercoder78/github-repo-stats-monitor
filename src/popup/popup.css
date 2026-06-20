@@ -56,9 +56,14 @@ h1 {
   padding: 10px;
 }
 
+.status-copy {
+  display: grid;
+  gap: 8px;
+}
+
 .status-title {
   font-weight: 800;
-  margin-bottom: 3px;
+  margin-bottom: 0;
 }
 
 .popup-status {
@@ -168,6 +173,7 @@ html[data-appearance="dark"] .metric {
 
 .popup-refresh {
   font-size: 0.82rem;
+  justify-self: start;
   padding: 8px 10px;
   white-space: nowrap;
 }
