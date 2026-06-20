@@ -11,7 +11,7 @@
     <main class="options-shell">
       <header>
         <h1>Settings</h1>
-        <p class="muted">Save a GitHub token and the repositories you want to monitor. The dashboard fetches data; the popup only reads cached values.</p>
+        <p class="muted">Save a GitHub token and the repositories you want to review. The dashboard fetches data when refreshed; the popup reads saved values.</p>
       </header>
 
       <form id="settings-form" novalidate>
@@ -20,7 +20,7 @@
           <label for="github-token">Token</label>
           <input id="github-token" name="github-token" type="password" autocomplete="off" placeholder="github_pat_...">
           <div class="token-instructions">
-            <p class="muted field-note">To create a token, open GitHub, then go to Settings → Developer settings → Personal access tokens → Fine-grained tokens. Select the repositories you want to monitor, then grant repository Administration: Read-only permission so traffic stats can be read.</p>
+            <p class="muted field-note">To create a token, open GitHub, then go to Settings → Developer settings → Personal access tokens → Fine-grained tokens. Select the repositories you want to review, then grant repository Administration: Read-only permission so traffic stats can be read.</p>
             <p class="muted field-note">The token is stored locally in Chrome extension storage and should not be committed or shared.</p>
             <p class="muted field-note">The connection test can verify repository data and traffic access separately.</p>
           </div>

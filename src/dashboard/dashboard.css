@@ -44,11 +44,14 @@
 
 h1 { margin-bottom: 8px; }
 
+.dashboard-heading p { max-width: 760px; }
+
 .topbar-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+  min-width: 220px;
 }
 
 button:disabled {
@@ -271,6 +274,9 @@ button:disabled {
 
 .repo-title-link {
   color: inherit;
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   text-decoration: none;
   text-underline-offset: 3px;
 }
@@ -311,6 +317,7 @@ button:disabled {
 .referrer-row span:first-child {
   min-width: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .referrer-row span:not(:first-child) { text-align: right; }
@@ -363,7 +370,11 @@ button:disabled {
 
 @media (max-width: 760px) {
   .topbar { align-items: flex-start; flex-direction: column; }
-  .topbar-actions { justify-content: flex-start; }
+  .topbar-actions {
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 @media (max-width: 560px) {
@@ -373,6 +384,12 @@ button:disabled {
   .repo-card .metric-grid,
   .charts { grid-template-columns: 1fr; }
   .referrer-row {
-    grid-template-columns: minmax(0, 1fr) minmax(56px, auto) minmax(86px, auto);
+    align-items: start;
+    gap: 4px 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
+
+  .referrer-row span:first-child { grid-column: 1 / -1; }
+  .referrer-row-header span:first-child { grid-column: auto; }
+  .referrer-row-header { grid-template-columns: minmax(0, 1fr) auto auto; }
 }
