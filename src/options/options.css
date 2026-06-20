@@ -35,6 +35,10 @@ input {
   padding: 11px 12px;
 }
 
+input[type="radio"]:focus-visible {
+  outline-offset: 4px;
+}
+
 .sr-only {
   height: 1px;
   margin: -1px;
@@ -62,6 +66,11 @@ input {
   gap: 10px;
   margin: 0;
   padding: 12px;
+}
+
+.radio-option:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .radio-option input {
@@ -163,6 +172,9 @@ button:disabled {
 
 .test-result-repo-link {
   color: inherit;
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   text-decoration: none;
   text-underline-offset: 3px;
 }

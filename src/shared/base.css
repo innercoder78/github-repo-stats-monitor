@@ -8,6 +8,7 @@
   --border: #d0d7de;
   --accent: #0969da;
   --accent-hover: #0550ae;
+  --focus-ring: rgba(9, 105, 218, 0.35);
   --button-secondary-hover: #eaeef2;
   --input-bg: #ffffff;
   --success: #1a7f37;
@@ -39,6 +40,7 @@ html[data-appearance="dark"] {
   --border: #30363d;
   --accent: #2f81f7;
   --accent-hover: #1f6feb;
+  --focus-ring: rgba(47, 129, 247, 0.45);
   --button-secondary-hover: #30363d;
   --input-bg: #0d1117;
   --success: #3fb950;
@@ -82,6 +84,13 @@ button {
 }
 
 button:hover { background: var(--accent-hover); }
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
 
 button.secondary {
   background: var(--surface-muted);
