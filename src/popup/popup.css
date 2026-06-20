@@ -88,11 +88,16 @@ h1 {
 }
 
 .metric {
+  align-items: center;
   background: radial-gradient(circle at top right, var(--popup-glow), transparent 58%), var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 6px 18px rgba(140, 149, 159, 0.1);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
   min-height: 102px;
+  min-width: 0;
   padding: 10px;
 }
 
@@ -109,7 +114,7 @@ html[data-appearance="dark"] .metric {
   display: flex;
   height: 36px;
   justify-content: center;
-  margin: 0 auto 9px;
+  margin: 0;
   width: 36px;
 }
 
@@ -123,7 +128,12 @@ html[data-appearance="dark"] .metric {
   width: 20px;
 }
 
-.metric span:not(.metric-icon) {
+.metric .metric-body {
+  display: block;
+  min-width: 0;
+}
+
+.metric .metric-body span {
   color: var(--muted);
   display: block;
   font-size: 0.72rem;
