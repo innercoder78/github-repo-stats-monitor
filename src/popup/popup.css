@@ -105,23 +105,27 @@ html[data-appearance="dark"] .metric {
   box-shadow: 0 6px 18px rgba(1, 4, 9, 0.24);
 }
 
-.metric-icon {
+.popup-shell .metric .metric-icon {
   align-items: center;
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: 12px;
   color: var(--accent);
-  display: flex;
+  display: inline-flex;
+  flex: 0 0 36px;
+  font-size: 0;
   height: 36px;
   justify-content: center;
+  line-height: 0;
   margin: 0;
   width: 36px;
 }
 
-.metric-icon svg {
-  fill: none;
+.popup-shell .metric .metric-icon svg {
   display: block;
+  fill: none;
   height: 20px;
+  margin: 0;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -138,6 +142,15 @@ html[data-appearance="dark"] .metric {
   display: block;
   font-size: 0.72rem;
   font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.metric .metric-body .metric-label {
+  margin-bottom: 1px;
+}
+
+.metric .metric-body .metric-period {
+  font-size: 0.64rem;
   margin-bottom: 5px;
 }
 
