@@ -20,6 +20,9 @@ const statusMessage = document.getElementById('status-message');
 const testMessage = document.getElementById('test-message');
 const testResults = document.getElementById('test-results');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
+const resetConfirmationDialog = document.getElementById('reset-confirmation-dialog');
+const confirmResetButton = document.getElementById('confirm-reset');
+const cancelResetButton = document.getElementById('cancel-reset');
 
 let isTestingConnection = false;
 
@@ -363,10 +366,6 @@ async function loadSettings() {
 }
 
 async function resetSettings() {
-  if (!window.confirm('Reset all saved settings and cached stats?')) {
-    return;
-  }
-
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   clearTestResults();
@@ -380,13 +379,39 @@ async function resetSettings() {
   }
 }
 
+function openResetConfirmation() {
+  resetConfirmationDialog.showModal();
+  confirmResetButton.focus();
+}
+
+function closeResetConfirmation(shouldReturnFocus = true) {
+  resetConfirmationDialog.close();
+
+  if (shouldReturnFocus) {
+    resetButton.focus();
+  }
+}
+
 addRepositoryButton.addEventListener('click', () => {
   addRepositoryRow('', true);
   setMessage(statusMessage, '', '');
   clearTestResults();
 });
 
-resetButton.addEventListener('click', resetSettings);
+resetButton.addEventListener('click', openResetConfirmation);
+confirmResetButton.addEventListener('click', () => {
+  closeResetConfirmation(false);
+  resetSettings();
+});
+cancelResetButton.addEventListener('click', () => closeResetConfirmation());
+resetConfirmationDialog.addEventListener('click', (event) => {
+  if (event.target === resetConfirmationDialog) {
+    closeResetConfirmation();
+  }
+});
+resetConfirmationDialog.addEventListener('cancel', () => {
+  resetButton.focus();
+});
 openDashboardButton.addEventListener('click', () => {
   window.location.href = chrome.runtime.getURL('src/dashboard/dashboard.html');
 });

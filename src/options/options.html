@@ -69,13 +69,23 @@
 
         <div class="actions">
           <button type="submit">Save Settings</button>
-          <button id="reset-settings" class="secondary" type="button">Reset</button>
+          <button id="reset-settings" class="secondary danger-button" type="button">Reset</button>
           <button id="open-dashboard" class="secondary" type="button">Open Dashboard</button>
           <button id="open-quick-summary" class="secondary" type="button">Open Quick Summary</button>
         </div>
         <p id="quick-summary-message" class="message" role="status" aria-live="polite"></p>
         <p id="status-message" class="message" role="status" aria-live="polite"></p>
       </form>
+
+      <dialog id="reset-confirmation-dialog" class="confirmation-dialog" aria-labelledby="reset-confirmation-title">
+        <form method="dialog" class="confirmation-dialog-content">
+          <p id="reset-confirmation-title">Are you sure you want to reset all the data?</p>
+          <div class="confirmation-dialog-actions">
+            <button id="confirm-reset" class="danger-button" type="button">Yes</button>
+            <button id="cancel-reset" class="secondary" type="button">No</button>
+          </div>
+        </form>
+      </dialog>
     </main>
     <script type="module" src="options.js"></script>
   </body>
