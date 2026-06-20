@@ -1,5 +1,5 @@
 import { fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
-import { getSettings, isValidRepositoryName, normalizeRepositoryName, saveSettings } from '../shared/storage.js';
+import { getSettings, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
@@ -344,17 +344,39 @@ async function handleConnectionTest() {
   }
 }
 
+function renderSettings(settings) {
+  tokenInput.value = settings.githubToken;
+  appearanceInputs.forEach((input) => {
+    input.checked = input.value === settings.appearance;
+  });
+  applyAppearance(settings.appearance);
+  renderRepositories(settings.repositories);
+}
+
 async function loadSettings() {
   try {
     const settings = await getSettings();
-    tokenInput.value = settings.githubToken;
-    appearanceInputs.forEach((input) => {
-      input.checked = input.value === settings.appearance;
-    });
-    applyAppearance(settings.appearance);
-    renderRepositories(settings.repositories);
+    renderSettings(settings);
   } catch (error) {
     setMessage(statusMessage, 'Unable to load saved settings. Please try again.', 'error');
+  }
+}
+
+async function resetSettings() {
+  if (!window.confirm('Reset all saved settings and cached stats?')) {
+    return;
+  }
+
+  setMessage(repoMessage, '', '');
+  setMessage(statusMessage, '', '');
+  clearTestResults();
+
+  try {
+    const resetData = await resetExtensionData();
+    renderSettings(resetData.settings);
+    setMessage(statusMessage, 'Settings reset.', 'success');
+  } catch (error) {
+    setMessage(statusMessage, 'Unable to reset settings. Please try again.', 'error');
   }
 }
 
@@ -364,7 +386,7 @@ addRepositoryButton.addEventListener('click', () => {
   clearTestResults();
 });
 
-resetButton.addEventListener('click', loadSettings);
+resetButton.addEventListener('click', resetSettings);
 openDashboardButton.addEventListener('click', () => {
   window.location.href = chrome.runtime.getURL('src/dashboard/dashboard.html');
 });
