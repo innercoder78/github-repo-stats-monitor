@@ -84,6 +84,14 @@ function normalizeStatsEntry(repository, stats) {
     })).filter((entry) => entry.date)
     : [];
 
+  const dailyClones = Array.isArray(stats?.dailyClones)
+    ? stats.dailyClones.map((entry) => ({
+      date: typeof entry?.date === 'string' ? entry.date : '',
+      clones: Number(entry?.clones) || 0,
+      uniqueCloners: Number(entry?.uniqueCloners) || 0,
+    })).filter((entry) => entry.date)
+    : [];
+
   const referrers = Array.isArray(stats?.referrers)
     ? stats.referrers.map((entry) => ({
       referrer: String(entry?.referrer || '').trim(),
@@ -100,12 +108,16 @@ function normalizeStatsEntry(repository, stats) {
     views: Number.isFinite(Number(stats?.views)) ? Number(stats.views) : null,
     uniqueVisitors: Number.isFinite(Number(stats?.uniqueVisitors)) ? Number(stats.uniqueVisitors) : null,
     dailyViews,
+    clones: Number.isFinite(Number(stats?.clones)) ? Number(stats.clones) : null,
+    dailyClones,
     fetchedAt: typeof stats?.fetchedAt === 'string' ? stats.fetchedAt : '',
     trafficFetchedAt: typeof stats?.trafficFetchedAt === 'string' ? stats.trafficFetchedAt : '',
+    clonesFetchedAt: typeof stats?.clonesFetchedAt === 'string' ? stats.clonesFetchedAt : '',
     referrers,
     referrersFetchedAt: typeof stats?.referrersFetchedAt === 'string' ? stats.referrersFetchedAt : '',
     error: typeof stats?.error === 'string' ? stats.error : '',
     trafficError: typeof stats?.trafficError === 'string' ? stats.trafficError : '',
+    clonesError: typeof stats?.clonesError === 'string' ? stats.clonesError : '',
     referrersError: typeof stats?.referrersError === 'string' ? stats.referrersError : '',
   };
 }

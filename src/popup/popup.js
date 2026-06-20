@@ -5,10 +5,9 @@ const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
 const lastUpdated = document.getElementById('last-updated');
 const totalStars = document.getElementById('total-stars');
-const totalSubscribers = document.getElementById('total-subscribers');
 const totalForks = document.getElementById('total-forks');
 const totalViews = document.getElementById('total-views');
-const totalUniqueVisitors = document.getElementById('total-unique-visitors');
+const totalClones = document.getElementById('total-clones');
 const popupStatus = document.getElementById('popup-status');
 const refreshButton = document.getElementById('refresh-stats');
 
@@ -37,8 +36,7 @@ function formatNumber(value) {
 function hasCachedMetadata(stats) {
   return Boolean(stats?.fetchedAt)
     && Number.isFinite(stats.stars)
-    && Number.isFinite(stats.forks)
-    && Number.isFinite(stats.subscribers);
+    && Number.isFinite(stats.forks);
 }
 
 function hasCachedTraffic(stats) {
@@ -47,13 +45,18 @@ function hasCachedTraffic(stats) {
     && Number.isFinite(stats.uniqueVisitors);
 }
 
+function hasCachedClones(stats) {
+  return Boolean(stats?.clonesFetchedAt) && Number.isFinite(stats.clones);
+}
+
 function formatLastUpdated(latestStats, repositories) {
   const timestamps = repositories
     .flatMap((repository) => {
-    const stats = latestStats[repository];
+      const stats = latestStats[repository];
       return [
         hasCachedMetadata(stats) ? stats.fetchedAt : '',
         hasCachedTraffic(stats) ? stats.trafficFetchedAt : '',
+        hasCachedClones(stats) ? stats.clonesFetchedAt : '',
       ];
     })
     .filter(Boolean)
@@ -93,20 +96,24 @@ function renderStatsSummary(settings, latestStats) {
     if (hasCachedMetadata(stats)) {
       accumulator.cachedCount += 1;
       accumulator.stars += stats.stars;
-      accumulator.subscribers += stats.subscribers;
       accumulator.forks += stats.forks;
     }
 
     if (hasCachedTraffic(stats)) {
       accumulator.trafficCount += 1;
       accumulator.views += stats.views;
-      accumulator.uniqueVisitors += stats.uniqueVisitors;
+    }
+
+    if (hasCachedClones(stats)) {
+      accumulator.clonesCount += 1;
+      accumulator.clones += stats.clones;
     }
 
     return accumulator;
-  }, { cachedCount: 0, trafficCount: 0, stars: 0, subscribers: 0, forks: 0, views: 0, uniqueVisitors: 0 });
+  }, { cachedCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, views: 0, clones: 0 });
   const hasAnyCachedMetadata = totals.cachedCount > 0;
   const hasAnyCachedTraffic = totals.trafficCount > 0;
+  const hasAnyCachedClones = totals.clonesCount > 0;
 
   repositoryCount.textContent = `Repositories configured: ${settings.repositories.length}`;
   tokenStatus.textContent = settings.githubToken
@@ -114,10 +121,9 @@ function renderStatsSummary(settings, latestStats) {
     : 'Token saved: No. Open Settings to add one.';
   lastUpdated.textContent = formatLastUpdated(latestStats, settings.repositories);
   totalStars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
-  totalSubscribers.textContent = hasAnyCachedMetadata ? formatNumber(totals.subscribers) : '—';
   totalForks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
   totalViews.textContent = hasAnyCachedTraffic ? formatNumber(totals.views) : '—';
-  totalUniqueVisitors.textContent = hasAnyCachedTraffic ? formatNumber(totals.uniqueVisitors) : '—';
+  totalClones.textContent = hasAnyCachedClones ? formatNumber(totals.clones) : '—';
 }
 
 async function renderSettingsSummary() {
@@ -157,7 +163,7 @@ async function refreshStats() {
     currentLatestStats = refreshResult.latestStats;
     renderStatsSummary(currentSettings, currentLatestStats);
 
-    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.referrersError).length;
+    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
     popupStatus.textContent = failureCount === 0
       ? 'Stats refreshed.'
       : 'Refresh finished with GitHub request errors. Showing saved values where available.';
