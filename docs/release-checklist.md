@@ -12,7 +12,7 @@ Use this checklist before publishing a GitHub Release for GitHub Repo Stats Moni
 ## Quick Summary
 
 - [ ] Confirm cached totals display correctly.
-- [ ] Confirm Manual Refresh updates cached stats.
+- [ ] Confirm Quick Summary Refresh updates cached stats.
 - [ ] Confirm token saved / missing-token status is accurate.
 - [ ] Confirm Dashboard opens from Quick Summary.
 - [ ] Confirm Settings opens from Quick Summary.
