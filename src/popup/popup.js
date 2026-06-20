@@ -89,7 +89,7 @@ function setGuidanceStatus(settings) {
     return;
   }
 
-  popupStatus.textContent = 'Open the dashboard to refresh data\nor click the Refresh button below.';
+  popupStatus.textContent = 'Updates when you refresh. Use Refresh for the latest saved summary.';
 }
 
 function renderStatsSummary(settings, latestStats) {
@@ -160,7 +160,7 @@ async function refreshStats() {
 
   isRefreshing = true;
   setRefreshButtonState();
-  popupStatus.textContent = 'Refreshing...';
+  popupStatus.textContent = 'Refreshing…';
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats);
