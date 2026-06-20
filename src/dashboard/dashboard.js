@@ -3,6 +3,7 @@ import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
+import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -20,9 +21,11 @@ const summaryValues = {
   clones: document.getElementById('total-clones'),
 };
 
-let currentSettings = { githubToken: '', repositories: [] };
+let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
 let currentLatestStats = {};
 let isRefreshing = false;
+
+applySavedAppearance();
 
 function openSettings() {
   window.location.href = chrome.runtime.getURL('src/options/options.html');
@@ -410,6 +413,7 @@ async function refreshRepositoryStats() {
 async function initializeDashboard() {
   try {
     [currentSettings, currentLatestStats] = await Promise.all([getSettings(), getLatestStats()]);
+    applyAppearance(currentSettings.appearance);
     renderRepositories();
 
     if (currentSettings.repositories.length === 0) {

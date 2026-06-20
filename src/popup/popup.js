@@ -1,5 +1,6 @@
 import { getLatestStats, getSettings } from '../shared/storage.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
+import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -11,9 +12,11 @@ const totalClones = document.getElementById('total-clones');
 const popupStatus = document.getElementById('popup-status');
 const refreshButton = document.getElementById('refresh-stats');
 
-let currentSettings = { githubToken: '', repositories: [] };
+let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
 let currentLatestStats = {};
 let isRefreshing = false;
+
+applySavedAppearance();
 
 document.getElementById('open-dashboard').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html') });
@@ -129,6 +132,7 @@ function renderStatsSummary(settings, latestStats) {
 async function renderSettingsSummary() {
   try {
     [currentSettings, currentLatestStats] = await Promise.all([getSettings(), getLatestStats()]);
+    applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
     setGuidanceStatus(currentSettings);
     setRefreshButtonState();

@@ -1,6 +1,7 @@
 const DEFAULT_SETTINGS = Object.freeze({
   githubToken: '',
   repositories: [],
+  appearance: 'light',
 });
 
 const DEFAULT_STATS = Object.freeze({
@@ -27,6 +28,10 @@ export function isValidRepositoryName(value) {
   return /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(normalizedValue);
 }
 
+export function normalizeAppearance(value) {
+  return value === 'dark' ? 'dark' : 'light';
+}
+
 export function getSettings() {
   return new Promise((resolve, reject) => {
     getChromeStorage().get(DEFAULT_SETTINGS, (storedSettings) => {
@@ -42,6 +47,7 @@ export function getSettings() {
         repositories: Array.isArray(storedSettings.repositories)
           ? storedSettings.repositories.map(normalizeRepositoryName).filter(isValidRepositoryName)
           : [],
+        appearance: normalizeAppearance(storedSettings.appearance),
       });
     });
   });
@@ -53,6 +59,7 @@ export function saveSettings(settings) {
     repositories: Array.isArray(settings.repositories)
       ? settings.repositories.map(normalizeRepositoryName).filter(isValidRepositoryName)
       : [],
+    appearance: normalizeAppearance(settings.appearance),
   };
 
   return new Promise((resolve, reject) => {
