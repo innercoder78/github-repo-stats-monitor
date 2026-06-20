@@ -45,7 +45,7 @@ button:disabled {
   max-width: 620px;
 }
 
-.summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 .repo-grid {
   display: grid;
@@ -69,8 +69,6 @@ button:disabled {
   font-size: 1.1rem;
   overflow-wrap: anywhere;
 }
-
-.repo-card .metric:last-child { grid-column: 1 / -1; }
 
 .repo-meta {
   font-size: 0.88rem;
