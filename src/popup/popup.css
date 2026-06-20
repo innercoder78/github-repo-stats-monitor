@@ -67,11 +67,13 @@ h1 {
 .status-title {
   font-weight: 800;
   margin-bottom: 0;
+  min-width: 0;
 }
 
 .popup-status {
   line-height: 1.35;
   margin-bottom: 0;
+  min-width: 0;
   white-space: pre-line;
 }
 
@@ -184,17 +186,6 @@ html[data-appearance="dark"] .metric {
   white-space: nowrap;
 }
 
-@media (max-width: 360px) {
-  .status-copy {
-    grid-template-columns: 1fr;
-  }
-
-  .popup-refresh {
-    grid-column: 1;
-    grid-row: auto;
-    justify-self: start;
-  }
-}
 
 .utility-actions {
   display: flex;
