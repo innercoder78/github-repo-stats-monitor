@@ -10,9 +10,16 @@
   <body>
     <main class="dashboard-shell">
       <header class="topbar">
-        <div>
-          <h1>Repository Dashboard</h1>
-          <p id="status-line" class="muted status-line" role="status" aria-live="polite">Status: Waiting for repository metadata, traffic, clones, and referrers</p>
+        <div class="dashboard-heading">
+          <span class="dashboard-heading-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="24" height="24" role="img">
+              <path d="M3 12h3l2-6 4 12 3-8 2 2h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+          </span>
+          <div>
+            <h1>Repository Dashboard</h1>
+            <p id="status-line" class="muted status-line" role="status" aria-live="polite">Status: Waiting for repository metadata, traffic, clones, and referrers</p>
+          </div>
         </div>
         <div class="topbar-actions">
           <button id="refresh-now" type="button">Refresh Now</button>
@@ -25,10 +32,22 @@
       <section id="summary-card" class="card summary-card" aria-labelledby="summary-title">
         <h2 id="summary-title">All repositories</h2>
         <div class="metric-grid summary-grid">
-          <div class="metric"><span>Total views, last 14 days</span><strong id="total-views">—</strong></div>
-          <div class="metric"><span>Total stars</span><strong id="total-stars">—</strong></div>
-          <div class="metric"><span>Total forks</span><strong id="total-forks">—</strong></div>
-          <div class="metric"><span>Total clones, last 14 days</span><strong id="total-clones">—</strong></div>
+          <div class="metric">
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle></svg></span>
+            <span class="metric-body"><span>Views, last 14 days</span><strong id="total-views">—</strong></span>
+          </div>
+          <div class="metric">
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></path></svg></span>
+            <span class="metric-body"><span>Stars</span><strong id="total-stars">—</strong></span>
+          </div>
+          <div class="metric">
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M7 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM21 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM7 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM5 7v10M19 7v1a4 4 0 0 1-4 4H9a4 4 0 0 0-4 4v1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></span>
+            <span class="metric-body"><span>Forks</span><strong id="total-forks">—</strong></span>
+          </div>
+          <div class="metric">
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></span>
+            <span class="metric-body"><span>Clones, last 14 days</span><strong id="total-clones">—</strong></span>
+          </div>
         </div>
       </section>
 
