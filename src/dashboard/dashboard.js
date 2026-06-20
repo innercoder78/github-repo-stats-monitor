@@ -27,6 +27,36 @@ let isRefreshing = false;
 
 applySavedAppearance();
 
+const svgIconPaths = {
+  views: [
+    '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
+    '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>',
+  ].join(''),
+  stars: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></path>',
+  forks: '<path d="M7 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM21 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM7 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM5 7v10M19 7v1a4 4 0 0 1-4 4H9a4 4 0 0 0-4 4v1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
+  clones: '<path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
+  referrers: [
+    '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>',
+    '<path d="M3 12h7m4 0h7M12 3a14 14 0 0 1 2.2 5M12 21a14 14 0 0 1-2.2-5M8 8h8M8 16h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>',
+    '<path d="M14 15.5h3.5a2.5 2.5 0 0 0 0-5H14m-4 0H6.5a2.5 2.5 0 0 0 0 5H10m-1-2.5h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>',
+  ].join(''),
+};
+
+function createIcon(name, className = 'metric-icon', size = 20) {
+  const icon = document.createElement('span');
+  icon.className = className;
+  icon.setAttribute('aria-hidden', 'true');
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.innerHTML = svgIconPaths[name] || '';
+
+  icon.append(svg);
+  return icon;
+}
+
 function openSettings() {
   window.location.href = chrome.runtime.getURL('src/options/options.html');
 }
@@ -140,9 +170,12 @@ function hasCachedReferrers(stats) {
   return Boolean(stats?.referrersFetchedAt) && Array.isArray(stats.referrers);
 }
 
-function createMetric(label, value = '—') {
+function createMetric(label, value = '—', iconName = '') {
   const metric = document.createElement('div');
   metric.className = 'metric';
+
+  const metricBody = document.createElement('span');
+  metricBody.className = 'metric-body';
 
   const metricLabel = document.createElement('span');
   metricLabel.textContent = label;
@@ -150,7 +183,14 @@ function createMetric(label, value = '—') {
   const metricValue = document.createElement('strong');
   metricValue.textContent = value;
 
-  metric.append(metricLabel, metricValue);
+  metricBody.append(metricLabel, metricValue);
+
+  if (iconName) {
+    metric.append(createIcon(iconName), metricBody);
+  } else {
+    metric.append(metricBody);
+  }
+
   return metric;
 }
 
@@ -178,7 +218,7 @@ function createReferrersSection(stats) {
   section.className = 'referrers-panel';
 
   const heading = document.createElement('h3');
-  heading.textContent = 'Referring sites, last 14 days';
+  heading.append(createIcon('referrers', 'section-icon', 16), document.createTextNode('Referring Sites, last 14 days'));
   section.append(heading);
 
   const cachedReferrers = hasCachedReferrers(stats) ? stats.referrers.slice(0, 10) : null;
@@ -270,10 +310,10 @@ function createRepositoryCard(repository, stats) {
   const metricGrid = document.createElement('div');
   metricGrid.className = 'metric-grid';
   metricGrid.append(
-    createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—'),
-    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—'),
-    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—'),
-    createMetric('Clones, last 14 days', cachedClones ? formatNumber(cachedClones.clones) : '—'),
+    createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—', 'views'),
+    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—', 'stars'),
+    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—', 'forks'),
+    createMetric('Clones, last 14 days', cachedClones ? formatNumber(cachedClones.clones) : '—', 'clones'),
   );
 
   const charts = document.createElement('div');
