@@ -1,10 +1,14 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
+import { fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
 import { saveLatestStats } from './storage.js';
 
 function hasCachedTraffic(stats) {
   return Boolean(stats?.trafficFetchedAt)
     && Number.isFinite(stats.views)
     && Number.isFinite(stats.uniqueVisitors);
+}
+
+function hasCachedClones(stats) {
+  return Boolean(stats?.clonesFetchedAt) && Number.isFinite(stats.clones);
 }
 
 function hasCachedReferrers(stats) {
@@ -46,6 +50,18 @@ export async function refreshStatsCache(settings, currentLatestStats) {
         stats.uniqueVisitors = null;
         stats.dailyViews = [];
         stats.trafficFetchedAt = '';
+      }
+    }
+
+    try {
+      const clones = await fetchRepositoryTrafficClones(repository, githubToken);
+      Object.assign(stats, clones, { clonesFetchedAt: fetchedAt, clonesError: '' });
+    } catch (error) {
+      stats.clonesError = error.message;
+      if (!hasCachedClones(stats)) {
+        stats.clones = null;
+        stats.dailyClones = [];
+        stats.clonesFetchedAt = '';
       }
     }
 

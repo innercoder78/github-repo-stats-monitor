@@ -117,6 +117,39 @@ export async function fetchRepositoryTrafficViews(repository, token) {
 }
 
 
+export async function fetchRepositoryTrafficClones(repository, token) {
+  const { normalizedRepository, safeToken } = assertRepositoryAndToken(repository, token, 'traffic clones');
+  let response;
+
+  try {
+    response = await fetch(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/clones?per=day`, {
+      headers: getGitHubHeaders(safeToken),
+    });
+  } catch (error) {
+    throw new Error('Network failure while contacting GitHub traffic clones API. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    throw new Error(getTrafficErrorMessage(response.status));
+  }
+
+  const data = await response.json();
+  const dailyClones = Array.isArray(data.clones)
+    ? data.clones.map((entry) => ({
+      date: String(entry?.timestamp || '').slice(0, 10),
+      clones: Number(entry?.count) || 0,
+      uniqueCloners: Number(entry?.uniques) || 0,
+    })).filter((entry) => entry.date)
+    : [];
+
+  return {
+    repository: normalizedRepository,
+    clones: Number(data.count) || 0,
+    dailyClones,
+  };
+}
+
+
 export async function fetchRepositoryTrafficReferrers(repository, token) {
   const { normalizedRepository, safeToken } = assertRepositoryAndToken(repository, token, 'traffic referrers');
   let response;

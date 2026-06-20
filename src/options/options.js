@@ -1,4 +1,4 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
+import { fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
@@ -255,16 +255,18 @@ function renderTestResult(result) {
   card.append(
     createRepositoryNameElement(result.repository),
     createStatusLine('Repository data', result.metadata),
-    createStatusLine('Traffic data', result.traffic),
+    createStatusLine('Traffic views', result.traffic),
+    createStatusLine('Traffic clones', result.clones),
     createStatusLine('Referrers data', result.referrers),
   );
   testResults.append(card);
 }
 
 async function testRepositoryConnection(repository, token) {
-  const [metadataResult, trafficResult, referrersResult] = await Promise.allSettled([
+  const [metadataResult, trafficResult, clonesResult, referrersResult] = await Promise.allSettled([
     fetchRepositoryMetadata(repository, token),
     fetchRepositoryTrafficViews(repository, token),
+    fetchRepositoryTrafficClones(repository, token),
     fetchRepositoryTrafficReferrers(repository, token),
   ]);
 
@@ -276,6 +278,9 @@ async function testRepositoryConnection(repository, token) {
     traffic: trafficResult.status === 'fulfilled'
       ? { ok: true }
       : { ok: false, message: getSafeErrorMessage(trafficResult.reason) },
+    clones: clonesResult.status === 'fulfilled'
+      ? { ok: true }
+      : { ok: false, message: getSafeErrorMessage(clonesResult.reason) },
     referrers: referrersResult.status === 'fulfilled'
       ? { ok: true }
       : { ok: false, message: getSafeErrorMessage(referrersResult.reason) },
@@ -320,11 +325,11 @@ async function handleConnectionTest() {
 
     testResults.textContent = '';
     results.forEach(renderTestResult);
-    const hasFailure = results.some((result) => !result.metadata.ok || !result.traffic.ok || !result.referrers.ok);
+    const hasFailure = results.some((result) => !result.metadata.ok || !result.traffic.ok || !result.clones.ok || !result.referrers.ok);
     setMessage(
       testMessage,
       hasFailure
-        ? 'Connection test finished. Review the repository, traffic, and referrers results below.'
+        ? 'Connection test finished. Review the repository, traffic views, clones, and referrers results below.'
         : 'Connection test succeeded for all repositories.',
       hasFailure ? 'error' : 'success',
     );

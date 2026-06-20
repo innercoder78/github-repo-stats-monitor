@@ -14,11 +14,10 @@ const refreshButton = document.getElementById('refresh-now');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 const summaryValues = {
-  stars: document.getElementById('total-stars'),
-  subscribers: document.getElementById('total-subscribers'),
-  forks: document.getElementById('total-forks'),
   views: document.getElementById('total-views'),
-  uniqueVisitors: document.getElementById('total-unique-visitors'),
+  stars: document.getElementById('total-stars'),
+  forks: document.getElementById('total-forks'),
+  clones: document.getElementById('total-clones'),
 };
 
 let currentSettings = { githubToken: '', repositories: [] };
@@ -68,22 +67,25 @@ function formatCompactRefreshTime(date) {
 function formatFetchedSummary(stats) {
   const metadataFetchedAt = getValidDate(stats?.fetchedAt);
   const trafficFetchedAt = getValidDate(stats?.trafficFetchedAt);
+  const clonesFetchedAt = getValidDate(stats?.clonesFetchedAt);
   const referrersFetchedAt = getValidDate(stats?.referrersFetchedAt);
 
   const metadataTime = metadataFetchedAt ? formatRefreshTime(metadataFetchedAt) : '—';
   const trafficTime = trafficFetchedAt ? formatRefreshTime(trafficFetchedAt) : '—';
+  const clonesTime = clonesFetchedAt ? formatRefreshTime(clonesFetchedAt) : '—';
   const referrersTime = referrersFetchedAt ? formatRefreshTime(referrersFetchedAt) : '—';
-  const detailedSummary = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Referrers fetched: ${referrersTime}`;
+  const detailedSummary = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Clones fetched: ${clonesTime} · Referrers fetched: ${referrersTime}`;
 
-  if (!metadataFetchedAt || !trafficFetchedAt || !referrersFetchedAt) {
+  if (!metadataFetchedAt || !trafficFetchedAt || !clonesFetchedAt || !referrersFetchedAt) {
     return detailedSummary;
   }
 
   const metadataMinute = getLocalMinuteKey(metadataFetchedAt);
   const trafficMinute = getLocalMinuteKey(trafficFetchedAt);
+  const clonesMinute = getLocalMinuteKey(clonesFetchedAt);
   const referrersMinute = getLocalMinuteKey(referrersFetchedAt);
 
-  if (metadataMinute === trafficMinute && metadataMinute === referrersMinute) {
+  if (metadataMinute === trafficMinute && metadataMinute === clonesMinute && metadataMinute === referrersMinute) {
     return `Data from ${formatCompactRefreshTime(metadataFetchedAt)}`;
   }
 
@@ -118,14 +120,17 @@ function hideNotice() {
 function hasCachedMetadata(stats) {
   return Boolean(stats?.fetchedAt)
     && Number.isFinite(stats.stars)
-    && Number.isFinite(stats.forks)
-    && Number.isFinite(stats.subscribers);
+    && Number.isFinite(stats.forks);
 }
 
 function hasCachedTraffic(stats) {
   return Boolean(stats?.trafficFetchedAt)
     && Number.isFinite(stats.views)
     && Number.isFinite(stats.uniqueVisitors);
+}
+
+function hasCachedClones(stats) {
+  return Boolean(stats?.clonesFetchedAt) && Number.isFinite(stats.clones);
 }
 
 function hasCachedReferrers(stats) {
@@ -225,7 +230,7 @@ function createReferrersSection(stats) {
   return section;
 }
 
-function createChartPanel(label, stats, metricKey) {
+function createChartPanel(label, stats, metricKey, entriesKey = 'dailyViews') {
   const panel = document.createElement('section');
   panel.className = 'chart-panel';
   panel.setAttribute('aria-label', label);
@@ -233,7 +238,7 @@ function createChartPanel(label, stats, metricKey) {
   const heading = document.createElement('h3');
   heading.textContent = label;
 
-  const chart = createSvgBarChart(stats?.dailyViews, {
+  const chart = createSvgBarChart(stats?.[entriesKey], {
     metricKey,
     metricLabel: label.replace(', last 14 days', ''),
     title: `${label} for ${stats?.repository || 'repository'}`,
@@ -258,27 +263,27 @@ function createRepositoryCard(repository, stats) {
 
   const cachedStats = hasCachedMetadata(stats) ? stats : null;
   const cachedTraffic = hasCachedTraffic(stats) ? stats : null;
+  const cachedClones = hasCachedClones(stats) ? stats : null;
   const metricGrid = document.createElement('div');
   metricGrid.className = 'metric-grid';
   metricGrid.append(
-    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—'),
-    createMetric('Real watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—'),
-    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—'),
     createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—'),
-    createMetric('Unique visitors, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.uniqueVisitors) : '—'),
+    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—'),
+    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—'),
+    createMetric('Clones, last 14 days', cachedClones ? formatNumber(cachedClones.clones) : '—'),
   );
 
   const charts = document.createElement('div');
   charts.className = 'charts';
   charts.append(
     createChartPanel('Views, last 14 days', stats, 'views'),
-    createChartPanel('Unique visitors, last 14 days', stats, 'uniqueVisitors'),
+    createChartPanel('Clones, last 14 days', stats, 'clones', 'dailyClones'),
   );
 
   card.append(header, meta, metricGrid);
 
-  const hasError = Boolean(stats?.error || stats?.trafficError || stats?.referrersError);
-  if (hasError && (cachedStats || cachedTraffic || hasCachedReferrers(stats))) {
+  const hasError = Boolean(stats?.error || stats?.trafficError || stats?.clonesError || stats?.referrersError);
+  if (hasError && (cachedStats || cachedTraffic || cachedClones || hasCachedReferrers(stats))) {
     const cachedNotice = document.createElement('p');
     cachedNotice.className = 'repo-cache-note';
     cachedNotice.textContent = 'Showing last saved values.';
@@ -299,6 +304,13 @@ function createRepositoryCard(repository, stats) {
     card.append(trafficErrorMessage);
   }
 
+  if (stats?.clonesError) {
+    const clonesErrorMessage = document.createElement('p');
+    clonesErrorMessage.className = 'repo-error';
+    clonesErrorMessage.textContent = `Clone data error: ${stats.clonesError}`;
+    card.append(clonesErrorMessage);
+  }
+
   card.append(charts, createReferrersSection(stats));
   return card;
 }
@@ -310,37 +322,39 @@ function renderSummary() {
     if (hasCachedMetadata(stats)) {
       accumulator.metadataCount += 1;
       accumulator.stars += stats.stars;
-      accumulator.subscribers += stats.subscribers;
       accumulator.forks += stats.forks;
     }
 
     if (hasCachedTraffic(stats)) {
       accumulator.trafficCount += 1;
       accumulator.views += stats.views;
-      accumulator.uniqueVisitors += stats.uniqueVisitors;
+    }
+
+    if (hasCachedClones(stats)) {
+      accumulator.clonesCount += 1;
+      accumulator.clones += stats.clones;
     }
 
     return accumulator;
-  }, { metadataCount: 0, trafficCount: 0, stars: 0, subscribers: 0, forks: 0, views: 0, uniqueVisitors: 0 });
+  }, { metadataCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, views: 0, clones: 0 });
 
   summaryValues.stars.textContent = totals.metadataCount > 0 ? formatNumber(totals.stars) : '—';
-  summaryValues.subscribers.textContent = totals.metadataCount > 0 ? formatNumber(totals.subscribers) : '—';
   summaryValues.forks.textContent = totals.metadataCount > 0 ? formatNumber(totals.forks) : '—';
   summaryValues.views.textContent = totals.trafficCount > 0 ? formatNumber(totals.views) : '—';
-  summaryValues.uniqueVisitors.textContent = totals.trafficCount > 0 ? formatNumber(totals.uniqueVisitors) : '—';
+  summaryValues.clones.textContent = totals.clonesCount > 0 ? formatNumber(totals.clones) : '—';
 }
 
 function renderRepositories() {
   repoGrid.textContent = '';
 
   if (currentSettings.repositories.length === 0) {
-    showNotice('No repositories configured yet', 'Open Settings to add repositories in the owner/repo format. Repository metadata and traffic will appear here after a token and repositories are saved.');
+    showNotice('No repositories configured yet', 'Open Settings to add repositories in the owner/repo format. Repository metadata, traffic, and clones will appear here after a token and repositories are saved.');
     setRefreshButtonState();
     return;
   }
 
   if (!currentSettings.githubToken) {
-    showNotice('Setup needed', 'Repositories are configured, but no GitHub token is saved. Open Settings to add a token before fetching repository metadata and traffic.');
+    showNotice('Setup needed', 'Repositories are configured, but no GitHub token is saved. Open Settings to add a token before fetching repository metadata, traffic, and clones.');
     renderSummary();
     setRefreshButtonState();
     return;
@@ -358,7 +372,7 @@ async function refreshRepositoryStats() {
   if (isRefreshing) return;
 
   if (!currentSettings.githubToken) {
-    setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata and traffic.', 'warning');
+    setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata, traffic, and clones.', 'warning');
     setRefreshButtonState();
     return;
   }
@@ -367,19 +381,19 @@ async function refreshRepositoryStats() {
 
   isRefreshing = true;
   setRefreshButtonState();
-  setStatus('Loading repository metadata, traffic, and referrers from GitHub…', 'loading');
+  setStatus('Loading repository metadata, traffic, clones, and referrers from GitHub…', 'loading');
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats);
     currentLatestStats = refreshResult.latestStats;
 
-    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.referrersError).length;
+    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
     const successCount = refreshResult.results.length - failureCount;
 
     if (failureCount === 0) {
       setStatus(`Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
     } else if (successCount > 0) {
-      setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository, traffic, or referrer errors. See repository cards for details.`, 'warning');
+      setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository, traffic, clone, or referrer errors. See repository cards for details.`, 'warning');
     } else {
       setStatus('Refresh finished with errors for all repositories. Cached values are shown where available.', 'error');
     }
@@ -404,7 +418,7 @@ async function initializeDashboard() {
     }
 
     if (!currentSettings.githubToken) {
-      setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata and traffic.', 'warning');
+      setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata, traffic, and clones.', 'warning');
       return;
     }
 
