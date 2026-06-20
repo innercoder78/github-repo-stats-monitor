@@ -14,9 +14,9 @@ const refreshButton = document.getElementById('refresh-now');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 const summaryValues = {
+  views: document.getElementById('total-views'),
   stars: document.getElementById('total-stars'),
   forks: document.getElementById('total-forks'),
-  views: document.getElementById('total-views'),
   clones: document.getElementById('total-clones'),
 };
 

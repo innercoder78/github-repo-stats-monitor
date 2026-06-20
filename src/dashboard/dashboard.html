@@ -12,7 +12,7 @@
       <header class="topbar">
         <div>
           <h1>Repository Dashboard</h1>
-          <p id="status-line" class="muted status-line" role="status" aria-live="polite">Status: Waiting for repository metadata and traffic</p>
+          <p id="status-line" class="muted status-line" role="status" aria-live="polite">Status: Waiting for repository metadata, traffic, clones, and referrers</p>
         </div>
         <div class="topbar-actions">
           <button id="refresh-now" type="button">Refresh Now</button>
@@ -25,9 +25,9 @@
       <section id="summary-card" class="card summary-card" aria-labelledby="summary-title">
         <h2 id="summary-title">All repositories</h2>
         <div class="metric-grid summary-grid">
+          <div class="metric"><span>Total views, last 14 days</span><strong id="total-views">—</strong></div>
           <div class="metric"><span>Total stars</span><strong id="total-stars">—</strong></div>
           <div class="metric"><span>Total forks</span><strong id="total-forks">—</strong></div>
-          <div class="metric"><span>Total views, last 14 days</span><strong id="total-views">—</strong></div>
           <div class="metric"><span>Total clones, last 14 days</span><strong id="total-clones">—</strong></div>
         </div>
       </section>
