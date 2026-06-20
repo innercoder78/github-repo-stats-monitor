@@ -157,6 +157,29 @@ export function getLatestStats() {
   });
 }
 
+export function resetExtensionData() {
+  const resetData = {
+    ...DEFAULT_SETTINGS,
+    ...DEFAULT_STATS,
+  };
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set(resetData, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve({
+        settings: { ...DEFAULT_SETTINGS },
+        latestStats: { ...DEFAULT_STATS.latestStats },
+      });
+    });
+  });
+}
+
 export function saveLatestStats(latestStats) {
   const nextLatestStats = {};
   const statsToSave = latestStats && typeof latestStats === 'object' ? latestStats : {};
