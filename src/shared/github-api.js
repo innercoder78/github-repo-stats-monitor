@@ -10,7 +10,7 @@ function getErrorMessage(status) {
   }
 
   if (status === 403) {
-    return 'GitHub denied the request or the API rate limit was reached.';
+    return 'GitHub denied the request, or the API rate limit was reached.';
   }
 
   if (status === 404) {
@@ -35,7 +35,7 @@ function getAuthenticatedRepositoriesErrorMessage(status) {
   }
 
   if (status === 403) {
-    return 'GitHub denied the repository import request or the API rate limit was reached.';
+    return 'GitHub denied the repository import request. The token may not have access to list repositories, or the API rate limit may have been reached.';
   }
 
   return getErrorMessage(status);
@@ -105,7 +105,7 @@ export async function fetchAuthenticatedRepositories(token) {
 
 function getTrafficErrorMessage(status) {
   if (status === 403) {
-    return 'GitHub denied traffic access. Repository traffic requires access to the repository and proper token permissions, including Administration read permission for fine-grained tokens, or the API rate limit may have been reached.';
+    return 'GitHub denied traffic access. Traffic, clones, and referrers require repository access and Administration: Read-only permission for fine-grained tokens, or the API rate limit may have been reached.';
   }
 
   return getErrorMessage(status);
