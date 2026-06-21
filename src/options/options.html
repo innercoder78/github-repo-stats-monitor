@@ -32,11 +32,19 @@
               <h2 id="repos-title">Repositories</h2>
               <p class="muted">Use <code>owner/repo</code> or a GitHub repository URL. Values are saved as <code>owner/repo</code>. You can configure up to 20 repositories.</p>
             </div>
-            <button id="add-repository" class="secondary" type="button">+ Add repository</button>
+            <div class="repository-heading-actions">
+              <button id="import-repositories" class="secondary" type="button">Import from GitHub</button>
+              <button id="add-repository" class="secondary" type="button">+ Add repository</button>
+            </div>
           </div>
 
           <p id="repo-message" class="message" role="alert" aria-live="polite"></p>
           <div id="repository-list" class="repository-list"></div>
+          <div id="import-panel" class="import-panel" aria-labelledby="import-title" hidden>
+            <h3 id="import-title">Import results</h3>
+            <p id="import-message" class="message" role="status" aria-live="polite"></p>
+            <div id="import-results" class="import-results" aria-live="polite"></div>
+          </div>
         </section>
 
         <section class="card settings-card" aria-labelledby="appearance-title">
