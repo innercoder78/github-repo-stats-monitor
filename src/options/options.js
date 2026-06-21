@@ -23,6 +23,7 @@ const importPanel = document.getElementById('import-panel');
 const importMessage = document.getElementById('import-message');
 const testResults = document.getElementById('test-results');
 const importResults = document.getElementById('import-results');
+const addImportedRepositoriesButton = document.getElementById('add-imported-repositories');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 const resetConfirmationDialog = document.getElementById('reset-confirmation-dialog');
 const confirmResetButton = document.getElementById('confirm-reset');
@@ -30,6 +31,7 @@ const cancelResetButton = document.getElementById('cancel-reset');
 
 let isTestingConnection = false;
 let isImportingRepositories = false;
+let importedRepositories = [];
 
 applySavedAppearance();
 
@@ -46,6 +48,8 @@ function clearTestResults() {
 function clearImportResults() {
   setMessage(importMessage, '', '');
   importResults.textContent = '';
+  importedRepositories = [];
+  addImportedRepositoriesButton.disabled = true;
   importPanel.hidden = true;
 }
 
@@ -55,6 +59,20 @@ function showImportPanel() {
 
 function getRepositoryInputs() {
   return Array.from(repositoryList.querySelectorAll('.repository-input'));
+}
+
+function getNormalizedCurrentRepositories() {
+  return getRepositoryInputs()
+    .map((input) => normalizeRepositoryName(input.value))
+    .filter((value) => value && isValidRepositoryName(value));
+}
+
+function getCurrentRepositorySet() {
+  return new Set(getNormalizedCurrentRepositories());
+}
+
+function getRemainingRepositorySlots() {
+  return Math.max(0, MAX_REPOSITORIES - getNormalizedCurrentRepositories().length);
 }
 
 function updateRepositoryControls() {
@@ -98,6 +116,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
   input.type = 'text';
   input.placeholder = 'owner/repo or https://github.com/owner/repo';
   input.value = value;
+  input.addEventListener('input', updateImportSelectionState);
 
   const controls = document.createElement('div');
   controls.className = 'repository-controls';
@@ -118,6 +137,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     setMessage(statusMessage, '', '');
     clearTestResults();
     updateRepositoryControls();
+    updateImportSelectionState();
     focusMovedRow(row, moveUpButton);
   });
 
@@ -137,6 +157,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     setMessage(statusMessage, '', '');
     clearTestResults();
     updateRepositoryControls();
+    updateImportSelectionState();
     focusMovedRow(row, moveDownButton);
   });
 
@@ -158,6 +179,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     setMessage(statusMessage, '', '');
     clearTestResults();
     updateRepositoryControls();
+    updateImportSelectionState();
   });
 
   controls.append(moveUpButton, moveDownButton, removeButton);
@@ -239,13 +261,58 @@ function validateRepositories() {
 }
 
 
-
 function getVisibleRepositoryNames() {
-  return new Set(
-    getRepositoryInputs()
-      .map((input) => normalizeRepositoryName(input.value))
-      .filter((value) => value && isValidRepositoryName(value)),
-  );
+  return getCurrentRepositorySet();
+}
+
+function getSelectedImportedRepositories() {
+  return Array.from(importResults.querySelectorAll('.import-repository-checkbox:checked'))
+    .map((checkbox) => checkbox.dataset.repository)
+    .filter(Boolean);
+}
+
+function updateImportSelectionState(shouldShowLimitMessage = true) {
+  const monitoredRepositories = getVisibleRepositoryNames();
+  const remainingSlots = getRemainingRepositorySlots();
+  let selectedCount = getSelectedImportedRepositories().length;
+
+  importResults.querySelectorAll('.import-repository-card').forEach((card) => {
+    const checkbox = card.querySelector('.import-repository-checkbox');
+    const repositoryName = checkbox?.dataset.repository;
+    if (!checkbox || !repositoryName) {
+      return;
+    }
+
+    const isAlreadyMonitored = monitoredRepositories.has(repositoryName);
+    if (isAlreadyMonitored && checkbox.checked) {
+      checkbox.checked = false;
+      selectedCount = getSelectedImportedRepositories().length;
+    }
+
+    const limitBlocksSelection = remainingSlots === 0 || (!checkbox.checked && selectedCount >= remainingSlots);
+    checkbox.disabled = isAlreadyMonitored || limitBlocksSelection;
+    card.classList.toggle('is-disabled', checkbox.disabled);
+
+    const status = card.querySelector('.import-repository-selection-status');
+    if (status) {
+      if (isAlreadyMonitored) {
+        status.textContent = 'Already monitored';
+      } else if (remainingSlots === 0) {
+        status.textContent = 'Repository limit reached';
+      } else if (!checkbox.checked && selectedCount >= remainingSlots) {
+        status.textContent = 'Repository limit reached for this selection';
+      } else {
+        status.textContent = 'Available to add';
+      }
+    }
+  });
+
+  if (shouldShowLimitMessage && remainingSlots === 0) {
+    setMessage(importMessage, 'You can configure up to 20 repositories. Remove a repository before adding more.', 'error');
+  }
+
+  const updatedSelectedCount = getSelectedImportedRepositories().length;
+  addImportedRepositoriesButton.disabled = updatedSelectedCount === 0 || updatedSelectedCount > remainingSlots;
 }
 
 function createImportAttribute(label, value) {
@@ -256,22 +323,48 @@ function createImportAttribute(label, value) {
 }
 
 function renderImportedRepository(repository, monitoredRepositories) {
+  const normalizedName = normalizeRepositoryName(repository.fullName);
   const card = document.createElement('article');
   card.className = 'import-repository-card';
 
-  const title = document.createElement('h4');
+  const label = document.createElement('label');
+  label.className = 'import-repository-option';
+
+  const checkbox = document.createElement('input');
+  checkbox.className = 'import-repository-checkbox';
+  checkbox.type = 'checkbox';
+  checkbox.dataset.repository = normalizedName;
+  checkbox.addEventListener('change', () => {
+    const selectedCount = getSelectedImportedRepositories().length;
+    const remainingSlots = getRemainingRepositorySlots();
+
+    if (selectedCount > remainingSlots) {
+      checkbox.checked = false;
+      setMessage(importMessage, 'You can configure up to 20 repositories. Remove a repository before adding more.', 'error');
+    } else {
+      setMessage(importMessage, `${importedRepositories.length} repositories returned. Select repositories to add to Settings.`, 'success');
+    }
+
+    updateImportSelectionState();
+  });
+
+  const details = document.createElement('span');
+  details.className = 'import-repository-details';
+
+  const title = document.createElement('span');
+  title.className = 'import-repository-name';
   if (repository.htmlUrl) {
     const link = document.createElement('a');
     link.href = repository.htmlUrl;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
-    link.textContent = repository.fullName;
+    link.textContent = normalizedName;
     title.append(link);
   } else {
-    title.textContent = repository.fullName;
+    title.textContent = normalizedName;
   }
 
-  const attributes = document.createElement('div');
+  const attributes = document.createElement('span');
   attributes.className = 'import-repository-attributes';
   attributes.append(
     createImportAttribute('Visibility', repository.visibility || (repository.private ? 'private' : 'public')),
@@ -279,15 +372,13 @@ function renderImportedRepository(repository, monitoredRepositories) {
     createImportAttribute('Fork', repository.fork ? 'Yes' : 'No'),
   );
 
-  card.append(title, attributes);
+  const selectionStatus = document.createElement('span');
+  selectionStatus.className = 'import-repository-selection-status import-repository-badge';
+  selectionStatus.textContent = monitoredRepositories.has(normalizedName) ? 'Already monitored' : 'Available to add';
 
-  if (monitoredRepositories.has(normalizeRepositoryName(repository.fullName))) {
-    const badge = document.createElement('p');
-    badge.className = 'import-repository-badge';
-    badge.textContent = 'Already monitored';
-    card.append(badge);
-  }
-
+  details.append(title, attributes, selectionStatus);
+  label.append(checkbox, details);
+  card.append(label);
   return card;
 }
 
@@ -297,6 +388,55 @@ function renderImportedRepositories(repositories) {
   repositories.forEach((repository) => {
     importResults.append(renderImportedRepository(repository, monitoredRepositories));
   });
+  updateImportSelectionState();
+}
+
+function removeOnlyEmptyRepositoryRowBeforeImport() {
+  const inputs = getRepositoryInputs();
+  if (inputs.length !== 1 || normalizeRepositoryName(inputs[0].value)) {
+    return;
+  }
+
+  inputs[0].closest('.repository-row')?.remove();
+}
+
+function handleAddImportedRepositories() {
+  const selectedNames = getSelectedImportedRepositories();
+  if (selectedNames.length === 0) {
+    return;
+  }
+
+  const currentRepositories = getCurrentRepositorySet();
+  const remainingSlots = getRemainingRepositorySlots();
+  if (remainingSlots === 0 || selectedNames.length > remainingSlots) {
+    setMessage(importMessage, 'You can configure up to 20 repositories. Remove a repository before adding more.', 'error');
+    updateImportSelectionState();
+    return;
+  }
+
+  removeOnlyEmptyRepositoryRowBeforeImport();
+
+  let addedCount = 0;
+  selectedNames.forEach((repositoryName) => {
+    if (addedCount >= remainingSlots || currentRepositories.has(repositoryName)) {
+      return;
+    }
+
+    createRepositoryRow(repositoryName);
+    currentRepositories.add(repositoryName);
+    addedCount += 1;
+  });
+
+  importResults.querySelectorAll('.import-repository-checkbox:checked').forEach((checkbox) => {
+    checkbox.checked = false;
+  });
+
+  setMessage(repoMessage, '', '');
+  setMessage(statusMessage, '', '');
+  clearTestResults();
+  setMessage(importMessage, `Added ${addedCount} ${addedCount === 1 ? 'repository' : 'repositories'}. Review the list, then click Save Settings.`, 'success');
+  updateRepositoryControls();
+  updateImportSelectionState(false);
 }
 
 async function handleRepositoryImport() {
@@ -309,6 +449,8 @@ async function handleRepositoryImport() {
   clearTestResults();
   showImportPanel();
   importResults.textContent = '';
+  importedRepositories = [];
+  addImportedRepositoriesButton.disabled = true;
 
   const token = tokenInput.value.trim();
   if (!token) {
@@ -328,8 +470,10 @@ async function handleRepositoryImport() {
       return;
     }
 
-    renderImportedRepositories(repositories);
-    setMessage(importMessage, `${repositories.length} repositories returned. Review-only import preview; repositories are not saved or added yet.`, 'success');
+    importedRepositories = repositories;
+    renderImportedRepositories(importedRepositories);
+    setMessage(importMessage, `${repositories.length} repositories returned. Select repositories to add to Settings.`, 'success');
+    updateImportSelectionState();
   } catch (error) {
     setMessage(importMessage, getSafeErrorMessage(error), 'error');
   } finally {
@@ -509,11 +653,13 @@ function closeResetConfirmation(shouldReturnFocus = true) {
 }
 
 importRepositoriesButton.addEventListener('click', handleRepositoryImport);
+addImportedRepositoriesButton.addEventListener('click', handleAddImportedRepositories);
 
 addRepositoryButton.addEventListener('click', () => {
   addRepositoryRow('', true);
   setMessage(statusMessage, '', '');
   clearTestResults();
+  updateImportSelectionState();
 });
 
 resetButton.addEventListener('click', openResetConfirmation);

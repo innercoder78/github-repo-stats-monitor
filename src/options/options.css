@@ -321,3 +321,45 @@ html[data-appearance="dark"] .confirmation-dialog::backdrop {
   .repository-heading-actions,
   .repository-heading-actions button { width: 100%; }
 }
+
+#import-panel > button {
+  margin-top: 12px;
+}
+
+.import-repository-option {
+  align-items: flex-start;
+  color: var(--text);
+  display: flex;
+  gap: 12px;
+  margin: 0;
+}
+
+.import-repository-option input {
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.import-repository-option:focus-within {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 4px;
+}
+
+.import-repository-details {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.import-repository-name {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.import-repository-card.is-disabled {
+  opacity: 0.75;
+}
+
+.import-repository-selection-status {
+  justify-self: start;
+}
