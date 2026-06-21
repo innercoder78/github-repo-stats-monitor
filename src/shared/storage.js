@@ -158,13 +158,8 @@ export function getLatestStats() {
 }
 
 export function resetExtensionData() {
-  const resetData = {
-    ...DEFAULT_SETTINGS,
-    ...DEFAULT_STATS,
-  };
-
   return new Promise((resolve, reject) => {
-    getChromeStorage().set(resetData, () => {
+    getChromeStorage().clear(() => {
       const error = chrome.runtime.lastError;
 
       if (error) {

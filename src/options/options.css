@@ -250,6 +250,19 @@ html[data-appearance="dark"] .confirmation-dialog::backdrop {
   justify-content: flex-end;
 }
 
+.manual-add-button {
+  align-items: center;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.manual-add-button-note {
+  font-size: 0.85rem;
+}
+
 .import-panel {
   margin-top: 18px;
 }

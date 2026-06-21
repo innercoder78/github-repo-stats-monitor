@@ -22,7 +22,7 @@
           <div class="token-instructions">
             <p class="muted field-note">This token is used to import repositories and refresh repository stats. For fine-grained tokens, select the repositories you want to monitor. Repository traffic, clones, and referrers require Administration: Read-only permission.</p>
             <p class="muted field-note">A token limited to selected repositories can only import and monitor those repositories.</p>
-            <p class="muted field-note">The token is stored locally in Chrome extension storage and should not be committed or shared.</p>
+            <p class="muted field-note">The token is stored locally in Chrome extension storage.</p>
             <p class="muted field-note">The connection test can verify repository data and traffic access separately.</p>
           </div>
         </section>
@@ -35,7 +35,10 @@
             </div>
             <div class="repository-heading-actions">
               <button id="import-repositories" class="secondary" type="button">Import from GitHub</button>
-              <button id="add-repository" class="secondary" type="button">+ Add repository</button>
+              <button id="add-repository" class="secondary manual-add-button" type="button">
+                <span>+ Add repository</span>
+                <span class="manual-add-button-note">manually</span>
+              </button>
             </div>
           </div>
 
