@@ -70,6 +70,15 @@ function formatRefreshTime(value) {
   return new Date(value).toLocaleString();
 }
 
+function formatRefreshProgressMessage(progress) {
+  const completed = Number.isFinite(progress?.completed) ? progress.completed : 0;
+  const total = Number.isFinite(progress?.total) ? progress.total : currentSettings.repositories.length;
+  const repository = typeof progress?.repository === 'string' ? progress.repository : '';
+  const baseMessage = `Refreshing repositories… ${completed} of ${total} complete.`;
+
+  return repository ? `${baseMessage} Last updated: ${repository}.` : baseMessage;
+}
+
 function getLocalMinuteKey(date) {
   return [
     date.getFullYear(),
@@ -424,10 +433,14 @@ async function refreshRepositoryStats() {
 
   isRefreshing = true;
   setRefreshButtonState();
-  setStatus('Loading repository metadata, traffic, clones, and referrers from GitHub…', 'loading');
+  setStatus(formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length }), 'loading');
 
   try {
-    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats);
+    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
+      onProgress(progress) {
+        setStatus(formatRefreshProgressMessage(progress), 'loading');
+      },
+    });
     currentLatestStats = refreshResult.latestStats;
 
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
