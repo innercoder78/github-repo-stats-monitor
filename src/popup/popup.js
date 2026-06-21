@@ -36,6 +36,15 @@ function formatNumber(value) {
   return Number.isFinite(value) ? value.toLocaleString() : '—';
 }
 
+function formatRefreshProgressMessage(progress) {
+  const completed = Number.isFinite(progress?.completed) ? progress.completed : 0;
+  const total = Number.isFinite(progress?.total) ? progress.total : currentSettings.repositories.length;
+  const repository = typeof progress?.repository === 'string' ? progress.repository : '';
+  const baseMessage = `Refreshing repositories… ${completed} of ${total} complete.`;
+
+  return repository ? `${baseMessage} Last updated: ${repository}.` : baseMessage;
+}
+
 function hasCachedMetadata(stats) {
   return Boolean(stats?.fetchedAt)
     && Number.isFinite(stats.stars)
@@ -160,10 +169,14 @@ async function refreshStats() {
 
   isRefreshing = true;
   setRefreshButtonState();
-  popupStatus.textContent = 'Refreshing…';
+  popupStatus.textContent = formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length });
 
   try {
-    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats);
+    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
+      onProgress(progress) {
+        popupStatus.textContent = formatRefreshProgressMessage(progress);
+      },
+    });
     currentLatestStats = refreshResult.latestStats;
     renderStatsSummary(currentSettings, currentLatestStats);
 
