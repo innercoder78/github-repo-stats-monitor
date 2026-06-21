@@ -27,6 +27,21 @@ function notifyProgress(onProgress, progress) {
   }
 }
 
+function getRefreshInputs(settings) {
+  const githubToken = typeof settings?.githubToken === 'string' ? settings.githubToken : '';
+  const repositories = Array.isArray(settings?.repositories) ? settings.repositories : [];
+
+  if (!githubToken) {
+    throw new Error('No token saved. Open Settings and add a GitHub token to refresh stats.');
+  }
+
+  if (repositories.length === 0) {
+    throw new Error('No repositories configured. Open Settings and add at least one repository.');
+  }
+
+  return { githubToken, repositories };
+}
+
 async function refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt) {
   const stats = { ...previousStats, repository };
 
@@ -77,17 +92,8 @@ async function refreshRepositoryStats(repository, githubToken, previousStats, fe
 }
 
 export async function refreshStatsCache(settings, currentLatestStats, options = {}) {
-  const githubToken = typeof settings?.githubToken === 'string' ? settings.githubToken : '';
-  const repositories = Array.isArray(settings?.repositories) ? settings.repositories : [];
+  const { githubToken, repositories } = getRefreshInputs(settings);
   const onProgress = options && typeof options === 'object' ? options.onProgress : undefined;
-
-  if (!githubToken) {
-    throw new Error('No token saved. Open Settings and add a GitHub token to refresh stats.');
-  }
-
-  if (repositories.length === 0) {
-    throw new Error('No repositories configured. Open Settings and add at least one repository.');
-  }
 
   const fetchedAt = new Date().toISOString();
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
@@ -115,4 +121,26 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   const savedLatestStats = await saveLatestStats(nextLatestStats);
 
   return { fetchedAt, results, latestStats: savedLatestStats };
+}
+
+export async function refreshRepositoryStatsCache(settings, currentLatestStats, repository) {
+  const { githubToken, repositories } = getRefreshInputs(settings);
+
+  if (!repositories.includes(repository)) {
+    throw new Error('Repository is not configured. Open Settings and add it before refreshing.');
+  }
+
+  const fetchedAt = new Date().toISOString();
+  const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
+  const previousStats = latestStats[repository] || { repository };
+  const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
+  const nextLatestStats = { ...latestStats, [repository]: result.stats };
+  const savedLatestStats = await saveLatestStats(nextLatestStats);
+
+  return {
+    fetchedAt,
+    repository,
+    result,
+    latestStats: savedLatestStats,
+  };
 }
