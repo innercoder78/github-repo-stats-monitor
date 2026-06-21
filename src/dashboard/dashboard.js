@@ -1,5 +1,5 @@
 import { getLatestStats, getSettings } from '../shared/storage.js';
-import { refreshStatsCache } from '../shared/refresh-stats.js';
+import { refreshRepositoryStatsCache, refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
@@ -24,6 +24,7 @@ const summaryValues = {
 let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
 let currentLatestStats = {};
 let isRefreshing = false;
+let refreshingRepository = '';
 
 applySavedAppearance();
 
@@ -140,9 +141,10 @@ function setStatus(message, type = '') {
 }
 
 function setRefreshButtonState() {
-  refreshButton.disabled = isRefreshing || currentSettings.repositories.length === 0 || !currentSettings.githubToken;
+  const refreshInProgress = isRefreshing || Boolean(refreshingRepository);
+  refreshButton.disabled = refreshInProgress || currentSettings.repositories.length === 0 || !currentSettings.githubToken;
   refreshButton.textContent = isRefreshing ? 'Refreshing…' : 'Refresh Now';
-  refreshButton.setAttribute('aria-busy', String(isRefreshing));
+  refreshButton.setAttribute('aria-busy', String(refreshInProgress));
 }
 
 function showNotice(title, message) {
@@ -201,6 +203,10 @@ function createMetric(label, value = '—', iconName = '') {
   }
 
   return metric;
+}
+
+function hasRefreshError(stats) {
+  return Boolean(stats?.error || stats?.trafficError || stats?.clonesError || stats?.referrersError);
 }
 
 function createRepositoryNameElement(repository) {
@@ -307,7 +313,17 @@ function createRepositoryCard(repository, stats) {
   const header = document.createElement('div');
   header.className = 'repo-card-header';
 
-  header.append(createRepositoryNameElement(repository));
+  const repositoryRefreshButton = document.createElement('button');
+  const isRepositoryRefreshing = refreshingRepository === repository;
+  repositoryRefreshButton.type = 'button';
+  repositoryRefreshButton.className = 'repo-refresh-button secondary';
+  repositoryRefreshButton.textContent = isRepositoryRefreshing ? 'Refreshing…' : 'Refresh';
+  repositoryRefreshButton.disabled = isRefreshing || Boolean(refreshingRepository);
+  repositoryRefreshButton.setAttribute('aria-label', `Refresh ${repository}`);
+  repositoryRefreshButton.setAttribute('aria-busy', String(isRepositoryRefreshing));
+  repositoryRefreshButton.addEventListener('click', () => refreshSingleRepository(repository));
+
+  header.append(createRepositoryNameElement(repository), repositoryRefreshButton);
 
   const meta = document.createElement('p');
   meta.className = 'muted repo-meta';
@@ -334,7 +350,7 @@ function createRepositoryCard(repository, stats) {
 
   card.append(header, meta, metricGrid);
 
-  const hasError = Boolean(stats?.error || stats?.trafficError || stats?.clonesError || stats?.referrersError);
+  const hasError = hasRefreshError(stats);
   if (hasError && (cachedStats || cachedTraffic || cachedClones || hasCachedReferrers(stats))) {
     const cachedNotice = document.createElement('p');
     cachedNotice.className = 'repo-cache-note';
@@ -421,7 +437,7 @@ function renderRepositories() {
 }
 
 async function refreshRepositoryStats() {
-  if (isRefreshing) return;
+  if (isRefreshing || refreshingRepository) return;
 
   if (!currentSettings.githubToken) {
     setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata, traffic, and clones.', 'warning');
@@ -460,6 +476,38 @@ async function refreshRepositoryStats() {
   }
 
   isRefreshing = false;
+  renderRepositories();
+}
+
+async function refreshSingleRepository(repository) {
+  if (isRefreshing || refreshingRepository) return;
+
+  if (!currentSettings.githubToken) {
+    setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata, traffic, and clones.', 'warning');
+    setRefreshButtonState();
+    return;
+  }
+
+  if (currentSettings.repositories.length === 0 || !currentSettings.repositories.includes(repository)) return;
+
+  refreshingRepository = repository;
+  renderRepositories();
+  setStatus(`Refreshing ${repository}…`, 'loading');
+
+  try {
+    const refreshResult = await refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository);
+    currentLatestStats = refreshResult.latestStats;
+
+    if (hasRefreshError(refreshResult.result.stats)) {
+      setStatus(`${repository} refreshed with partial errors. Cached values are shown where available.`, 'warning');
+    } else {
+      setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+    }
+  } catch (error) {
+    setStatus(`Could not refresh ${repository}. Cached values are shown where available.`, 'error');
+  }
+
+  refreshingRepository = '';
   renderRepositories();
 }
 
