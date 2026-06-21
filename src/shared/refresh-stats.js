@@ -15,9 +15,71 @@ function hasCachedReferrers(stats) {
   return Boolean(stats?.referrersFetchedAt) && Array.isArray(stats.referrers);
 }
 
-export async function refreshStatsCache(settings, currentLatestStats) {
+function notifyProgress(onProgress, progress) {
+  if (typeof onProgress !== 'function') {
+    return;
+  }
+
+  try {
+    onProgress(progress);
+  } catch (error) {
+    // Progress reporting should never interrupt the refresh flow.
+  }
+}
+
+async function refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt) {
+  const stats = { ...previousStats, repository };
+
+  try {
+    const metadata = await fetchRepositoryMetadata(repository, githubToken);
+    Object.assign(stats, metadata, { fetchedAt, error: '' });
+  } catch (error) {
+    stats.error = error.message;
+  }
+
+  try {
+    const traffic = await fetchRepositoryTrafficViews(repository, githubToken);
+    Object.assign(stats, traffic, { trafficFetchedAt: fetchedAt, trafficError: '' });
+  } catch (error) {
+    stats.trafficError = error.message;
+    if (!hasCachedTraffic(stats)) {
+      stats.views = null;
+      stats.uniqueVisitors = null;
+      stats.dailyViews = [];
+      stats.trafficFetchedAt = '';
+    }
+  }
+
+  try {
+    const clones = await fetchRepositoryTrafficClones(repository, githubToken);
+    Object.assign(stats, clones, { clonesFetchedAt: fetchedAt, clonesError: '' });
+  } catch (error) {
+    stats.clonesError = error.message;
+    if (!hasCachedClones(stats)) {
+      stats.clones = null;
+      stats.dailyClones = [];
+      stats.clonesFetchedAt = '';
+    }
+  }
+
+  try {
+    const referrers = await fetchRepositoryTrafficReferrers(repository, githubToken);
+    Object.assign(stats, referrers, { referrersFetchedAt: fetchedAt, referrersError: '' });
+  } catch (error) {
+    stats.referrersError = error.message;
+    if (!hasCachedReferrers(stats)) {
+      stats.referrers = [];
+      stats.referrersFetchedAt = '';
+    }
+  }
+
+  return { repository, stats };
+}
+
+export async function refreshStatsCache(settings, currentLatestStats, options = {}) {
   const githubToken = typeof settings?.githubToken === 'string' ? settings.githubToken : '';
   const repositories = Array.isArray(settings?.repositories) ? settings.repositories : [];
+  const onProgress = options && typeof options === 'object' ? options.onProgress : undefined;
 
   if (!githubToken) {
     throw new Error('No token saved. Open Settings and add a GitHub token to refresh stats.');
@@ -29,54 +91,20 @@ export async function refreshStatsCache(settings, currentLatestStats) {
 
   const fetchedAt = new Date().toISOString();
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
+  let completed = 0;
   const results = await Promise.all(repositories.map(async (repository) => {
     const previousStats = latestStats[repository] || { repository };
-    const stats = { ...previousStats, repository };
+    const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
 
-    try {
-      const metadata = await fetchRepositoryMetadata(repository, githubToken);
-      Object.assign(stats, metadata, { fetchedAt, error: '' });
-    } catch (error) {
-      stats.error = error.message;
-    }
+    completed += 1;
+    notifyProgress(onProgress, {
+      repository,
+      completed,
+      total: repositories.length,
+      result,
+    });
 
-    try {
-      const traffic = await fetchRepositoryTrafficViews(repository, githubToken);
-      Object.assign(stats, traffic, { trafficFetchedAt: fetchedAt, trafficError: '' });
-    } catch (error) {
-      stats.trafficError = error.message;
-      if (!hasCachedTraffic(stats)) {
-        stats.views = null;
-        stats.uniqueVisitors = null;
-        stats.dailyViews = [];
-        stats.trafficFetchedAt = '';
-      }
-    }
-
-    try {
-      const clones = await fetchRepositoryTrafficClones(repository, githubToken);
-      Object.assign(stats, clones, { clonesFetchedAt: fetchedAt, clonesError: '' });
-    } catch (error) {
-      stats.clonesError = error.message;
-      if (!hasCachedClones(stats)) {
-        stats.clones = null;
-        stats.dailyClones = [];
-        stats.clonesFetchedAt = '';
-      }
-    }
-
-    try {
-      const referrers = await fetchRepositoryTrafficReferrers(repository, githubToken);
-      Object.assign(stats, referrers, { referrersFetchedAt: fetchedAt, referrersError: '' });
-    } catch (error) {
-      stats.referrersError = error.message;
-      if (!hasCachedReferrers(stats)) {
-        stats.referrers = [];
-        stats.referrersFetchedAt = '';
-      }
-    }
-
-    return { repository, stats };
+    return result;
   }));
 
   const nextLatestStats = { ...latestStats };
