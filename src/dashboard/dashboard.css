@@ -148,6 +148,17 @@ button:disabled {
   padding-bottom: 12px;
 }
 
+.repo-refresh-button {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  padding: 7px 12px;
+}
+
+.repo-refresh-button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .repo-card h2 {
   font-size: 1.1rem;
   line-height: 1.35;
@@ -379,6 +390,7 @@ button:disabled {
 
 @media (max-width: 560px) {
   .dashboard-shell { padding: 24px 14px; }
+  .repo-card-header { align-items: flex-start; flex-wrap: wrap; }
   .dashboard-heading-icon { display: none; }
   .summary-grid,
   .repo-card .metric-grid,
