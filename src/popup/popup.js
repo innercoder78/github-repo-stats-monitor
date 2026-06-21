@@ -183,9 +183,9 @@ async function refreshStats() {
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
     popupStatus.textContent = failureCount === 0
       ? 'Stats refreshed.'
-      : 'Refresh finished with GitHub request errors. Showing saved values where available.';
+      : 'Refresh finished with GitHub request errors. Last saved values are shown where available.';
   } catch (error) {
-    popupStatus.textContent = error.message || 'Refresh failed. Showing saved values where available.';
+    popupStatus.textContent = error.message || 'Refresh failed. Last saved values are shown where available.';
   }
 
   isRefreshing = false;

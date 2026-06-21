@@ -20,7 +20,8 @@
           <label for="github-token">Token</label>
           <input id="github-token" name="github-token" type="password" autocomplete="off" placeholder="github_pat_...">
           <div class="token-instructions">
-            <p class="muted field-note">To create a token, open GitHub, then go to Settings → Developer settings → Personal access tokens → Fine-grained tokens. Select the repositories you want to review, then grant repository Administration: Read-only permission so traffic stats can be read.</p>
+            <p class="muted field-note">This token is used to import repositories and refresh repository stats. For fine-grained tokens, select the repositories you want to monitor. Repository traffic, clones, and referrers require Administration: Read-only permission.</p>
+            <p class="muted field-note">A token limited to selected repositories can only import and monitor those repositories.</p>
             <p class="muted field-note">The token is stored locally in Chrome extension storage and should not be committed or shared.</p>
             <p class="muted field-note">The connection test can verify repository data and traffic access separately.</p>
           </div>

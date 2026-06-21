@@ -249,7 +249,7 @@ function createReferrersSection(stats) {
   if (stats?.referrersError && cachedReferrers) {
     const warning = document.createElement('p');
     warning.className = 'referrers-message warning';
-    warning.textContent = 'Showing last saved referring sites because the latest referrers request failed.';
+    warning.textContent = 'Showing last saved referring sites because the latest referrers request failed. GitHub traffic data covers the last 14 days.';
     section.append(warning);
   }
 
@@ -354,7 +354,7 @@ function createRepositoryCard(repository, stats) {
   if (hasError && (cachedStats || cachedTraffic || cachedClones || hasCachedReferrers(stats))) {
     const cachedNotice = document.createElement('p');
     cachedNotice.className = 'repo-cache-note';
-    cachedNotice.textContent = 'Showing last saved values.';
+    cachedNotice.textContent = 'Some data could not be refreshed. Last saved values are shown where available.';
     card.append(cachedNotice);
   }
 
@@ -465,14 +465,14 @@ async function refreshRepositoryStats() {
     if (failureCount === 0) {
       setStatus(`Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
     } else if (successCount > 0) {
-      setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed and ${failureCount} had repository, traffic, clone, or referrer errors. See repository cards for details.`, 'warning');
+      setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed, and ${failureCount} had repository, traffic, clone, or referrer errors. Last saved values are shown where available.`, 'warning');
     } else {
-      setStatus('Refresh finished with errors for all repositories. Cached values are shown where available.', 'error');
+      setStatus('Refresh finished with errors for all repositories. Last saved values are shown where available.', 'error');
     }
   } catch (error) {
     setStatus(error.message === 'No repositories configured. Open Settings and add at least one repository.'
       ? 'Setup needed: no repositories configured yet. Open Settings to add repositories.'
-      : 'Refresh could not finish. Cached values are shown where available.', 'error');
+      : 'Refresh could not finish. Last saved values are shown where available.', 'error');
   }
 
   isRefreshing = false;
@@ -499,12 +499,12 @@ async function refreshSingleRepository(repository) {
     currentLatestStats = refreshResult.latestStats;
 
     if (hasRefreshError(refreshResult.result.stats)) {
-      setStatus(`${repository} refreshed with partial errors. Cached values are shown where available.`, 'warning');
+      setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
     } else {
       setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
     }
   } catch (error) {
-    setStatus(`Could not refresh ${repository}. Cached values are shown where available.`, 'error');
+    setStatus(`Could not refresh ${repository}. Last saved values are shown where available.`, 'error');
   }
 
   refreshingRepository = '';
