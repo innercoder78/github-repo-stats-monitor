@@ -1,4 +1,4 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
+import { fetchAuthenticatedRepositories, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
@@ -11,6 +11,7 @@ const tokenInput = document.getElementById('github-token');
 const appearanceInputs = Array.from(document.querySelectorAll('input[name="appearance"]'));
 const repositoryList = document.getElementById('repository-list');
 const addRepositoryButton = document.getElementById('add-repository');
+const importRepositoriesButton = document.getElementById('import-repositories');
 const resetButton = document.getElementById('reset-settings');
 const openDashboardButton = document.getElementById('open-dashboard');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
@@ -18,13 +19,17 @@ const testConnectionButton = document.getElementById('test-connection');
 const repoMessage = document.getElementById('repo-message');
 const statusMessage = document.getElementById('status-message');
 const testMessage = document.getElementById('test-message');
+const importPanel = document.getElementById('import-panel');
+const importMessage = document.getElementById('import-message');
 const testResults = document.getElementById('test-results');
+const importResults = document.getElementById('import-results');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 const resetConfirmationDialog = document.getElementById('reset-confirmation-dialog');
 const confirmResetButton = document.getElementById('confirm-reset');
 const cancelResetButton = document.getElementById('cancel-reset');
 
 let isTestingConnection = false;
+let isImportingRepositories = false;
 
 applySavedAppearance();
 
@@ -36,6 +41,16 @@ function setMessage(element, text, type = '') {
 function clearTestResults() {
   setMessage(testMessage, '', '');
   testResults.textContent = '';
+}
+
+function clearImportResults() {
+  setMessage(importMessage, '', '');
+  importResults.textContent = '';
+  importPanel.hidden = true;
+}
+
+function showImportPanel() {
+  importPanel.hidden = false;
 }
 
 function getRepositoryInputs() {
@@ -224,6 +239,106 @@ function validateRepositories() {
 }
 
 
+
+function getVisibleRepositoryNames() {
+  return new Set(
+    getRepositoryInputs()
+      .map((input) => normalizeRepositoryName(input.value))
+      .filter((value) => value && isValidRepositoryName(value)),
+  );
+}
+
+function createImportAttribute(label, value) {
+  const item = document.createElement('span');
+  item.className = 'import-repository-attribute';
+  item.textContent = `${label}: ${value}`;
+  return item;
+}
+
+function renderImportedRepository(repository, monitoredRepositories) {
+  const card = document.createElement('article');
+  card.className = 'import-repository-card';
+
+  const title = document.createElement('h4');
+  if (repository.htmlUrl) {
+    const link = document.createElement('a');
+    link.href = repository.htmlUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = repository.fullName;
+    title.append(link);
+  } else {
+    title.textContent = repository.fullName;
+  }
+
+  const attributes = document.createElement('div');
+  attributes.className = 'import-repository-attributes';
+  attributes.append(
+    createImportAttribute('Visibility', repository.visibility || (repository.private ? 'private' : 'public')),
+    createImportAttribute('Archived', repository.archived ? 'Yes' : 'No'),
+    createImportAttribute('Fork', repository.fork ? 'Yes' : 'No'),
+  );
+
+  card.append(title, attributes);
+
+  if (monitoredRepositories.has(normalizeRepositoryName(repository.fullName))) {
+    const badge = document.createElement('p');
+    badge.className = 'import-repository-badge';
+    badge.textContent = 'Already monitored';
+    card.append(badge);
+  }
+
+  return card;
+}
+
+function renderImportedRepositories(repositories) {
+  importResults.textContent = '';
+  const monitoredRepositories = getVisibleRepositoryNames();
+  repositories.forEach((repository) => {
+    importResults.append(renderImportedRepository(repository, monitoredRepositories));
+  });
+}
+
+async function handleRepositoryImport() {
+  if (isImportingRepositories) {
+    return;
+  }
+
+  setMessage(repoMessage, '', '');
+  setMessage(statusMessage, '', '');
+  clearTestResults();
+  showImportPanel();
+  importResults.textContent = '';
+
+  const token = tokenInput.value.trim();
+  if (!token) {
+    setMessage(importMessage, 'Save or enter a GitHub token first so the extension can list repositories that token can access.', 'error');
+    return;
+  }
+
+  isImportingRepositories = true;
+  importRepositoriesButton.disabled = true;
+  importRepositoriesButton.textContent = 'Loading…';
+  setMessage(importMessage, 'Loading repositories from GitHub…', '');
+
+  try {
+    const repositories = await fetchAuthenticatedRepositories(token);
+    if (repositories.length === 0) {
+      setMessage(importMessage, 'No repositories were returned for this token.', '');
+      return;
+    }
+
+    renderImportedRepositories(repositories);
+    setMessage(importMessage, `${repositories.length} repositories returned. Review-only import preview; repositories are not saved or added yet.`, 'success');
+  } catch (error) {
+    setMessage(importMessage, getSafeErrorMessage(error), 'error');
+  } finally {
+    isImportingRepositories = false;
+    importRepositoriesButton.disabled = false;
+    importRepositoriesButton.textContent = 'Import from GitHub';
+  }
+}
+
 function getSafeErrorMessage(error) {
   const message = error instanceof Error ? error.message : 'Unable to complete this GitHub request.';
   return message || 'Unable to complete this GitHub request.';
@@ -369,6 +484,7 @@ async function resetSettings() {
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   clearTestResults();
+  clearImportResults();
 
   try {
     const resetData = await resetExtensionData();
@@ -391,6 +507,8 @@ function closeResetConfirmation(shouldReturnFocus = true) {
     resetButton.focus();
   }
 }
+
+importRepositoriesButton.addEventListener('click', handleRepositoryImport);
 
 addRepositoryButton.addEventListener('click', () => {
   addRepositoryRow('', true);
@@ -423,6 +541,7 @@ form.addEventListener('submit', async (event) => {
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   clearTestResults();
+  clearImportResults();
 
   const validation = validateRepositories();
   if (!validation.isValid) {

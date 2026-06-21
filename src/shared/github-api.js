@@ -28,6 +28,81 @@ function getGitHubHeaders(token) {
   };
 }
 
+
+function getAuthenticatedRepositoriesErrorMessage(status) {
+  if (status === 401) {
+    return 'GitHub rejected the token. Check that the token is valid before importing repositories.';
+  }
+
+  if (status === 403) {
+    return 'GitHub denied the repository import request or the API rate limit was reached.';
+  }
+
+  return getErrorMessage(status);
+}
+
+function mapAuthenticatedRepository(repository) {
+  return {
+    fullName: String(repository?.full_name || '').trim(),
+    visibility: String(repository?.visibility || '').trim(),
+    private: Boolean(repository?.private),
+    archived: Boolean(repository?.archived),
+    fork: Boolean(repository?.fork),
+    htmlUrl: String(repository?.html_url || '').trim(),
+  };
+}
+
+export async function fetchAuthenticatedRepositories(token) {
+  const safeToken = typeof token === 'string' ? token.trim() : '';
+
+  if (!safeToken) {
+    throw new Error('A GitHub token is required before importing repositories.');
+  }
+
+  const repositories = [];
+  let page = 1;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    let response;
+
+    try {
+      const url = new URL('https://api.github.com/user/repos');
+      url.searchParams.set('visibility', 'all');
+      url.searchParams.set('affiliation', 'owner,collaborator,organization_member');
+      url.searchParams.set('sort', 'full_name');
+      url.searchParams.set('direction', 'asc');
+      url.searchParams.set('per_page', '100');
+      url.searchParams.set('page', String(page));
+
+      response = await fetch(url.toString(), {
+        headers: getGitHubHeaders(safeToken),
+      });
+    } catch (error) {
+      throw new Error('Network failure while contacting GitHub repositories API. Check your connection and try again.');
+    }
+
+    if (!response.ok) {
+      throw new Error(getAuthenticatedRepositoriesErrorMessage(response.status));
+    }
+
+    const data = await response.json();
+    const pageRepositories = Array.isArray(data) ? data.map(mapAuthenticatedRepository).filter((repository) => repository.fullName) : [];
+    repositories.push(...pageRepositories);
+
+    const linkHeader = response.headers.get('Link') || '';
+    hasNextPage = /<[^>]+[?&]page=\d+[^>]*>;\s*rel="next"/.test(linkHeader) || (linkHeader.includes('rel="next"'));
+
+    if (!hasNextPage && Array.isArray(data) && data.length === 100) {
+      hasNextPage = true;
+    }
+
+    page += 1;
+  }
+
+  return repositories;
+}
+
 function getTrafficErrorMessage(status) {
   if (status === 403) {
     return 'GitHub denied traffic access. Repository traffic requires access to the repository and proper token permissions, including Administration read permission for fine-grained tokens, or the API rate limit may have been reached.';
