@@ -191,16 +191,24 @@ function createRepositoryRow(value = '', shouldFocus = false) {
   if (shouldFocus) {
     input.focus();
   }
+
+  return row;
 }
 
 function addRepositoryRow(value = '', shouldFocus = false) {
-  if (getRepositoryInputs().length >= MAX_REPOSITORIES) {
+  const normalizedValue = normalizeRepositoryName(value);
+  const hasRepositoryValue = normalizedValue && isValidRepositoryName(normalizedValue);
+  const hasReachedLimit = hasRepositoryValue
+    ? getNormalizedCurrentRepositories().length >= MAX_REPOSITORIES
+    : getRepositoryInputs().length >= MAX_REPOSITORIES;
+
+  if (hasReachedLimit) {
     setMessage(repoMessage, 'You can configure up to 20 repositories.', 'error');
     updateAddButtonState();
-    return;
+    return null;
   }
 
-  createRepositoryRow(value, shouldFocus);
+  return createRepositoryRow(value, shouldFocus);
 }
 
 function renderRepositories(repositories) {
@@ -422,7 +430,11 @@ function handleAddImportedRepositories() {
       return;
     }
 
-    createRepositoryRow(repositoryName);
+    const addedRow = addRepositoryRow(repositoryName);
+    if (!addedRow) {
+      return;
+    }
+
     currentRepositories.add(repositoryName);
     addedCount += 1;
   });
