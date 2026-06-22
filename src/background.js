@@ -21,7 +21,8 @@ const REPOSITORY_DELTA_LABELS = Object.freeze({
   repoWatchersDelta: 'Repo Watcher',
 });
 const ACCOUNT_FOLLOWERS_LABEL = 'Account Follower';
-const NOTIFICATION_TITLE = 'GitHub Repo Stats Monitor';
+const NOTIFICATION_TITLE = 'Changes Detected';
+const NOTIFICATION_PREFIX = 'GitHub Repo Stats Monitor found';
 const BADGE_BACKGROUND_COLOR = '#2f81f7';
 
 function getSafeInterval(minutes) {
@@ -99,19 +100,25 @@ function formatNotificationBody(changes) {
   const { accountDeltas, changedRepositories } = getNewPendingSummary(changes);
   const repositoryCount = changedRepositories.length;
   const hasAccountChanges = accountDeltas.length > 0;
+  const placeCount = repositoryCount + (hasAccountChanges ? 1 : 0);
+  const formattedAccountDeltas = accountDeltas.map(({ delta, label }) => formatDelta(delta, label));
 
-  if (hasAccountChanges && repositoryCount > 0) {
-    return `Account Followers and ${repositoryCount} ${pluralizeLabel('repository', repositoryCount)} changed. Open the extension for details.`;
+  if (placeCount > 1) {
+    const accountSummary = hasAccountChanges && formattedAccountDeltas.length > 0
+      ? `, including ${formattedAccountDeltas.join(' and ')}`
+      : '';
+    return `${NOTIFICATION_PREFIX} changes in ${placeCount} ${pluralizeLabel('place', placeCount)}${accountSummary}. Open the extension to review them.`;
   }
 
-  if (repositoryCount > 1) {
-    return `${repositoryCount} repositories changed. Open the extension for details.`;
+  if (hasAccountChanges) {
+    return `${NOTIFICATION_PREFIX} ${formattedAccountDeltas.join(' and ')}.`;
   }
 
-  const deltas = hasAccountChanges ? accountDeltas : changedRepositories[0]?.deltas || [];
-  const formattedDeltas = deltas.map(({ delta, label }) => formatDelta(delta, label));
+  const changedRepository = changedRepositories[0];
+  const formattedDeltas = (changedRepository?.deltas || []).map(({ delta, label }) => formatDelta(delta, label));
+  const repositoryContext = changedRepository?.repository ? ` in ${changedRepository.repository}` : '';
 
-  return `Activity changed: ${formattedDeltas.join(', ')}`;
+  return `${NOTIFICATION_PREFIX} ${formattedDeltas.join(' and ')}${repositoryContext}.`;
 }
 
 async function showActivityNotification(settings, changes, shouldCompare) {

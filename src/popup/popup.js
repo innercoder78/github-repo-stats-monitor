@@ -158,7 +158,7 @@ function addQuickSummaryActivity(valueElement, delta, label) {
 
   const note = document.createElement('span');
   note.className = 'activity-note';
-  note.append(document.createTextNode('Activity changed: '), createDeltaElement(delta, label));
+  note.append(createDeltaElement(delta, label));
   metricBody?.append(note);
 }
 
@@ -232,7 +232,7 @@ function renderQuickSummaryActivity() {
   }
 
   if (displayedAccountActivity) {
-    addQuickSummaryActivity(accountFollowers, pendingAccountDelta, 'Account Follower');
+    addQuickSummaryActivity(accountFollowers, pendingAccountDelta, 'Follower');
   }
 
   markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity);

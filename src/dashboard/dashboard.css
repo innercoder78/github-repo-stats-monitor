@@ -416,16 +416,24 @@ button:disabled {
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: 10px;
   color: var(--text);
+  display: flex;
+  flex-wrap: wrap;
   font-size: 0.84rem;
   font-weight: 800;
+  gap: 0 0.25rem;
   line-height: 1.4;
   margin: 0 0 14px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 8px 10px;
 }
 
 .activity-delta {
   font-weight: 900;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .activity-delta-positive { color: var(--success); }
