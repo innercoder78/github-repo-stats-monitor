@@ -5,6 +5,7 @@ import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
 const MAX_REPOSITORIES = 20;
+const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
 
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
@@ -61,6 +62,10 @@ function getRepositoryInputs() {
   return Array.from(repositoryList.querySelectorAll('.repository-input'));
 }
 
+function hasTokenInputValue() {
+  return Boolean(tokenInput.value.trim());
+}
+
 function getNormalizedCurrentRepositories() {
   return getRepositoryInputs()
     .map((input) => normalizeRepositoryName(input.value))
@@ -86,8 +91,13 @@ function updateRepositoryControls() {
     moveDownButton.disabled = index === rows.length - 1;
   });
 
-  addRepositoryButton.disabled = rows.length >= MAX_REPOSITORIES;
-  addRepositoryButton.title = rows.length >= MAX_REPOSITORIES ? 'Maximum of 20 repositories reached.' : '';
+  const hasReachedLimit = rows.length >= MAX_REPOSITORIES;
+  const hasToken = hasTokenInputValue();
+
+  addRepositoryButton.disabled = hasReachedLimit || !hasToken;
+  addRepositoryButton.title = hasReachedLimit
+    ? 'Maximum of 20 repositories reached.'
+    : hasToken ? '' : MISSING_TOKEN_MESSAGE;
 }
 
 function updateAddButtonState() {
@@ -466,7 +476,7 @@ async function handleRepositoryImport() {
 
   const token = tokenInput.value.trim();
   if (!token) {
-    setMessage(importMessage, 'Save or enter a GitHub token first so the extension can list repositories that token can access.', 'error');
+    setMessage(importMessage, MISSING_TOKEN_MESSAGE, 'error');
     return;
   }
 
@@ -666,6 +676,7 @@ function closeResetConfirmation(shouldReturnFocus = true) {
 
 importRepositoriesButton.addEventListener('click', handleRepositoryImport);
 addImportedRepositoriesButton.addEventListener('click', handleAddImportedRepositories);
+tokenInput.addEventListener('input', updateAddButtonState);
 
 addRepositoryButton.addEventListener('click', () => {
   addRepositoryRow('', true);
@@ -704,6 +715,11 @@ form.addEventListener('submit', async (event) => {
   const validation = validateRepositories();
   if (!validation.isValid) {
     setMessage(repoMessage, validation.message, 'error');
+    return;
+  }
+
+  if (validation.repositories.length > 0 && !hasTokenInputValue()) {
+    setMessage(statusMessage, MISSING_TOKEN_MESSAGE, 'error');
     return;
   }
 
