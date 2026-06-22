@@ -1,5 +1,6 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { normalizeAccountStats, saveAccountStats, saveLatestStats } from './storage.js';
+import { getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, savePendingActivity } from './storage.js';
+import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
 
 function hasCachedTraffic(stats) {
   return Boolean(stats?.trafficFetchedAt)
@@ -52,6 +53,33 @@ async function refreshAccountStats(githubToken, previousAccountStats, fetchedAt)
   } catch (error) {
     return { accountStats: stats, error: error.message };
   }
+}
+
+async function detectRefreshActivity(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, fetchedAt, repositories, options) {
+  const existingPendingActivity = await getPendingActivity();
+  const nextPendingActivity = createEmptyPendingActivity(existingPendingActivity);
+  const newPendingChanges = createEmptyPendingChanges();
+  const pendingChanged = detectPendingActivityFromStats(
+    settings,
+    previousLatestStats,
+    nextLatestStats,
+    previousAccountStats,
+    nextAccountStats,
+    nextPendingActivity,
+    fetchedAt,
+    repositories,
+    newPendingChanges,
+  );
+
+  if (!pendingChanged) {
+    return existingPendingActivity;
+  }
+
+  if (settings.notifications?.badgeEnabled && !options.skipBadgeActivity) {
+    mergeBadgeActivity(nextPendingActivity, newPendingChanges, fetchedAt);
+  }
+
+  return savePendingActivity(nextPendingActivity);
 }
 
 async function refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt) {
@@ -132,6 +160,19 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     nextLatestStats[repository] = stats;
   });
 
+  const pendingActivity = options.detectActivity
+    ? await detectRefreshActivity(
+      settings,
+      latestStats,
+      nextLatestStats,
+      previousAccountStats,
+      accountResult.accountStats,
+      fetchedAt,
+      repositories,
+      options,
+    )
+    : null;
+
   const savedLatestStats = await saveLatestStats(nextLatestStats);
 
   return {
@@ -140,10 +181,11 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     latestStats: savedLatestStats,
     accountStats: accountResult.accountStats,
     accountError: accountResult.error,
+    pendingActivity,
   };
 }
 
-export async function refreshRepositoryStatsCache(settings, currentLatestStats, repository) {
+export async function refreshRepositoryStatsCache(settings, currentLatestStats, repository, options = {}) {
   const { githubToken, repositories } = getRefreshInputs(settings);
 
   if (!repositories.includes(repository)) {
@@ -155,6 +197,19 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
   const previousStats = latestStats[repository] || { repository };
   const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
   const nextLatestStats = { ...latestStats, [repository]: result.stats };
+  const pendingActivity = options.detectActivity
+    ? await detectRefreshActivity(
+      settings,
+      latestStats,
+      nextLatestStats,
+      undefined,
+      undefined,
+      fetchedAt,
+      [repository],
+      options,
+    )
+    : null;
+
   const savedLatestStats = await saveLatestStats(nextLatestStats);
 
   return {
@@ -162,5 +217,6 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
     repository,
     result,
     latestStats: savedLatestStats,
+    pendingActivity,
   };
 }

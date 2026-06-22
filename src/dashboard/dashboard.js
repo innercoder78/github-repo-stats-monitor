@@ -29,7 +29,12 @@ let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
 let refreshingRepository = '';
-let currentPendingActivity = { account: {}, repositories: {}, updatedAt: '' };
+let currentPendingActivity = {
+  account: {},
+  repositories: {},
+  badgeActivity: { account: false, repositories: {}, updatedAt: '' },
+  updatedAt: '',
+};
 
 applySavedAppearance();
 
@@ -539,12 +544,17 @@ async function refreshRepositoryStats() {
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
       accountStats: currentAccountStats,
+      detectActivity: true,
+      skipBadgeActivity: true,
       onProgress(progress) {
         setStatus(formatRefreshProgressMessage(progress), 'loading');
       },
     });
     currentLatestStats = refreshResult.latestStats;
     currentAccountStats = refreshResult.accountStats;
+    if (refreshResult.pendingActivity) {
+      currentPendingActivity = refreshResult.pendingActivity;
+    }
 
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
     const successCount = refreshResult.results.length - failureCount;
@@ -582,8 +592,14 @@ async function refreshSingleRepository(repository) {
   setStatus(`Refreshing ${repository}…`, 'loading');
 
   try {
-    const refreshResult = await refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository);
+    const refreshResult = await refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
+      detectActivity: true,
+      skipBadgeActivity: true,
+    });
     currentLatestStats = refreshResult.latestStats;
+    if (refreshResult.pendingActivity) {
+      currentPendingActivity = refreshResult.pendingActivity;
+    }
 
     if (hasRefreshError(refreshResult.result.stats)) {
       setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');

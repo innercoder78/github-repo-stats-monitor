@@ -315,12 +315,17 @@ async function refreshStats() {
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
       accountStats: currentAccountStats,
+      detectActivity: true,
+      skipBadgeActivity: true,
       onProgress(progress) {
         popupStatus.textContent = formatRefreshProgressMessage(progress);
       },
     });
     currentLatestStats = refreshResult.latestStats;
     currentAccountStats = refreshResult.accountStats;
+    if (refreshResult.pendingActivity) {
+      currentPendingActivity = refreshResult.pendingActivity;
+    }
     renderStatsSummary(currentSettings, currentLatestStats);
 
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
