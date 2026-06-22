@@ -253,14 +253,20 @@ html[data-appearance="dark"] .confirmation-dialog::backdrop {
 .manual-add-button {
   align-items: center;
   display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
   justify-content: center;
   line-height: 1.2;
 }
 
+.manual-add-button-text {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
 .manual-add-button-note {
-  font-size: 0.85rem;
+  font-size: 1rem;
+  padding-left: 1.05em;
 }
 
 .import-panel {
