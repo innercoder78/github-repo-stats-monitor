@@ -31,7 +31,7 @@ Additional dashboard details:
 * Quick Summary popup from the Chrome toolbar that reads saved values
 * Settings page for your GitHub token, repositories, appearance, connection test, and reset
 * Manual repository entry as `owner/repo` or a GitHub repository URL
-* Import from GitHub for repositories the saved token can access
+* Import from GitHub for repositories the token can access
 * Current maximum of 20 configured repositories
 * Repository reordering in Settings; Settings order controls Dashboard order
 * Light Mode and Dark Mode
