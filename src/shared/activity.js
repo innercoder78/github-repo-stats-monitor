@@ -30,6 +30,14 @@ export function getDeltaClass(delta) {
   return Number(delta) >= 0 ? 'activity-delta-positive' : 'activity-delta-negative';
 }
 
+function hasTrackedStatBaseline(stats, key) {
+  return stats && Object.prototype.hasOwnProperty.call(stats, key) && Number.isFinite(Number(stats[key]));
+}
+
+function hasAccountFollowersBaseline(accountStats) {
+  return Boolean(accountStats?.fetchedAt) && hasTrackedStatBaseline(accountStats, 'followers');
+}
+
 export function getRepositoryActivityDeltas(activity) {
   if (!activity || typeof activity !== 'object') {
     return [];
@@ -137,7 +145,7 @@ export function detectPendingActivityFromStats(settings, previousLatestStats, ne
     const previousFollowers = Number(previousAccountStats?.followers);
     const nextFollowers = Number(nextAccountStats?.followers);
 
-    if (Number.isFinite(previousFollowers) && Number.isFinite(nextFollowers)) {
+    if (hasAccountFollowersBaseline(previousAccountStats) && Number.isFinite(nextFollowers)) {
       changed = recordAccountActivityDelta(pendingActivity, nextFollowers - previousFollowers, newPendingChanges) || changed;
     }
   }
@@ -154,7 +162,7 @@ export function detectPendingActivityFromStats(settings, previousLatestStats, ne
       const previousValue = Number(previousStats?.[previousKey]);
       const nextValue = Number(nextStats?.[currentKey]);
 
-      if (Number.isFinite(previousValue) && Number.isFinite(nextValue)) {
+      if (hasTrackedStatBaseline(previousStats, previousKey) && Number.isFinite(nextValue)) {
         changed = recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, nextValue - previousValue, label, newPendingChanges) || changed;
       }
     });

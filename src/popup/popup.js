@@ -1,5 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
 import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
+import { closeExtensionPage } from '../shared/close-page.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
@@ -63,9 +64,7 @@ document.getElementById('open-settings').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
-document.getElementById('close-popup').addEventListener('click', () => {
-  window.close();
-});
+document.getElementById('close-popup').addEventListener('click', closeExtensionPage);
 
 refreshButton.addEventListener('click', refreshStats);
 

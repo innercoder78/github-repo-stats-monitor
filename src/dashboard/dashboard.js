@@ -2,6 +2,7 @@ import { getAccountStats, getLatestStats, getPendingActivity, getSettings, saveP
 import { cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
 import { refreshRepositoryStatsCache, refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
+import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
@@ -14,6 +15,7 @@ const summaryCard = document.getElementById('summary-card');
 const statusLine = document.getElementById('status-line');
 const refreshButton = document.getElementById('refresh-now');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
+const closeDashboardButton = document.getElementById('close-dashboard');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 const summaryValues = {
   views: document.getElementById('total-views'),
@@ -641,5 +643,6 @@ document.getElementById('open-settings').addEventListener('click', openSettings)
 document.getElementById('empty-open-settings').addEventListener('click', openSettings);
 refreshButton.addEventListener('click', refreshRepositoryStats);
 openQuickSummaryButton.addEventListener('click', () => openQuickSummary(quickSummaryMessage));
+closeDashboardButton.addEventListener('click', closeExtensionPage);
 
 initializeDashboard();

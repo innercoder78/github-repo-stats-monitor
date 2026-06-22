@@ -133,3 +133,19 @@ button.secondary:hover { background: var(--button-secondary-hover); }
   display: block;
   font-size: 1.3rem;
 }
+
+button.extension-page-close {
+  appearance: none;
+  background-color: var(--popup-close-bg);
+  border: 1px solid var(--popup-close-border);
+  color: var(--popup-close-text);
+  font-size: 0.8rem;
+  min-width: 66px;
+  padding: 6px 10px;
+  width: auto;
+}
+
+button.extension-page-close:hover { background-color: var(--popup-close-hover); }
+
+.activity-note .activity-delta-positive { color: var(--success); }
+.activity-note .activity-delta-negative { color: var(--error); }
