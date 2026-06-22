@@ -249,7 +249,7 @@ function recordAccountDelta(pendingActivity, delta, newPendingChanges) {
     pendingActivity.account = {
       ...pendingActivity.account,
       followersDelta,
-      quickSummaryShown: Boolean(pendingActivity.account?.quickSummaryShown),
+      quickSummaryShown: false,
     };
   }
 
@@ -269,8 +269,8 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, lab
   const repositoryActivity = {
     ...existingActivity,
     repository,
-    quickSummaryShown: Boolean(existingActivity.quickSummaryShown),
-    dashboardShown: Boolean(existingActivity.dashboardShown),
+    quickSummaryShown: false,
+    dashboardShown: false,
   };
   const nextDelta = applyDelta(repositoryActivity[deltaKey], delta);
 
