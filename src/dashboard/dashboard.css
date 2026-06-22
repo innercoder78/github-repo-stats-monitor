@@ -438,3 +438,9 @@ button:disabled {
 
 .activity-delta-positive { color: var(--success); }
 .activity-delta-negative { color: var(--error); }
+
+.dashboard-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}

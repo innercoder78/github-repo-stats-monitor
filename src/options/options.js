@@ -1,6 +1,7 @@
 import { fetchAuthenticatedRepositories, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
+import { closeExtensionPage } from '../shared/close-page.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
@@ -26,6 +27,7 @@ const importRepositoriesButton = document.getElementById('import-repositories');
 const resetButton = document.getElementById('reset-settings');
 const openDashboardButton = document.getElementById('open-dashboard');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
+const closeSettingsButton = document.getElementById('close-settings');
 const testConnectionButton = document.getElementById('test-connection');
 const repoMessage = document.getElementById('repo-message');
 const statusMessage = document.getElementById('status-message');
@@ -769,6 +771,7 @@ openDashboardButton.addEventListener('click', () => {
 });
 testConnectionButton.addEventListener('click', handleConnectionTest);
 openQuickSummaryButton.addEventListener('click', () => openQuickSummary(quickSummaryMessage));
+closeSettingsButton.addEventListener('click', closeExtensionPage);
 notificationBackgroundInput.addEventListener('change', () => {
   updateNotificationControls();
   setMessage(notificationMessage, '', '');
