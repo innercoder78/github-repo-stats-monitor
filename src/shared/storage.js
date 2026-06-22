@@ -316,16 +316,16 @@ function normalizeOptionalNumber(value) {
 }
 
 function normalizePendingAccountActivity(activity) {
-  const normalizedActivity = {};
   const followersDelta = normalizeOptionalNumber(activity?.followersDelta);
 
-  if (followersDelta) {
-    normalizedActivity.followersDelta = followersDelta;
+  if (!followersDelta) {
+    return {};
   }
 
-  normalizedActivity.quickSummaryShown = Boolean(activity?.quickSummaryShown);
-
-  return normalizedActivity;
+  return {
+    followersDelta,
+    quickSummaryShown: Boolean(activity?.quickSummaryShown),
+  };
 }
 
 function normalizePendingRepositoryActivity(repository, activity) {

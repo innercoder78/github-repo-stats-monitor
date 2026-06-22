@@ -107,19 +107,18 @@ function recordAccountDelta(pendingActivity, delta) {
     return false;
   }
 
-  const accountActivity = {
-    ...pendingActivity.account,
-    quickSummaryShown: Boolean(pendingActivity.account?.quickSummaryShown),
-  };
-  const followersDelta = applyDelta(accountActivity.followersDelta, delta);
+  const followersDelta = applyDelta(pendingActivity.account?.followersDelta, delta);
 
   if (followersDelta === undefined) {
-    delete accountActivity.followersDelta;
+    pendingActivity.account = {};
   } else {
-    accountActivity.followersDelta = followersDelta;
+    pendingActivity.account = {
+      ...pendingActivity.account,
+      followersDelta,
+      quickSummaryShown: Boolean(pendingActivity.account?.quickSummaryShown),
+    };
   }
 
-  pendingActivity.account = accountActivity;
   return true;
 }
 
@@ -169,7 +168,7 @@ function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   });
 }
 
-async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt) {
+async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare) {
   if (!settings.notifications.trackedStats.accountFollowers) {
     return false;
   }
@@ -180,7 +179,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     const previousFollowers = baselines.account.followers;
     let changed = false;
 
-    if (Number.isFinite(previousFollowers)) {
+    if (shouldCompare && Number.isFinite(previousFollowers)) {
       changed = recordAccountDelta(pendingActivity, followers - previousFollowers);
     }
 
@@ -198,7 +197,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
   }
 }
 
-async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt) {
+async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare) {
   if (!hasRepositoryStatEnabled(settings.notifications.trackedStats)) {
     return false;
   }
@@ -217,7 +216,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
       const currentValue = Number(metadata[currentKey]) || 0;
       const previousValue = previousBaseline[baselineKey];
 
-      if (Number.isFinite(previousValue)) {
+      if (shouldCompare && Number.isFinite(previousValue)) {
         changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue) || changed;
       }
 
@@ -258,13 +257,14 @@ async function runBackgroundCheck() {
     repositories: { ...existingBaselines.repositories },
   };
   const pendingActivity = createEmptyPendingActivity(existingPendingActivity);
+  const shouldCompare = Boolean(baselines.initialized);
   let pendingChanged = false;
 
   cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
-  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt) || pendingChanged;
+  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare) || pendingChanged;
 
   for (const repository of settings.repositories) {
-    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt) || pendingChanged;
+    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare) || pendingChanged;
   }
 
   baselines.initialized = true;
@@ -276,6 +276,93 @@ async function runBackgroundCheck() {
   }
 
   await savePendingActivity(pendingActivity);
+}
+
+
+function wasBackgroundChecksEnabled(change) {
+  return Boolean(change?.oldValue?.backgroundChecksEnabled) === false
+    && Boolean(change?.newValue?.backgroundChecksEnabled) === true;
+}
+
+function getNewlyEnabledTrackedStats(change) {
+  const oldStats = change?.oldValue?.trackedStats || {};
+  const newStats = change?.newValue?.trackedStats || {};
+
+  return {
+    stars: !oldStats.stars && Boolean(newStats.stars),
+    forks: !oldStats.forks && Boolean(newStats.forks),
+    repoWatchers: !oldStats.repoWatchers && Boolean(newStats.repoWatchers),
+    accountFollowers: !oldStats.accountFollowers && Boolean(newStats.accountFollowers),
+  };
+}
+
+async function resetBaselinesForNextAutomaticCheck() {
+  try {
+    const baselines = await getNotificationBaselines();
+    await saveNotificationBaselines({
+      ...baselines,
+      account: {},
+      repositories: {},
+      initialized: false,
+      updatedAt: '',
+    });
+  } catch (error) {
+    console.warn('Unable to reset background check baselines.', error);
+  }
+}
+
+async function resetNewlyEnabledStatBaselines(newlyEnabledStats) {
+  if (!Object.values(newlyEnabledStats).some(Boolean)) {
+    return;
+  }
+
+  try {
+    const baselines = await getNotificationBaselines();
+    const repositories = { ...baselines.repositories };
+    const account = { ...baselines.account };
+
+    if (newlyEnabledStats.accountFollowers) {
+      delete account.followers;
+      delete account.login;
+      delete account.updatedAt;
+    }
+
+    Object.keys(repositories).forEach((repository) => {
+      const baseline = { ...repositories[repository] };
+
+      if (newlyEnabledStats.stars) {
+        delete baseline.stars;
+      }
+
+      if (newlyEnabledStats.forks) {
+        delete baseline.forks;
+      }
+
+      if (newlyEnabledStats.repoWatchers) {
+        delete baseline.repoWatchers;
+      }
+
+      repositories[repository] = baseline;
+    });
+
+    await saveNotificationBaselines({
+      ...baselines,
+      account,
+      repositories,
+    });
+  } catch (error) {
+    console.warn('Unable to reset newly enabled stat baselines.', error);
+  }
+}
+
+async function handleNotificationSettingsChange(change) {
+  if (wasBackgroundChecksEnabled(change)) {
+    await resetBaselinesForNextAutomaticCheck();
+  } else {
+    await resetNewlyEnabledStatBaselines(getNewlyEnabledTrackedStats(change));
+  }
+
+  await scheduleBackgroundCheckAlarm();
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -291,7 +378,12 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     return;
   }
 
-  if (changes.notifications || changes.githubToken || changes.repositories) {
+  if (changes.notifications) {
+    handleNotificationSettingsChange(changes.notifications);
+    return;
+  }
+
+  if (changes.githubToken || changes.repositories) {
     scheduleBackgroundCheckAlarm();
   }
 });
