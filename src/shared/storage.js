@@ -28,6 +28,19 @@ const DEFAULT_STATS = Object.freeze({
   latestStats: {},
   accountStats: DEFAULT_ACCOUNT_STATS,
 });
+const DEFAULT_PENDING_ACTIVITY = Object.freeze({
+  account: Object.freeze({}),
+  repositories: Object.freeze({}),
+  updatedAt: '',
+});
+
+const DEFAULT_NOTIFICATION_BASELINES = Object.freeze({
+  account: Object.freeze({}),
+  repositories: Object.freeze({}),
+  initialized: false,
+  updatedAt: '',
+});
+
 
 function getChromeStorage() {
   return chrome.storage.local;
@@ -293,6 +306,195 @@ export function saveAccountStats(accountStats) {
       }
 
       resolve(nextAccountStats);
+    });
+  });
+}
+
+function normalizeOptionalNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function normalizePendingAccountActivity(activity) {
+  const followersDelta = normalizeOptionalNumber(activity?.followersDelta);
+
+  if (!followersDelta) {
+    return {};
+  }
+
+  return {
+    followersDelta,
+    quickSummaryShown: Boolean(activity?.quickSummaryShown),
+  };
+}
+
+function normalizePendingRepositoryActivity(repository, activity) {
+  const normalizedRepository = normalizeRepositoryName(repository || activity?.repository);
+
+  if (!isValidRepositoryName(normalizedRepository)) {
+    return null;
+  }
+
+  const normalizedActivity = {
+    repository: normalizedRepository,
+    quickSummaryShown: Boolean(activity?.quickSummaryShown),
+    dashboardShown: Boolean(activity?.dashboardShown),
+  };
+
+  ['starsDelta', 'forksDelta', 'repoWatchersDelta'].forEach((key) => {
+    const delta = normalizeOptionalNumber(activity?.[key]);
+
+    if (delta) {
+      normalizedActivity[key] = delta;
+    }
+  });
+
+  const hasDelta = ['starsDelta', 'forksDelta', 'repoWatchersDelta'].some((key) => Number(normalizedActivity[key]) !== 0);
+  return hasDelta ? normalizedActivity : null;
+}
+
+export function normalizePendingActivity(activity) {
+  const pendingActivity = activity && typeof activity === 'object' ? activity : {};
+  const repositories = {};
+  const storedRepositories = pendingActivity.repositories && typeof pendingActivity.repositories === 'object'
+    ? pendingActivity.repositories
+    : {};
+
+  Object.entries(storedRepositories).forEach(([repository, repositoryActivity]) => {
+    const normalizedActivity = normalizePendingRepositoryActivity(repository, repositoryActivity);
+
+    if (normalizedActivity) {
+      repositories[normalizedActivity.repository] = normalizedActivity;
+    }
+  });
+
+  return {
+    account: normalizePendingAccountActivity(pendingActivity.account),
+    repositories,
+    updatedAt: typeof pendingActivity.updatedAt === 'string' ? pendingActivity.updatedAt : '',
+  };
+}
+
+function normalizeBaselineRepository(repository, baseline) {
+  const normalizedRepository = normalizeRepositoryName(repository || baseline?.repository);
+
+  if (!isValidRepositoryName(normalizedRepository)) {
+    return null;
+  }
+
+  const normalizedBaseline = {
+    repository: normalizedRepository,
+    updatedAt: typeof baseline?.updatedAt === 'string' ? baseline.updatedAt : '',
+  };
+
+  ['stars', 'forks', 'repoWatchers'].forEach((key) => {
+    const count = normalizeOptionalNumber(baseline?.[key]);
+
+    if (count !== undefined && count >= 0) {
+      normalizedBaseline[key] = count;
+    }
+  });
+
+  return normalizedBaseline;
+}
+
+export function normalizeNotificationBaselines(baselines) {
+  const notificationBaselines = baselines && typeof baselines === 'object' ? baselines : {};
+  const account = {};
+  const followers = normalizeOptionalNumber(notificationBaselines.account?.followers);
+  const repositories = {};
+  const storedRepositories = notificationBaselines.repositories && typeof notificationBaselines.repositories === 'object'
+    ? notificationBaselines.repositories
+    : {};
+
+  if (followers !== undefined && followers >= 0) {
+    account.followers = followers;
+  }
+
+  if (typeof notificationBaselines.account?.login === 'string') {
+    account.login = notificationBaselines.account.login;
+  }
+
+  if (typeof notificationBaselines.account?.updatedAt === 'string') {
+    account.updatedAt = notificationBaselines.account.updatedAt;
+  }
+
+  Object.entries(storedRepositories).forEach(([repository, baseline]) => {
+    const normalizedBaseline = normalizeBaselineRepository(repository, baseline);
+
+    if (normalizedBaseline) {
+      repositories[normalizedBaseline.repository] = normalizedBaseline;
+    }
+  });
+
+  return {
+    account,
+    repositories,
+    initialized: Boolean(notificationBaselines.initialized),
+    updatedAt: typeof notificationBaselines.updatedAt === 'string' ? notificationBaselines.updatedAt : '',
+  };
+}
+
+export function getPendingActivity() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get({ pendingActivity: DEFAULT_PENDING_ACTIVITY }, (storedData) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizePendingActivity(storedData.pendingActivity));
+    });
+  });
+}
+
+export function savePendingActivity(pendingActivity) {
+  const nextPendingActivity = normalizePendingActivity(pendingActivity);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ pendingActivity: nextPendingActivity }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(nextPendingActivity);
+    });
+  });
+}
+
+export function getNotificationBaselines() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get({ notificationBaselines: DEFAULT_NOTIFICATION_BASELINES }, (storedData) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizeNotificationBaselines(storedData.notificationBaselines));
+    });
+  });
+}
+
+export function saveNotificationBaselines(notificationBaselines) {
+  const nextNotificationBaselines = normalizeNotificationBaselines(notificationBaselines);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ notificationBaselines: nextNotificationBaselines }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(nextNotificationBaselines);
     });
   });
 }

@@ -20,8 +20,13 @@
     },
     "options_page": "src/options/options.html",
     "permissions": [
-        "storage"
+        "storage",
+        "alarms"
     ],
+    "background": {
+        "service_worker": "src/background.js",
+        "type": "module"
+    },
     "host_permissions": [
         "https://api.github.com/*"
     ]
