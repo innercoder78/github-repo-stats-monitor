@@ -221,17 +221,23 @@ button:disabled {
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: 10px;
   color: var(--text);
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
   font-size: 0.72rem;
   font-weight: 800;
   line-height: 1.35;
   margin-top: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 6px 8px;
 }
 
 .activity-delta {
   font-weight: 900;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .activity-delta-positive { color: var(--success); }
