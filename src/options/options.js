@@ -10,6 +10,16 @@ const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can mo
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
 const appearanceInputs = Array.from(document.querySelectorAll('input[name="appearance"]'));
+const notificationBackgroundInput = document.getElementById('notification-background-checks');
+const notificationStatInputs = {
+  stars: document.getElementById('notification-stars'),
+  forks: document.getElementById('notification-forks'),
+  repoWatchers: document.getElementById('notification-repo-watchers'),
+  accountFollowers: document.getElementById('notification-account-followers'),
+};
+const notificationSystemInput = document.getElementById('notification-system');
+const notificationBadgeInput = document.getElementById('notification-badge');
+const notificationIntervalSelect = document.getElementById('notification-interval');
 const repositoryList = document.getElementById('repository-list');
 const addRepositoryButton = document.getElementById('add-repository');
 const importRepositoriesButton = document.getElementById('import-repositories');
@@ -26,6 +36,7 @@ const testResults = document.getElementById('test-results');
 const importResults = document.getElementById('import-results');
 const addImportedRepositoriesButton = document.getElementById('add-imported-repositories');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
+const notificationMessage = document.getElementById('notification-message');
 const resetConfirmationDialog = document.getElementById('reset-confirmation-dialog');
 const confirmResetButton = document.getElementById('confirm-reset');
 const cancelResetButton = document.getElementById('cancel-reset');
@@ -39,6 +50,49 @@ applySavedAppearance();
 function setMessage(element, text, type = '') {
   element.textContent = text;
   element.className = `message ${type}`.trim();
+}
+
+
+function getNotificationSettingsFromForm() {
+  return {
+    backgroundChecksEnabled: notificationBackgroundInput.checked,
+    trackedStats: {
+      stars: notificationStatInputs.stars.checked,
+      forks: notificationStatInputs.forks.checked,
+      repoWatchers: notificationStatInputs.repoWatchers.checked,
+      accountFollowers: notificationStatInputs.accountFollowers.checked,
+    },
+    systemNotificationsEnabled: notificationSystemInput.checked,
+    badgeEnabled: notificationBadgeInput.checked,
+    checkIntervalMinutes: Number(notificationIntervalSelect.value),
+  };
+}
+
+function updateNotificationControls() {
+  const isEnabled = notificationBackgroundInput.checked;
+  Object.values(notificationStatInputs).forEach((input) => {
+    input.disabled = !isEnabled;
+  });
+  notificationSystemInput.disabled = !isEnabled;
+  notificationBadgeInput.disabled = !isEnabled;
+  notificationIntervalSelect.disabled = !isEnabled;
+}
+
+function validateNotifications() {
+  if (!notificationBackgroundInput.checked) {
+    return { isValid: true };
+  }
+
+  const hasStat = Object.values(notificationStatInputs).some((input) => input.checked);
+  if (!hasStat) {
+    return { isValid: false, message: 'Choose at least one stat to check.' };
+  }
+
+  if (!notificationSystemInput.checked && !notificationBadgeInput.checked) {
+    return { isValid: false, message: 'Choose at least one alert method to receive updates.' };
+  }
+
+  return { isValid: true };
 }
 
 function clearTestResults() {
@@ -634,6 +688,16 @@ function renderSettings(settings) {
     input.checked = input.value === settings.appearance;
   });
   applyAppearance(settings.appearance);
+  notificationBackgroundInput.checked = settings.notifications.backgroundChecksEnabled;
+  notificationStatInputs.stars.checked = settings.notifications.trackedStats.stars;
+  notificationStatInputs.forks.checked = settings.notifications.trackedStats.forks;
+  notificationStatInputs.repoWatchers.checked = settings.notifications.trackedStats.repoWatchers;
+  notificationStatInputs.accountFollowers.checked = settings.notifications.trackedStats.accountFollowers;
+  notificationSystemInput.checked = settings.notifications.systemNotificationsEnabled;
+  notificationBadgeInput.checked = settings.notifications.badgeEnabled;
+  notificationIntervalSelect.value = String(settings.notifications.checkIntervalMinutes);
+  updateNotificationControls();
+  setMessage(notificationMessage, '', '');
   renderRepositories(settings.repositories);
 }
 
@@ -649,6 +713,7 @@ async function loadSettings() {
 async function resetSettings() {
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
+  setMessage(notificationMessage, '', '');
   clearTestResults();
   clearImportResults();
 
@@ -704,13 +769,27 @@ openDashboardButton.addEventListener('click', () => {
 });
 testConnectionButton.addEventListener('click', handleConnectionTest);
 openQuickSummaryButton.addEventListener('click', () => openQuickSummary(quickSummaryMessage));
+notificationBackgroundInput.addEventListener('change', () => {
+  updateNotificationControls();
+  setMessage(notificationMessage, '', '');
+});
+[...Object.values(notificationStatInputs), notificationSystemInput, notificationBadgeInput].forEach((input) => {
+  input.addEventListener('change', () => setMessage(notificationMessage, '', ''));
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
+  setMessage(notificationMessage, '', '');
   clearTestResults();
   clearImportResults();
+
+  const notificationValidation = validateNotifications();
+  if (!notificationValidation.isValid) {
+    setMessage(notificationMessage, notificationValidation.message, 'error');
+    return;
+  }
 
   const validation = validateRepositories();
   if (!validation.isValid) {
@@ -729,9 +808,10 @@ form.addEventListener('submit', async (event) => {
       githubToken: tokenInput.value,
       repositories: validation.repositories,
       appearance: selectedAppearance,
+      notifications: getNotificationSettingsFromForm(),
     });
     applyAppearance(savedSettings.appearance);
-    renderRepositories(savedSettings.repositories);
+    renderSettings(savedSettings);
     setMessage(statusMessage, 'Settings saved successfully.', 'success');
   } catch (error) {
     setMessage(statusMessage, 'Unable to save settings. Please try again.', 'error');

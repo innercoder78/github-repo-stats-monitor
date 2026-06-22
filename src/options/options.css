@@ -26,7 +26,8 @@ label {
   margin-bottom: 14px;
 }
 
-input {
+input,
+select {
   background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -35,7 +36,9 @@ input {
   padding: 11px 12px;
 }
 
-input[type="radio"]:focus-visible {
+input[type="radio"]:focus-visible,
+input[type="checkbox"]:focus-visible,
+select:focus-visible {
   outline-offset: 4px;
 }
 
@@ -56,7 +59,8 @@ input[type="radio"]:focus-visible {
   padding: 0;
 }
 
-.radio-option {
+.radio-option,
+.checkbox-option {
   align-items: center;
   background: var(--surface-muted);
   border: 1px solid var(--border);
@@ -68,14 +72,53 @@ input[type="radio"]:focus-visible {
   padding: 12px;
 }
 
-.radio-option:focus-within {
+.radio-option:focus-within,
+.checkbox-option:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
-.radio-option input {
+.radio-option input,
+.checkbox-option input {
   accent-color: var(--accent);
   margin: 0;
+}
+
+
+.notification-options {
+  border: 0;
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.notification-options legend {
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 10px;
+  padding: 0;
+}
+
+.notification-dependent-group { margin-top: 18px; }
+
+.notification-interval-label { margin-top: 18px; }
+
+.checkbox-option { color: var(--text); }
+
+.checkbox-option input { flex: 0 0 auto; }
+
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-repeat: no-repeat;
+  background-size: 6px 6px, 6px 6px;
+  padding-right: 36px;
 }
 
 .repository-list {

@@ -51,6 +51,62 @@
           </div>
         </section>
 
+
+        <section class="card settings-card" aria-labelledby="notifications-title">
+          <h2 id="notifications-title">Notifications</h2>
+          <fieldset class="notification-options">
+            <legend class="sr-only">Notifications</legend>
+            <label class="checkbox-option" for="notification-background-checks">
+              <input id="notification-background-checks" name="notification-background-checks" type="checkbox">
+              Check for changes in the background
+            </label>
+          </fieldset>
+
+          <fieldset class="notification-options notification-dependent-group">
+            <legend>Alert me about:</legend>
+            <label class="checkbox-option" for="notification-stars">
+              <input id="notification-stars" name="notification-stars" type="checkbox">
+              Stars
+            </label>
+            <label class="checkbox-option" for="notification-forks">
+              <input id="notification-forks" name="notification-forks" type="checkbox">
+              Forks
+            </label>
+            <label class="checkbox-option" for="notification-repo-watchers">
+              <input id="notification-repo-watchers" name="notification-repo-watchers" type="checkbox">
+              Repo Watchers
+            </label>
+            <label class="checkbox-option" for="notification-account-followers">
+              <input id="notification-account-followers" name="notification-account-followers" type="checkbox">
+              Account Followers
+            </label>
+          </fieldset>
+
+          <fieldset class="notification-options notification-dependent-group">
+            <legend>Send alerts by:</legend>
+            <label class="checkbox-option" for="notification-system">
+              <input id="notification-system" name="notification-system" type="checkbox">
+              System notification
+            </label>
+            <label class="checkbox-option" for="notification-badge">
+              <input id="notification-badge" name="notification-badge" type="checkbox">
+              Badge number on the extension icon
+            </label>
+          </fieldset>
+
+          <label class="notification-interval-label" for="notification-interval">
+            Check every:
+            <select id="notification-interval" name="notification-interval">
+              <option value="5">5 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="120">2 hours</option>
+            </select>
+          </label>
+          <p id="notification-message" class="message" role="alert" aria-live="polite"></p>
+        </section>
+
         <section class="card settings-card" aria-labelledby="appearance-title">
           <h2 id="appearance-title">Appearance</h2>
           <p class="muted">Choose how extension pages should look.</p>
