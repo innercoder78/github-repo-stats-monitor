@@ -11,10 +11,18 @@ import {
 const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const REPOSITORY_STATS = Object.freeze([
-  { setting: 'stars', baselineKey: 'stars', deltaKey: 'starsDelta', currentKey: 'stars' },
-  { setting: 'forks', baselineKey: 'forks', deltaKey: 'forksDelta', currentKey: 'forks' },
-  { setting: 'repoWatchers', baselineKey: 'repoWatchers', deltaKey: 'repoWatchersDelta', currentKey: 'subscribers' },
+  { setting: 'stars', baselineKey: 'stars', deltaKey: 'starsDelta', currentKey: 'stars', label: 'Star' },
+  { setting: 'forks', baselineKey: 'forks', deltaKey: 'forksDelta', currentKey: 'forks', label: 'Fork' },
+  { setting: 'repoWatchers', baselineKey: 'repoWatchers', deltaKey: 'repoWatchersDelta', currentKey: 'subscribers', label: 'Repo Watcher' },
 ]);
+const REPOSITORY_DELTA_LABELS = Object.freeze({
+  starsDelta: 'Star',
+  forksDelta: 'Fork',
+  repoWatchersDelta: 'Repo Watcher',
+});
+const ACCOUNT_FOLLOWERS_LABEL = 'Account Follower';
+const NOTIFICATION_TITLE = 'GitHub Repo Stats Monitor';
+const BADGE_BACKGROUND_COLOR = '#2f81f7';
 
 function getSafeInterval(minutes) {
   const interval = Number(minutes);
@@ -36,6 +44,134 @@ function hasEnabledAlertMethod(notifications) {
 
 function hasRepositoryStatEnabled(trackedStats) {
   return Boolean(trackedStats?.stars || trackedStats?.forks || trackedStats?.repoWatchers);
+}
+
+
+function pluralizeLabel(label, amount) {
+  return Math.abs(Number(amount) || 0) === 1 ? label : `${label}s`;
+}
+
+function formatDelta(delta, label) {
+  const numericDelta = Number(delta) || 0;
+  const sign = numericDelta > 0 ? '+' : '-';
+
+  return `${sign}${Math.abs(numericDelta)} ${pluralizeLabel(label, numericDelta)}`;
+}
+
+function getRepositoryDeltas(activity) {
+  if (!activity || typeof activity !== 'object') {
+    return [];
+  }
+
+  return Object.entries(REPOSITORY_DELTA_LABELS)
+    .map(([deltaKey, label]) => ({ delta: Number(activity[deltaKey]) || 0, label }))
+    .filter(({ delta }) => delta !== 0);
+}
+
+function hasAccountPendingActivity(pendingActivity) {
+  return Number(pendingActivity?.account?.followersDelta) !== 0;
+}
+
+function hasRepositoryPendingActivity(activity) {
+  return getRepositoryDeltas(activity).length > 0;
+}
+
+function countPendingActivityPlaces(pendingActivity) {
+  const accountCount = hasAccountPendingActivity(pendingActivity) ? 1 : 0;
+  const repositoryCount = Object.values(pendingActivity?.repositories || {})
+    .filter(hasRepositoryPendingActivity)
+    .length;
+
+  return accountCount + repositoryCount;
+}
+
+function getNewPendingSummary(changes) {
+  const newChanges = changes && typeof changes === 'object' ? changes : { account: [], repositories: {} };
+  const accountDeltas = Array.isArray(newChanges.account) ? newChanges.account : [];
+  const repositories = newChanges.repositories && typeof newChanges.repositories === 'object'
+    ? newChanges.repositories
+    : {};
+  const changedRepositories = Object.entries(repositories)
+    .map(([repository, deltas]) => ({ repository, deltas: Array.isArray(deltas) ? deltas.filter(({ delta }) => delta !== 0) : [] }))
+    .filter(({ deltas }) => deltas.length > 0);
+
+  return { accountDeltas: accountDeltas.filter(({ delta }) => delta !== 0), changedRepositories };
+}
+
+function hasNewPendingActivity(changes) {
+  const { accountDeltas, changedRepositories } = getNewPendingSummary(changes);
+  return accountDeltas.length > 0 || changedRepositories.length > 0;
+}
+
+function formatNotificationBody(changes) {
+  const { accountDeltas, changedRepositories } = getNewPendingSummary(changes);
+  const repositoryCount = changedRepositories.length;
+  const hasAccountChanges = accountDeltas.length > 0;
+
+  if (hasAccountChanges && repositoryCount > 0) {
+    return `Account Followers and ${repositoryCount} ${pluralizeLabel('repository', repositoryCount)} changed. Open the extension for details.`;
+  }
+
+  if (repositoryCount > 1) {
+    return `${repositoryCount} repositories changed. Open the extension for details.`;
+  }
+
+  const deltas = hasAccountChanges ? accountDeltas : changedRepositories[0]?.deltas || [];
+  const formattedDeltas = deltas.map(({ delta, label }) => formatDelta(delta, label));
+
+  return `Activity changed: ${formattedDeltas.join(', ')}`;
+}
+
+async function showActivityNotification(settings, changes, shouldCompare) {
+  if (!shouldCompare
+    || !settings.notifications.backgroundChecksEnabled
+    || !settings.notifications.systemNotificationsEnabled
+    || !hasEnabledTrackedStat(settings.notifications.trackedStats)
+    || !hasNewPendingActivity(changes)
+    || !chrome.notifications?.create) {
+    return;
+  }
+
+  try {
+    await chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'assets/icons/icon-128.png',
+      title: NOTIFICATION_TITLE,
+      message: formatNotificationBody(changes),
+    });
+  } catch (error) {
+    console.warn('Unable to show background activity notification.', error);
+  }
+}
+
+async function setBadgeText(text) {
+  if (!chrome.action?.setBadgeText) {
+    return;
+  }
+
+  await chrome.action.setBadgeText({ text });
+}
+
+async function updateBadgeFromPendingActivity(settings, pendingActivity) {
+  if (!chrome.action?.setBadgeText) {
+    return;
+  }
+
+  try {
+    if (chrome.action.setBadgeBackgroundColor) {
+      await chrome.action.setBadgeBackgroundColor({ color: BADGE_BACKGROUND_COLOR });
+    }
+
+    if (!settings.notifications.backgroundChecksEnabled || !settings.notifications.badgeEnabled) {
+      await setBadgeText('');
+      return;
+    }
+
+    const count = countPendingActivityPlaces(pendingActivity);
+    await setBadgeText(count > 0 ? String(count) : '');
+  } catch (error) {
+    console.warn('Unable to update the extension badge.', error);
+  }
 }
 
 function canRunBackgroundChecks(settings) {
@@ -102,7 +238,7 @@ function applyDelta(value, delta) {
   return nextValue === 0 ? undefined : nextValue;
 }
 
-function recordAccountDelta(pendingActivity, delta) {
+function recordAccountDelta(pendingActivity, delta, newPendingChanges) {
   if (delta === 0) {
     return false;
   }
@@ -119,10 +255,14 @@ function recordAccountDelta(pendingActivity, delta) {
     };
   }
 
+  if (newPendingChanges && followersDelta !== undefined) {
+    newPendingChanges.account.push({ delta, label: ACCOUNT_FOLLOWERS_LABEL });
+  }
+
   return true;
 }
 
-function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta) {
+function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, newPendingChanges) {
   if (delta === 0) {
     return false;
   }
@@ -149,6 +289,14 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta) {
     delete pendingActivity.repositories[repository];
   }
 
+  if (newPendingChanges && nextDelta !== undefined) {
+    if (!newPendingChanges.repositories[repository]) {
+      newPendingChanges.repositories[repository] = [];
+    }
+
+    newPendingChanges.repositories[repository].push({ delta, label });
+  }
+
   return true;
 }
 
@@ -168,7 +316,7 @@ function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   });
 }
 
-async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare) {
+async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) {
   if (!settings.notifications.trackedStats.accountFollowers) {
     return false;
   }
@@ -180,7 +328,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     let changed = false;
 
     if (shouldCompare && Number.isFinite(previousFollowers)) {
-      changed = recordAccountDelta(pendingActivity, followers - previousFollowers);
+      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, newPendingChanges);
     }
 
     baselines.account = {
@@ -197,7 +345,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
   }
 }
 
-async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare) {
+async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) {
   if (!hasRepositoryStatEnabled(settings.notifications.trackedStats)) {
     return false;
   }
@@ -208,7 +356,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
     const nextBaseline = { ...previousBaseline, repository, updatedAt: checkedAt };
     let changed = false;
 
-    REPOSITORY_STATS.forEach(({ setting, baselineKey, deltaKey, currentKey }) => {
+    REPOSITORY_STATS.forEach(({ setting, baselineKey, deltaKey, currentKey, label }) => {
       if (!settings.notifications.trackedStats[setting]) {
         return;
       }
@@ -217,7 +365,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
       const previousValue = previousBaseline[baselineKey];
 
       if (shouldCompare && Number.isFinite(previousValue)) {
-        changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue) || changed;
+        changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue, label, newPendingChanges) || changed;
       }
 
       nextBaseline[baselineKey] = currentValue;
@@ -242,6 +390,7 @@ async function runBackgroundCheck() {
   }
 
   if (!canRunBackgroundChecks(settings)) {
+    await updateBadgeFromPendingActivity(settings, await getPendingActivity());
     await scheduleBackgroundCheckAlarm();
     return;
   }
@@ -259,12 +408,13 @@ async function runBackgroundCheck() {
   const pendingActivity = createEmptyPendingActivity(existingPendingActivity);
   const shouldCompare = Boolean(baselines.initialized);
   let pendingChanged = false;
+  const newPendingChanges = { account: [], repositories: {} };
 
   cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
-  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare) || pendingChanged;
+  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) || pendingChanged;
 
   for (const repository of settings.repositories) {
-    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare) || pendingChanged;
+    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) || pendingChanged;
   }
 
   baselines.initialized = true;
@@ -275,7 +425,9 @@ async function runBackgroundCheck() {
     pendingActivity.updatedAt = checkedAt;
   }
 
-  await savePendingActivity(pendingActivity);
+  const savedPendingActivity = await savePendingActivity(pendingActivity);
+  await updateBadgeFromPendingActivity(settings, savedPendingActivity);
+  await showActivityNotification(settings, newPendingChanges, shouldCompare);
 }
 
 
@@ -356,6 +508,9 @@ async function resetNewlyEnabledStatBaselines(newlyEnabledStats) {
 }
 
 async function handleNotificationSettingsChange(change) {
+  const nextNotifications = normalizeNotificationSettings(change?.newValue);
+  const settings = { ...(await getSettings()), notifications: nextNotifications };
+
   if (wasBackgroundChecksEnabled(change)) {
     await resetBaselinesForNextAutomaticCheck();
   } else {
@@ -363,6 +518,13 @@ async function handleNotificationSettingsChange(change) {
   }
 
   await scheduleBackgroundCheckAlarm();
+
+  try {
+    const pendingActivity = await getPendingActivity();
+    await updateBadgeFromPendingActivity(settings, pendingActivity);
+  } catch (error) {
+    console.warn('Unable to update badge after notification settings changed.', error);
+  }
 }
 
 chrome.runtime.onInstalled.addListener(() => {
