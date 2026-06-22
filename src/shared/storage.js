@@ -4,8 +4,15 @@ const DEFAULT_SETTINGS = Object.freeze({
   appearance: 'light',
 });
 
+const DEFAULT_ACCOUNT_STATS = Object.freeze({
+  login: '',
+  followers: 0,
+  fetchedAt: '',
+});
+
 const DEFAULT_STATS = Object.freeze({
   latestStats: {},
+  accountStats: DEFAULT_ACCOUNT_STATS,
 });
 
 function getChromeStorage() {
@@ -76,6 +83,19 @@ export function saveSettings(settings) {
   });
 }
 
+function normalizeNonNegativeNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : 0;
+}
+
+export function normalizeAccountStats(stats) {
+  return {
+    login: typeof stats?.login === 'string' ? stats.login : '',
+    followers: normalizeNonNegativeNumber(stats?.followers),
+    fetchedAt: typeof stats?.fetchedAt === 'string' ? stats.fetchedAt : '',
+  };
+}
+
 function normalizeStatsEntry(repository, stats) {
   const normalizedRepository = normalizeRepositoryName(repository || stats?.repository);
 
@@ -109,9 +129,9 @@ function normalizeStatsEntry(repository, stats) {
 
   return {
     repository: normalizedRepository,
-    stars: Number(stats?.stars) || 0,
-    forks: Number(stats?.forks) || 0,
-    subscribers: Number(stats?.subscribers) || 0,
+    stars: normalizeNonNegativeNumber(stats?.stars),
+    forks: normalizeNonNegativeNumber(stats?.forks),
+    subscribers: normalizeNonNegativeNumber(stats?.subscribers),
     views: Number.isFinite(Number(stats?.views)) ? Number(stats.views) : null,
     uniqueVisitors: Number.isFinite(Number(stats?.uniqueVisitors)) ? Number(stats.uniqueVisitors) : null,
     dailyViews,
@@ -127,6 +147,21 @@ function normalizeStatsEntry(repository, stats) {
     clonesError: typeof stats?.clonesError === 'string' ? stats.clonesError : '',
     referrersError: typeof stats?.referrersError === 'string' ? stats.referrersError : '',
   };
+}
+
+export function getAccountStats() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get(DEFAULT_STATS, (storedStats) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizeAccountStats(storedStats.accountStats));
+    });
+  });
 }
 
 export function getLatestStats() {
@@ -170,6 +205,7 @@ export function resetExtensionData() {
       resolve({
         settings: { ...DEFAULT_SETTINGS },
         latestStats: { ...DEFAULT_STATS.latestStats },
+        accountStats: { ...DEFAULT_STATS.accountStats },
       });
     });
   });
@@ -197,6 +233,23 @@ export function saveLatestStats(latestStats) {
       }
 
       resolve(nextLatestStats);
+    });
+  });
+}
+
+export function saveAccountStats(accountStats) {
+  const nextAccountStats = normalizeAccountStats(accountStats);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ accountStats: nextAccountStats }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(nextAccountStats);
     });
   });
 }

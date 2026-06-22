@@ -1,4 +1,4 @@
-import { getLatestStats, getSettings } from '../shared/storage.js';
+import { getAccountStats, getLatestStats, getSettings } from '../shared/storage.js';
 import { refreshRepositoryStatsCache, refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -19,10 +19,13 @@ const summaryValues = {
   stars: document.getElementById('total-stars'),
   forks: document.getElementById('total-forks'),
   clones: document.getElementById('total-clones'),
+  accountFollowers: document.getElementById('account-followers'),
+  watchers: document.getElementById('total-watchers'),
 };
 
 let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
 let currentLatestStats = {};
+let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
 let refreshingRepository = '';
 
@@ -36,6 +39,7 @@ const svgIconPaths = {
   stars: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"></path>',
   forks: '<path d="M7 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM21 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM7 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM5 7v10M19 7v1a4 4 0 0 1-4 4H9a4 4 0 0 0-4 4v1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
   clones: '<path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
+  watchers: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
   referrers: [
     '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>',
     '<path d="M3 12h7m4 0h7M12 3a14 14 0 0 1 2.2 5M12 21a14 14 0 0 1-2.2-5M8 8h8M8 16h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>',
@@ -164,7 +168,8 @@ function hideNotice() {
 function hasCachedMetadata(stats) {
   return Boolean(stats?.fetchedAt)
     && Number.isFinite(stats.stars)
-    && Number.isFinite(stats.forks);
+    && Number.isFinite(stats.forks)
+    && Number.isFinite(stats.subscribers);
 }
 
 function hasCachedTraffic(stats) {
@@ -338,6 +343,7 @@ function createRepositoryCard(repository, stats) {
     createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—', 'views'),
     createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—', 'stars'),
     createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—', 'forks'),
+    createMetric('Watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—', 'watchers'),
     createMetric('Clones, last 14 days', cachedClones ? formatNumber(cachedClones.clones) : '—', 'clones'),
   );
 
@@ -391,6 +397,7 @@ function renderSummary() {
       accumulator.metadataCount += 1;
       accumulator.stars += stats.stars;
       accumulator.forks += stats.forks;
+      accumulator.watchers += stats.subscribers;
     }
 
     if (hasCachedTraffic(stats)) {
@@ -404,10 +411,12 @@ function renderSummary() {
     }
 
     return accumulator;
-  }, { metadataCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, views: 0, clones: 0 });
+  }, { metadataCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, watchers: 0, views: 0, clones: 0 });
 
   summaryValues.stars.textContent = totals.metadataCount > 0 ? formatNumber(totals.stars) : '—';
   summaryValues.forks.textContent = totals.metadataCount > 0 ? formatNumber(totals.forks) : '—';
+  summaryValues.accountFollowers.textContent = formatNumber(currentAccountStats.followers);
+  summaryValues.watchers.textContent = totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—';
   summaryValues.views.textContent = totals.trafficCount > 0 ? formatNumber(totals.views) : '—';
   summaryValues.clones.textContent = totals.clonesCount > 0 ? formatNumber(totals.clones) : '—';
 }
@@ -453,11 +462,13 @@ async function refreshRepositoryStats() {
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
+      accountStats: currentAccountStats,
       onProgress(progress) {
         setStatus(formatRefreshProgressMessage(progress), 'loading');
       },
     });
     currentLatestStats = refreshResult.latestStats;
+    currentAccountStats = refreshResult.accountStats;
 
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
     const successCount = refreshResult.results.length - failureCount;
@@ -513,7 +524,7 @@ async function refreshSingleRepository(repository) {
 
 async function initializeDashboard() {
   try {
-    [currentSettings, currentLatestStats] = await Promise.all([getSettings(), getLatestStats()]);
+    [currentSettings, currentLatestStats, currentAccountStats] = await Promise.all([getSettings(), getLatestStats(), getAccountStats()]);
     applyAppearance(currentSettings.appearance);
     renderRepositories();
 
