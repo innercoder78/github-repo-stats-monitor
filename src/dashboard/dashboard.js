@@ -1,4 +1,5 @@
-import { getAccountStats, getLatestStats, getSettings } from '../shared/storage.js';
+import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
+import { cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
 import { refreshRepositoryStatsCache, refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -28,6 +29,7 @@ let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
 let refreshingRepository = '';
+let currentPendingActivity = { account: {}, repositories: {}, updatedAt: '' };
 
 applySavedAppearance();
 
@@ -311,9 +313,71 @@ function createChartPanel(label, stats, metricKey, entriesKey = 'dailyViews') {
   return panel;
 }
 
+
+function createRepositoryActivityNote(activity) {
+  const deltas = getRepositoryActivityDeltas(activity);
+
+  if (deltas.length === 0 || activity?.dashboardShown) {
+    return null;
+  }
+
+  const note = document.createElement('p');
+  note.className = 'activity-note';
+  note.append(document.createTextNode('Activity changed: '));
+
+  deltas.forEach(({ delta, label }, index) => {
+    if (index > 0) {
+      note.append(document.createTextNode(', '));
+    }
+
+    note.append(createDeltaElement(delta, label));
+  });
+
+  return note;
+}
+
+async function markDashboardActivityShown(renderedRepositories) {
+  if (renderedRepositories.size === 0) {
+    return;
+  }
+
+  const nextPendingActivity = {
+    ...currentPendingActivity,
+    account: { ...currentPendingActivity.account },
+    repositories: { ...currentPendingActivity.repositories },
+  };
+  let changed = false;
+
+  renderedRepositories.forEach((repository) => {
+    const activity = nextPendingActivity.repositories[repository];
+
+    if (!activity || activity.dashboardShown) {
+      return;
+    }
+
+    nextPendingActivity.repositories[repository] = { ...activity, dashboardShown: true };
+    changed = true;
+  });
+
+  if (!changed) {
+    return;
+  }
+
+  try {
+    currentPendingActivity = await savePendingActivity(cleanupShownPendingActivity(nextPendingActivity));
+  } catch (error) {
+    console.warn('Unable to mark Dashboard activity as shown.', error);
+  }
+}
+
 function createRepositoryCard(repository, stats) {
   const card = document.createElement('article');
   card.className = 'card repo-card';
+  const activityNote = createRepositoryActivityNote(currentPendingActivity.repositories[repository]);
+
+  if (activityNote) {
+    card.classList.add('activity-highlight');
+  }
 
   const header = document.createElement('div');
   header.className = 'repo-card-header';
@@ -354,7 +418,13 @@ function createRepositoryCard(repository, stats) {
     createChartPanel('Clones, last 14 days', stats, 'clones', 'dailyClones'),
   );
 
-  card.append(header, meta, metricGrid);
+  card.append(header, meta);
+
+  if (activityNote) {
+    card.append(activityNote);
+  }
+
+  card.append(metricGrid);
 
   const hasError = hasRefreshError(stats);
   if (hasError && (cachedStats || cachedTraffic || cachedClones || hasCachedReferrers(stats))) {
@@ -439,10 +509,16 @@ function renderRepositories() {
 
   hideNotice();
   setRefreshButtonState();
+  const renderedActivityRepositories = new Set();
   currentSettings.repositories.forEach((repository) => {
-    repoGrid.append(createRepositoryCard(repository, currentLatestStats[repository]));
+    const card = createRepositoryCard(repository, currentLatestStats[repository]);
+    if (card.classList.contains('activity-highlight')) {
+      renderedActivityRepositories.add(repository);
+    }
+    repoGrid.append(card);
   });
   renderSummary();
+  markDashboardActivityShown(renderedActivityRepositories);
 }
 
 async function refreshRepositoryStats() {
@@ -524,7 +600,7 @@ async function refreshSingleRepository(repository) {
 
 async function initializeDashboard() {
   try {
-    [currentSettings, currentLatestStats, currentAccountStats] = await Promise.all([getSettings(), getLatestStats(), getAccountStats()]);
+    [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity()]);
     applyAppearance(currentSettings.appearance);
     renderRepositories();
 

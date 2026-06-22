@@ -210,3 +210,29 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }
+
+.activity-highlight {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent), 0 8px 22px rgba(140, 149, 159, 0.14);
+}
+
+.activity-note {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 10px;
+  color: var(--text);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35;
+  margin-top: 8px;
+  padding: 6px 8px;
+}
+
+.activity-delta {
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.activity-delta-positive { color: var(--success); }
+.activity-delta-negative { color: var(--error); }

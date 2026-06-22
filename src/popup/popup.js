@@ -1,4 +1,5 @@
-import { getAccountStats, getLatestStats, getSettings } from '../shared/storage.js';
+import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
+import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
@@ -18,8 +19,23 @@ let currentSettings = { githubToken: '', repositories: [], appearance: 'light' }
 let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
+let currentPendingActivity = { account: {}, repositories: {}, updatedAt: '' };
 
 applySavedAppearance();
+
+async function clearBadgeText() {
+  if (!globalThis.chrome?.action?.setBadgeText) {
+    return;
+  }
+
+  try {
+    await globalThis.chrome.action.setBadgeText({ text: '' });
+  } catch (error) {
+    console.warn('Unable to clear the extension badge.', error);
+  }
+}
+
+clearBadgeText();
 
 document.getElementById('open-dashboard').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html') });
@@ -105,6 +121,105 @@ function setGuidanceStatus(settings) {
   popupStatus.textContent = 'Updates when you refresh.';
 }
 
+
+function clearActivityHighlights() {
+  document.querySelectorAll('.activity-highlight').forEach((element) => {
+    element.classList.remove('activity-highlight');
+  });
+  document.querySelectorAll('.activity-note, .activity-delta').forEach((element) => element.remove());
+}
+
+function addQuickSummaryActivity(valueElement, delta, label) {
+  if (!valueElement || delta === 0) {
+    return;
+  }
+
+  const metric = valueElement.closest('.metric');
+  const metricBody = valueElement.closest('.metric-body');
+  metric?.classList.add('activity-highlight');
+
+  const note = document.createElement('span');
+  note.className = 'activity-note';
+  note.append(document.createTextNode('Activity changed: '), createDeltaElement(delta, label));
+  metricBody?.append(note);
+}
+
+function getQuickSummaryRepositoryDeltas(pendingActivity) {
+  return Object.values(pendingActivity?.repositories || {}).reduce((totals, activity) => {
+    if (activity?.quickSummaryShown) {
+      return totals;
+    }
+
+    totals.starsDelta += Number(activity?.starsDelta) || 0;
+    totals.forksDelta += Number(activity?.forksDelta) || 0;
+    totals.repoWatchersDelta += Number(activity?.repoWatchersDelta) || 0;
+    return totals;
+  }, { starsDelta: 0, forksDelta: 0, repoWatchersDelta: 0 });
+}
+
+async function markQuickSummaryActivityShown(displayedRepositoryDeltaKeys, displayedAccountActivity) {
+  const nextPendingActivity = {
+    ...currentPendingActivity,
+    account: { ...currentPendingActivity.account },
+    repositories: { ...currentPendingActivity.repositories },
+  };
+  let changed = false;
+
+  if (displayedAccountActivity && Number(nextPendingActivity.account.followersDelta) !== 0 && !nextPendingActivity.account.quickSummaryShown) {
+    nextPendingActivity.account.quickSummaryShown = true;
+    changed = true;
+  }
+
+  Object.entries(nextPendingActivity.repositories).forEach(([repository, activity]) => {
+    const contributedToDisplayedActivity = displayedRepositoryDeltaKeys.some((key) => Number(activity[key]) !== 0);
+
+    if (!activity.quickSummaryShown && contributedToDisplayedActivity) {
+      nextPendingActivity.repositories[repository] = { ...activity, quickSummaryShown: true };
+      changed = true;
+    }
+  });
+
+  if (!changed) {
+    return;
+  }
+
+  try {
+    currentPendingActivity = await savePendingActivity(cleanupShownPendingActivity(nextPendingActivity));
+  } catch (error) {
+    console.warn('Unable to mark Quick Summary activity as shown.', error);
+  }
+}
+
+function renderQuickSummaryActivity() {
+  clearActivityHighlights();
+
+  const repositoryDeltas = getQuickSummaryRepositoryDeltas(currentPendingActivity);
+  const displayedRepositoryDeltaKeys = [];
+  const pendingAccountDelta = Number(currentPendingActivity.account?.followersDelta) || 0;
+  const displayedAccountActivity = !currentPendingActivity.account?.quickSummaryShown && pendingAccountDelta !== 0;
+
+  if (repositoryDeltas.starsDelta !== 0) {
+    displayedRepositoryDeltaKeys.push('starsDelta');
+    addQuickSummaryActivity(totalStars, repositoryDeltas.starsDelta, 'Star');
+  }
+
+  if (repositoryDeltas.forksDelta !== 0) {
+    displayedRepositoryDeltaKeys.push('forksDelta');
+    addQuickSummaryActivity(totalForks, repositoryDeltas.forksDelta, 'Fork');
+  }
+
+  if (repositoryDeltas.repoWatchersDelta !== 0) {
+    displayedRepositoryDeltaKeys.push('repoWatchersDelta');
+    addQuickSummaryActivity(totalWatchers, repositoryDeltas.repoWatchersDelta, 'Repo Watcher');
+  }
+
+  if (displayedAccountActivity) {
+    addQuickSummaryActivity(accountFollowers, pendingAccountDelta, 'Account Follower');
+  }
+
+  markQuickSummaryActivityShown(displayedRepositoryDeltaKeys, displayedAccountActivity);
+}
+
 function renderStatsSummary(settings, latestStats) {
   const totals = settings.repositories.reduce((accumulator, repository) => {
     const stats = latestStats[repository];
@@ -143,11 +258,12 @@ function renderStatsSummary(settings, latestStats) {
   totalWatchers.textContent = hasAnyCachedMetadata ? formatNumber(totals.watchers) : '—';
   totalViews.textContent = hasAnyCachedTraffic ? formatNumber(totals.views) : '—';
   totalClones.textContent = hasAnyCachedClones ? formatNumber(totals.clones) : '—';
+  renderQuickSummaryActivity();
 }
 
 async function renderSettingsSummary() {
   try {
-    [currentSettings, currentLatestStats, currentAccountStats] = await Promise.all([getSettings(), getLatestStats(), getAccountStats()]);
+    [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity()]);
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
     setGuidanceStatus(currentSettings);
