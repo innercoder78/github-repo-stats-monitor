@@ -68,18 +68,10 @@ function getRepositoryDeltas(activity) {
     .filter(({ delta }) => delta !== 0);
 }
 
-function hasAccountPendingActivity(pendingActivity) {
-  return Number(pendingActivity?.account?.followersDelta) !== 0;
-}
-
-function hasRepositoryPendingActivity(activity) {
-  return getRepositoryDeltas(activity).length > 0;
-}
-
-function countPendingActivityPlaces(pendingActivity) {
-  const accountCount = hasAccountPendingActivity(pendingActivity) ? 1 : 0;
-  const repositoryCount = Object.values(pendingActivity?.repositories || {})
-    .filter(hasRepositoryPendingActivity)
+function countBadgeActivityPlaces(badgeActivity) {
+  const accountCount = badgeActivity?.account ? 1 : 0;
+  const repositoryCount = Object.values(badgeActivity?.repositories || {})
+    .filter(Boolean)
     .length;
 
   return accountCount + repositoryCount;
@@ -152,7 +144,7 @@ async function setBadgeText(text) {
   await chrome.action.setBadgeText({ text });
 }
 
-async function updateBadgeFromPendingActivity(settings, pendingActivity) {
+async function updateBadgeFromBadgeActivity(settings, badgeActivity) {
   if (!chrome.action?.setBadgeText) {
     return;
   }
@@ -167,7 +159,7 @@ async function updateBadgeFromPendingActivity(settings, pendingActivity) {
       return;
     }
 
-    const count = countPendingActivityPlaces(pendingActivity);
+    const count = countBadgeActivityPlaces(badgeActivity);
     await setBadgeText(count > 0 ? String(count) : '');
   } catch (error) {
     console.warn('Unable to update the extension badge.', error);
@@ -229,6 +221,12 @@ function createEmptyPendingActivity(existingPendingActivity) {
     repositories: existingPendingActivity?.repositories && typeof existingPendingActivity.repositories === 'object'
       ? { ...existingPendingActivity.repositories }
       : {},
+    badgeActivity: existingPendingActivity?.badgeActivity && typeof existingPendingActivity.badgeActivity === 'object'
+      ? {
+        ...existingPendingActivity.badgeActivity,
+        repositories: { ...(existingPendingActivity.badgeActivity.repositories || {}) },
+      }
+      : { account: false, repositories: {}, updatedAt: '' },
     updatedAt: typeof existingPendingActivity?.updatedAt === 'string' ? existingPendingActivity.updatedAt : '',
   };
 }
@@ -300,6 +298,25 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, lab
   return true;
 }
 
+
+function mergeBadgeActivity(pendingActivity, newPendingChanges, checkedAt) {
+  if (!hasNewPendingActivity(newPendingChanges)) {
+    return;
+  }
+
+  pendingActivity.badgeActivity = {
+    account: Boolean(pendingActivity.badgeActivity?.account || newPendingChanges.account.length > 0),
+    repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
+    updatedAt: checkedAt,
+  };
+
+  Object.entries(newPendingChanges.repositories || {}).forEach(([repository, deltas]) => {
+    if (Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0)) {
+      pendingActivity.badgeActivity.repositories[repository] = true;
+    }
+  });
+}
+
 function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   const repositorySet = new Set(repositories);
 
@@ -312,6 +329,12 @@ function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   Object.keys(pendingActivity.repositories).forEach((repository) => {
     if (!repositorySet.has(repository)) {
       delete pendingActivity.repositories[repository];
+    }
+  });
+
+  Object.keys(pendingActivity.badgeActivity?.repositories || {}).forEach((repository) => {
+    if (!repositorySet.has(repository)) {
+      delete pendingActivity.badgeActivity.repositories[repository];
     }
   });
 }
@@ -390,7 +413,7 @@ async function runBackgroundCheck() {
   }
 
   if (!canRunBackgroundChecks(settings)) {
-    await updateBadgeFromPendingActivity(settings, await getPendingActivity());
+    await updateBadgeFromBadgeActivity(settings, { account: false, repositories: {} });
     await scheduleBackgroundCheckAlarm();
     return;
   }
@@ -423,10 +446,17 @@ async function runBackgroundCheck() {
 
   if (pendingChanged) {
     pendingActivity.updatedAt = checkedAt;
+
+    if (settings.notifications.badgeEnabled) {
+      mergeBadgeActivity(pendingActivity, newPendingChanges, checkedAt);
+    }
   }
 
   const savedPendingActivity = await savePendingActivity(pendingActivity);
-  await updateBadgeFromPendingActivity(settings, savedPendingActivity);
+
+  if (hasNewPendingActivity(newPendingChanges)) {
+    await updateBadgeFromBadgeActivity(settings, savedPendingActivity.badgeActivity);
+  }
   await showActivityNotification(settings, newPendingChanges, shouldCompare);
 }
 
@@ -520,8 +550,15 @@ async function handleNotificationSettingsChange(change) {
   await scheduleBackgroundCheckAlarm();
 
   try {
-    const pendingActivity = await getPendingActivity();
-    await updateBadgeFromPendingActivity(settings, pendingActivity);
+    if (!settings.notifications.backgroundChecksEnabled || !settings.notifications.badgeEnabled) {
+      const pendingActivity = await getPendingActivity();
+
+      await savePendingActivity({
+        ...pendingActivity,
+        badgeActivity: { account: false, repositories: {}, updatedAt: '' },
+      });
+      await updateBadgeFromBadgeActivity(settings, { account: false, repositories: {} });
+    }
   } catch (error) {
     console.warn('Unable to update badge after notification settings changed.', error);
   }

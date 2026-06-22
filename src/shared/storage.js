@@ -31,6 +31,11 @@ const DEFAULT_STATS = Object.freeze({
 const DEFAULT_PENDING_ACTIVITY = Object.freeze({
   account: Object.freeze({}),
   repositories: Object.freeze({}),
+  badgeActivity: Object.freeze({
+    account: false,
+    repositories: Object.freeze({}),
+    updatedAt: '',
+  }),
   updatedAt: '',
 });
 
@@ -353,6 +358,28 @@ function normalizePendingRepositoryActivity(repository, activity) {
   return hasDelta ? normalizedActivity : null;
 }
 
+function normalizePendingBadgeActivity(activity) {
+  const badgeActivity = activity && typeof activity === 'object' ? activity : {};
+  const repositories = {};
+  const storedRepositories = badgeActivity.repositories && typeof badgeActivity.repositories === 'object'
+    ? badgeActivity.repositories
+    : {};
+
+  Object.keys(storedRepositories).forEach((repository) => {
+    const normalizedRepository = normalizeRepositoryName(repository);
+
+    if (isValidRepositoryName(normalizedRepository) && storedRepositories[repository]) {
+      repositories[normalizedRepository] = true;
+    }
+  });
+
+  return {
+    account: Boolean(badgeActivity.account),
+    repositories,
+    updatedAt: typeof badgeActivity.updatedAt === 'string' ? badgeActivity.updatedAt : '',
+  };
+}
+
 export function normalizePendingActivity(activity) {
   const pendingActivity = activity && typeof activity === 'object' ? activity : {};
   const repositories = {};
@@ -371,6 +398,7 @@ export function normalizePendingActivity(activity) {
   return {
     account: normalizePendingAccountActivity(pendingActivity.account),
     repositories,
+    badgeActivity: normalizePendingBadgeActivity(pendingActivity.badgeActivity),
     updatedAt: typeof pendingActivity.updatedAt === 'string' ? pendingActivity.updatedAt : '',
   };
 }
