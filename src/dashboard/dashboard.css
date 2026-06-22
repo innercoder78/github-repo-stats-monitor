@@ -405,3 +405,28 @@ button:disabled {
   .referrer-row-header span:first-child { grid-column: auto; }
   .referrer-row-header { grid-template-columns: minmax(0, 1fr) auto auto; }
 }
+
+.activity-highlight {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), var(--shadow);
+}
+
+.activity-note {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.4;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+}
+
+.activity-delta {
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.activity-delta-positive { color: var(--success); }
+.activity-delta-negative { color: var(--error); }
