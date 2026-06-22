@@ -19,9 +19,29 @@ let currentSettings = { githubToken: '', repositories: [], appearance: 'light' }
 let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
-let currentPendingActivity = { account: {}, repositories: {}, updatedAt: '' };
+let currentPendingActivity = {
+  account: {},
+  repositories: {},
+  badgeActivity: { account: false, repositories: {}, updatedAt: '' },
+  updatedAt: '',
+};
 
 applySavedAppearance();
+
+async function acknowledgeBadgeActivity() {
+  try {
+    const pendingActivity = await getPendingActivity();
+
+    if (pendingActivity.badgeActivity?.account || Object.values(pendingActivity.badgeActivity?.repositories || {}).some(Boolean)) {
+      await savePendingActivity({
+        ...pendingActivity,
+        badgeActivity: { account: false, repositories: {}, updatedAt: '' },
+      });
+    }
+  } catch (error) {
+    console.warn('Unable to acknowledge badge activity.', error);
+  }
+}
 
 async function clearBadgeText() {
   if (!globalThis.chrome?.action?.setBadgeText) {
@@ -34,8 +54,6 @@ async function clearBadgeText() {
     console.warn('Unable to clear the extension badge.', error);
   }
 }
-
-clearBadgeText();
 
 document.getElementById('open-dashboard').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard.html') });
@@ -317,4 +335,9 @@ async function refreshStats() {
   setRefreshButtonState();
 }
 
-renderSettingsSummary();
+async function initializePopup() {
+  await Promise.all([clearBadgeText(), acknowledgeBadgeActivity()]);
+  renderSettingsSummary();
+}
+
+initializePopup();
