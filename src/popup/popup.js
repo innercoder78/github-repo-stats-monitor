@@ -157,7 +157,7 @@ function getQuickSummaryRepositoryDeltas(pendingActivity) {
   }, { starsDelta: 0, forksDelta: 0, repoWatchersDelta: 0 });
 }
 
-async function markQuickSummaryActivityShown(displayedRepositoryDeltaKeys, displayedAccountActivity) {
+async function markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity) {
   const nextPendingActivity = {
     ...currentPendingActivity,
     account: { ...currentPendingActivity.account },
@@ -171,9 +171,7 @@ async function markQuickSummaryActivityShown(displayedRepositoryDeltaKeys, displ
   }
 
   Object.entries(nextPendingActivity.repositories).forEach(([repository, activity]) => {
-    const contributedToDisplayedActivity = displayedRepositoryDeltaKeys.some((key) => Number(activity[key]) !== 0);
-
-    if (!activity.quickSummaryShown && contributedToDisplayedActivity) {
+    if (!activity.quickSummaryShown && consideredRepositories.has(repository)) {
       nextPendingActivity.repositories[repository] = { ...activity, quickSummaryShown: true };
       changed = true;
     }
@@ -194,22 +192,24 @@ function renderQuickSummaryActivity() {
   clearActivityHighlights();
 
   const repositoryDeltas = getQuickSummaryRepositoryDeltas(currentPendingActivity);
-  const displayedRepositoryDeltaKeys = [];
+  const consideredRepositories = new Set(Object.entries(currentPendingActivity.repositories || {})
+    .filter(([, activity]) => !activity?.quickSummaryShown
+      && (Number(activity?.starsDelta) !== 0
+        || Number(activity?.forksDelta) !== 0
+        || Number(activity?.repoWatchersDelta) !== 0))
+    .map(([repository]) => repository));
   const pendingAccountDelta = Number(currentPendingActivity.account?.followersDelta) || 0;
   const displayedAccountActivity = !currentPendingActivity.account?.quickSummaryShown && pendingAccountDelta !== 0;
 
   if (repositoryDeltas.starsDelta !== 0) {
-    displayedRepositoryDeltaKeys.push('starsDelta');
     addQuickSummaryActivity(totalStars, repositoryDeltas.starsDelta, 'Star');
   }
 
   if (repositoryDeltas.forksDelta !== 0) {
-    displayedRepositoryDeltaKeys.push('forksDelta');
     addQuickSummaryActivity(totalForks, repositoryDeltas.forksDelta, 'Fork');
   }
 
   if (repositoryDeltas.repoWatchersDelta !== 0) {
-    displayedRepositoryDeltaKeys.push('repoWatchersDelta');
     addQuickSummaryActivity(totalWatchers, repositoryDeltas.repoWatchersDelta, 'Repo Watcher');
   }
 
@@ -217,7 +217,7 @@ function renderQuickSummaryActivity() {
     addQuickSummaryActivity(accountFollowers, pendingAccountDelta, 'Account Follower');
   }
 
-  markQuickSummaryActivityShown(displayedRepositoryDeltaKeys, displayedAccountActivity);
+  markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity);
 }
 
 function renderStatsSummary(settings, latestStats) {
