@@ -1,5 +1,5 @@
-import { fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { saveLatestStats } from './storage.js';
+import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
+import { normalizeAccountStats, saveAccountStats, saveLatestStats } from './storage.js';
 
 function hasCachedTraffic(stats) {
   return Boolean(stats?.trafficFetchedAt)
@@ -40,6 +40,18 @@ function getRefreshInputs(settings) {
   }
 
   return { githubToken, repositories };
+}
+
+async function refreshAccountStats(githubToken, previousAccountStats, fetchedAt) {
+  const stats = normalizeAccountStats(previousAccountStats);
+
+  try {
+    const account = await fetchAuthenticatedAccount(githubToken);
+    const nextStats = { ...stats, ...account, fetchedAt };
+    return { accountStats: await saveAccountStats(nextStats), error: '' };
+  } catch (error) {
+    return { accountStats: stats, error: error.message };
+  }
 }
 
 async function refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt) {
@@ -94,9 +106,11 @@ async function refreshRepositoryStats(repository, githubToken, previousStats, fe
 export async function refreshStatsCache(settings, currentLatestStats, options = {}) {
   const { githubToken, repositories } = getRefreshInputs(settings);
   const onProgress = options && typeof options === 'object' ? options.onProgress : undefined;
+  const previousAccountStats = options && typeof options === 'object' ? options.accountStats : undefined;
 
   const fetchedAt = new Date().toISOString();
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
+  const accountResult = await refreshAccountStats(githubToken, previousAccountStats, fetchedAt);
   let completed = 0;
   const results = await Promise.all(repositories.map(async (repository) => {
     const previousStats = latestStats[repository] || { repository };
@@ -120,7 +134,13 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
 
   const savedLatestStats = await saveLatestStats(nextLatestStats);
 
-  return { fetchedAt, results, latestStats: savedLatestStats };
+  return {
+    fetchedAt,
+    results,
+    latestStats: savedLatestStats,
+    accountStats: accountResult.accountStats,
+    accountError: accountResult.error,
+  };
 }
 
 export async function refreshRepositoryStatsCache(settings, currentLatestStats, repository) {

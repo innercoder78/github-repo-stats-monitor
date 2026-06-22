@@ -1,4 +1,4 @@
-import { getLatestStats, getSettings } from '../shared/storage.js';
+import { getAccountStats, getLatestStats, getSettings } from '../shared/storage.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 
@@ -9,11 +9,14 @@ const totalStars = document.getElementById('total-stars');
 const totalForks = document.getElementById('total-forks');
 const totalViews = document.getElementById('total-views');
 const totalClones = document.getElementById('total-clones');
+const accountFollowers = document.getElementById('account-followers');
+const totalWatchers = document.getElementById('total-watchers');
 const popupStatus = document.getElementById('popup-status');
 const refreshButton = document.getElementById('refresh-stats');
 
 let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
 let currentLatestStats = {};
+let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
 
 applySavedAppearance();
@@ -48,7 +51,8 @@ function formatRefreshProgressMessage(progress) {
 function hasCachedMetadata(stats) {
   return Boolean(stats?.fetchedAt)
     && Number.isFinite(stats.stars)
-    && Number.isFinite(stats.forks);
+    && Number.isFinite(stats.forks)
+    && Number.isFinite(stats.subscribers);
 }
 
 function hasCachedTraffic(stats) {
@@ -109,6 +113,7 @@ function renderStatsSummary(settings, latestStats) {
       accumulator.cachedCount += 1;
       accumulator.stars += stats.stars;
       accumulator.forks += stats.forks;
+      accumulator.watchers += stats.subscribers;
     }
 
     if (hasCachedTraffic(stats)) {
@@ -122,7 +127,7 @@ function renderStatsSummary(settings, latestStats) {
     }
 
     return accumulator;
-  }, { cachedCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, views: 0, clones: 0 });
+  }, { cachedCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, watchers: 0, views: 0, clones: 0 });
   const hasAnyCachedMetadata = totals.cachedCount > 0;
   const hasAnyCachedTraffic = totals.trafficCount > 0;
   const hasAnyCachedClones = totals.clonesCount > 0;
@@ -134,13 +139,15 @@ function renderStatsSummary(settings, latestStats) {
   lastUpdated.textContent = formatLastUpdated(latestStats, settings.repositories);
   totalStars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
   totalForks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
+  accountFollowers.textContent = formatNumber(currentAccountStats.followers);
+  totalWatchers.textContent = hasAnyCachedMetadata ? formatNumber(totals.watchers) : '—';
   totalViews.textContent = hasAnyCachedTraffic ? formatNumber(totals.views) : '—';
   totalClones.textContent = hasAnyCachedClones ? formatNumber(totals.clones) : '—';
 }
 
 async function renderSettingsSummary() {
   try {
-    [currentSettings, currentLatestStats] = await Promise.all([getSettings(), getLatestStats()]);
+    [currentSettings, currentLatestStats, currentAccountStats] = await Promise.all([getSettings(), getLatestStats(), getAccountStats()]);
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
     setGuidanceStatus(currentSettings);
@@ -173,11 +180,13 @@ async function refreshStats() {
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
+      accountStats: currentAccountStats,
       onProgress(progress) {
         popupStatus.textContent = formatRefreshProgressMessage(progress);
       },
     });
     currentLatestStats = refreshResult.latestStats;
+    currentAccountStats = refreshResult.accountStats;
     renderStatsSummary(currentSettings, currentLatestStats);
 
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;

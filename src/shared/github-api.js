@@ -52,6 +52,36 @@ function mapAuthenticatedRepository(repository) {
   };
 }
 
+
+export async function fetchAuthenticatedAccount(token) {
+  const safeToken = typeof token === 'string' ? token.trim() : '';
+
+  if (!safeToken) {
+    throw new Error('A GitHub token is required before fetching account stats.');
+  }
+
+  let response;
+
+  try {
+    response = await fetch('https://api.github.com/user', {
+      headers: getGitHubHeaders(safeToken),
+    });
+  } catch (error) {
+    throw new Error('Network failure while contacting GitHub account API. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    throw new Error(getErrorMessage(response.status));
+  }
+
+  const data = await response.json();
+
+  return {
+    login: String(data?.login || ''),
+    followers: Number(data?.followers) || 0,
+  };
+}
+
 export async function fetchAuthenticatedRepositories(token) {
   const safeToken = typeof token === 'string' ? token.trim() : '';
 
