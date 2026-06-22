@@ -1,7 +1,21 @@
+const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
+  backgroundChecksEnabled: false,
+  trackedStats: Object.freeze({
+    stars: true,
+    forks: true,
+    repoWatchers: true,
+    accountFollowers: true,
+  }),
+  systemNotificationsEnabled: false,
+  badgeEnabled: false,
+  checkIntervalMinutes: 30,
+});
+
 const DEFAULT_SETTINGS = Object.freeze({
   githubToken: '',
   repositories: [],
   appearance: 'light',
+  notifications: DEFAULT_NOTIFICATION_SETTINGS,
 });
 
 const DEFAULT_ACCOUNT_STATS = Object.freeze({
@@ -39,6 +53,33 @@ export function normalizeAppearance(value) {
   return value === 'dark' ? 'dark' : 'light';
 }
 
+const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
+
+function normalizeBoolean(value, fallback) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+export function normalizeNotificationSettings(settings) {
+  const notifications = settings && typeof settings === 'object' ? settings : {};
+  const trackedStats = notifications.trackedStats && typeof notifications.trackedStats === 'object'
+    ? notifications.trackedStats
+    : {};
+  const interval = Number(notifications.checkIntervalMinutes);
+
+  return {
+    backgroundChecksEnabled: normalizeBoolean(notifications.backgroundChecksEnabled, false),
+    trackedStats: {
+      stars: normalizeBoolean(trackedStats.stars, true),
+      forks: normalizeBoolean(trackedStats.forks, true),
+      repoWatchers: normalizeBoolean(trackedStats.repoWatchers, true),
+      accountFollowers: normalizeBoolean(trackedStats.accountFollowers, true),
+    },
+    systemNotificationsEnabled: normalizeBoolean(notifications.systemNotificationsEnabled, false),
+    badgeEnabled: normalizeBoolean(notifications.badgeEnabled, false),
+    checkIntervalMinutes: VALID_NOTIFICATION_INTERVALS.includes(interval) ? interval : 30,
+  };
+}
+
 export function getSettings() {
   return new Promise((resolve, reject) => {
     getChromeStorage().get(DEFAULT_SETTINGS, (storedSettings) => {
@@ -55,6 +96,7 @@ export function getSettings() {
           ? storedSettings.repositories.map(normalizeRepositoryName).filter(isValidRepositoryName)
           : [],
         appearance: normalizeAppearance(storedSettings.appearance),
+        notifications: normalizeNotificationSettings(storedSettings.notifications),
       });
     });
   });
@@ -67,6 +109,7 @@ export function saveSettings(settings) {
       ? settings.repositories.map(normalizeRepositoryName).filter(isValidRepositoryName)
       : [],
     appearance: normalizeAppearance(settings.appearance),
+    notifications: normalizeNotificationSettings(settings.notifications),
   };
 
   return new Promise((resolve, reject) => {
