@@ -398,10 +398,16 @@ async function refreshStats() {
     }
     renderStatsSummary(currentSettings, currentLatestStats);
 
-    renderLastCheckedStatus();
+    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
+
+    if (failureCount === 0) {
+      renderLastCheckedStatus();
+    } else {
+      renderPopupStatusLines(['Refresh finished with GitHub request errors. Last saved values are shown where available.']);
+    }
   } catch (error) {
     console.warn('Unable to refresh Quick Summary stats.', error);
-    renderLastCheckedStatus();
+    renderPopupStatusLines(['Refresh failed. Last saved values are shown where available.']);
   }
 
   isRefreshing = false;
