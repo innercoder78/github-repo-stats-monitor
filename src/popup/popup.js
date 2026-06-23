@@ -1,4 +1,13 @@
-import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
+import {
+  getAccountStats,
+  getLatestStats,
+  getNotificationBaselines,
+  getPendingActivity,
+  getQuickSummaryStatus,
+  getSettings,
+  savePendingActivity,
+  saveQuickSummaryStatus,
+} from '../shared/storage.js';
 import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
@@ -16,7 +25,7 @@ const totalWatchers = document.getElementById('total-watchers');
 const popupStatus = document.getElementById('popup-status');
 const refreshButton = document.getElementById('refresh-stats');
 
-let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
+let currentSettings = { githubToken: '', repositories: [], appearance: 'light', notifications: { backgroundChecksEnabled: false } };
 let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
@@ -26,6 +35,8 @@ let currentPendingActivity = {
   badgeActivity: { account: false, repositories: {}, updatedAt: '' },
   updatedAt: '',
 };
+let currentNotificationBaselines = { account: {}, repositories: {}, initialized: false, updatedAt: '' };
+let currentQuickSummaryStatus = { manualRefreshAt: '' };
 
 applySavedAppearance();
 
@@ -98,6 +109,62 @@ function hasCachedClones(stats) {
   return Boolean(stats?.clonesFetchedAt) && Number.isFinite(stats.clones);
 }
 
+function formatCheckedAt(timestamp) {
+  if (!timestamp) {
+    return 'Not yet';
+  }
+
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Not yet';
+  }
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  return `${day}/${month} ${time}`;
+}
+
+function formatBackgroundCheckStatus(settings, baselines) {
+  if (!settings.notifications?.backgroundChecksEnabled) {
+    return 'Off';
+  }
+
+  return formatCheckedAt(baselines.updatedAt);
+}
+
+function renderPopupStatusLines(lines) {
+  popupStatus.replaceChildren(...lines.map((line) => {
+    const lineElement = document.createElement('span');
+    lineElement.className = 'popup-status-line';
+    lineElement.textContent = line;
+    return lineElement;
+  }));
+}
+
+function renderLastCheckedStatus() {
+  renderPopupStatusLines([
+    `Manual refresh: ${formatCheckedAt(currentQuickSummaryStatus.manualRefreshAt)}`,
+    `Background check: ${formatBackgroundCheckStatus(currentSettings, currentNotificationBaselines)}`,
+  ]);
+}
+
+function renderSetupGuidanceStatus(settings) {
+  if (settings.repositories.length === 0) {
+    renderPopupStatusLines(['Add repositories in Settings before refreshing stats.']);
+    return true;
+  }
+
+  if (!settings.githubToken) {
+    renderPopupStatusLines(['Add a GitHub token in Settings before refreshing stats.']);
+    return true;
+  }
+
+  return false;
+}
+
 function formatLastUpdated(latestStats, repositories) {
   const timestamps = repositories
     .flatMap((repository) => {
@@ -124,19 +191,6 @@ function setRefreshButtonState() {
   refreshButton.setAttribute('aria-busy', String(isRefreshing));
 }
 
-function setGuidanceStatus(settings) {
-  if (settings.repositories.length === 0) {
-    popupStatus.textContent = 'Add repositories in Settings before refreshing stats.';
-    return;
-  }
-
-  if (!settings.githubToken) {
-    popupStatus.textContent = 'Add a GitHub token in Settings before refreshing stats.';
-    return;
-  }
-
-  popupStatus.textContent = 'Updates when you refresh.';
-}
 
 
 function clearActivityHighlights() {
@@ -280,16 +334,32 @@ function renderStatsSummary(settings, latestStats) {
 
 async function renderSettingsSummary() {
   try {
-    [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity()]);
+    [
+      currentSettings,
+      currentLatestStats,
+      currentAccountStats,
+      currentPendingActivity,
+      currentNotificationBaselines,
+      currentQuickSummaryStatus,
+    ] = await Promise.all([
+      getSettings(),
+      getLatestStats(),
+      getAccountStats(),
+      getPendingActivity(),
+      getNotificationBaselines(),
+      getQuickSummaryStatus(),
+    ]);
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
-    setGuidanceStatus(currentSettings);
+    if (!renderSetupGuidanceStatus(currentSettings)) {
+      renderLastCheckedStatus();
+    }
     setRefreshButtonState();
   } catch (error) {
     repositoryCount.textContent = 'Repositories monitored: unavailable';
     tokenStatus.textContent = 'Token saved: unavailable';
     lastUpdated.textContent = 'Last updated: unavailable';
-    popupStatus.textContent = 'Unable to read cached data.';
+    renderPopupStatusLines(['Unable to read cached data.']);
     setRefreshButtonState();
   }
 }
@@ -297,19 +367,20 @@ async function renderSettingsSummary() {
 async function refreshStats() {
   if (isRefreshing) return;
 
-  if (!currentSettings.githubToken) {
-    popupStatus.textContent = 'No token saved. Open Settings and add a GitHub token.';
+  if (currentSettings.repositories.length === 0) {
+    renderPopupStatusLines(['Add repositories in Settings before refreshing stats.']);
     return;
   }
 
-  if (currentSettings.repositories.length === 0) {
-    popupStatus.textContent = 'No repositories configured. Open Settings and add at least one repository.';
+  if (!currentSettings.githubToken) {
+    renderPopupStatusLines(['Add a GitHub token in Settings before refreshing stats.']);
     return;
   }
 
   isRefreshing = true;
+  currentQuickSummaryStatus = await saveQuickSummaryStatus({ manualRefreshAt: new Date().toISOString() });
   setRefreshButtonState();
-  popupStatus.textContent = formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length });
+  renderPopupStatusLines([formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length })]);
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
@@ -317,7 +388,7 @@ async function refreshStats() {
       detectActivity: true,
       skipBadgeActivity: true,
       onProgress(progress) {
-        popupStatus.textContent = formatRefreshProgressMessage(progress);
+        renderPopupStatusLines([formatRefreshProgressMessage(progress)]);
       },
     });
     currentLatestStats = refreshResult.latestStats;
@@ -328,11 +399,15 @@ async function refreshStats() {
     renderStatsSummary(currentSettings, currentLatestStats);
 
     const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
-    popupStatus.textContent = failureCount === 0
-      ? 'Stats refreshed.'
-      : 'Refresh finished with GitHub request errors. Last saved values are shown where available.';
+
+    if (failureCount === 0) {
+      renderLastCheckedStatus();
+    } else {
+      renderPopupStatusLines(['Refresh finished with GitHub request errors. Last saved values are shown where available.']);
+    }
   } catch (error) {
-    popupStatus.textContent = error.message || 'Refresh failed. Last saved values are shown where available.';
+    console.warn('Unable to refresh Quick Summary stats.', error);
+    renderPopupStatusLines(['Refresh failed. Last saved values are shown where available.']);
   }
 
   isRefreshing = false;

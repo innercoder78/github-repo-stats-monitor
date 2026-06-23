@@ -45,6 +45,9 @@ const DEFAULT_NOTIFICATION_BASELINES = Object.freeze({
   initialized: false,
   updatedAt: '',
 });
+const DEFAULT_QUICK_SUMMARY_STATUS = Object.freeze({
+  manualRefreshAt: '',
+});
 
 
 function getChromeStorage() {
@@ -523,6 +526,44 @@ export function saveNotificationBaselines(notificationBaselines) {
       }
 
       resolve(nextNotificationBaselines);
+    });
+  });
+}
+
+function normalizeQuickSummaryStatus(status) {
+  return {
+    manualRefreshAt: typeof status?.manualRefreshAt === 'string' ? status.manualRefreshAt : '',
+  };
+}
+
+export function getQuickSummaryStatus() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get({ quickSummaryStatus: DEFAULT_QUICK_SUMMARY_STATUS }, (storedData) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizeQuickSummaryStatus(storedData.quickSummaryStatus));
+    });
+  });
+}
+
+export function saveQuickSummaryStatus(status) {
+  const nextQuickSummaryStatus = normalizeQuickSummaryStatus(status);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ quickSummaryStatus: nextQuickSummaryStatus }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(nextQuickSummaryStatus);
     });
   });
 }
