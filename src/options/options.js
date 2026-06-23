@@ -4,6 +4,7 @@ import { getRepositoryUrl } from '../shared/repository-url.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
+import { normalizeDisplayPreferences } from '../shared/display-format.js';
 
 const MAX_REPOSITORIES = 20;
 const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
@@ -11,6 +12,8 @@ const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can mo
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
 const appearanceInputs = Array.from(document.querySelectorAll('input[name="appearance"]'));
+const dateFormatSelect = document.getElementById('date-format');
+const timeFormatSelect = document.getElementById('time-format');
 const notificationBackgroundInput = document.getElementById('notification-background-checks');
 const notificationStatInputs = {
   stars: document.getElementById('notification-stars'),
@@ -54,6 +57,13 @@ function setMessage(element, text, type = '') {
   element.className = `message ${type}`.trim();
 }
 
+
+function getDisplayPreferencesFromForm() {
+  return normalizeDisplayPreferences({
+    dateFormat: dateFormatSelect.value,
+    timeFormat: timeFormatSelect.value,
+  });
+}
 
 function getNotificationSettingsFromForm() {
   return {
@@ -698,6 +708,8 @@ function renderSettings(settings) {
   notificationSystemInput.checked = settings.notifications.systemNotificationsEnabled;
   notificationBadgeInput.checked = settings.notifications.badgeEnabled;
   notificationIntervalSelect.value = String(settings.notifications.checkIntervalMinutes);
+  dateFormatSelect.value = settings.displayPreferences.dateFormat;
+  timeFormatSelect.value = settings.displayPreferences.timeFormat;
   updateNotificationControls();
   setMessage(notificationMessage, '', '');
   renderRepositories(settings.repositories);
@@ -812,6 +824,7 @@ form.addEventListener('submit', async (event) => {
       repositories: validation.repositories,
       appearance: selectedAppearance,
       notifications: getNotificationSettingsFromForm(),
+      displayPreferences: getDisplayPreferencesFromForm(),
     });
     applyAppearance(savedSettings.appearance);
     renderSettings(savedSettings);

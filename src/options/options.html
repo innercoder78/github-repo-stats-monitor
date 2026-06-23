@@ -107,6 +107,24 @@
           <p id="notification-message" class="message" role="alert" aria-live="polite"></p>
         </section>
 
+
+        <section class="card settings-card" aria-labelledby="display-preferences-title">
+          <h2 id="display-preferences-title">Display Preferences</h2>
+          <label for="date-format">Date format</label>
+          <select id="date-format" name="date-format">
+            <option value="system">System default</option>
+            <option value="dd/mm/yyyy">DD/MM/YYYY</option>
+            <option value="mm/dd/yyyy">MM/DD/YYYY</option>
+            <option value="yyyy/mm/dd">YYYY/MM/DD</option>
+          </select>
+          <label for="time-format">Time format</label>
+          <select id="time-format" name="time-format">
+            <option value="system">System default</option>
+            <option value="12-hour">12-hour (AM/PM)</option>
+            <option value="24-hour">24-hour</option>
+          </select>
+        </section>
+
         <section class="card settings-card" aria-labelledby="appearance-title">
           <h2 id="appearance-title">Appearance</h2>
           <p class="muted">Choose how extension pages should look.</p>
