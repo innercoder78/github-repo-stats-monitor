@@ -351,6 +351,19 @@ async function renderSettingsSummary() {
   }
 }
 
+
+async function reloadSavedRefreshData() {
+  [currentLatestStats, currentAccountStats, currentPendingActivity] = await Promise.all([
+    getLatestStats(),
+    getAccountStats(),
+    getPendingActivity(),
+  ]);
+  renderStatsSummary(currentSettings, currentLatestStats);
+  if (!renderSetupGuidanceStatus(currentSettings)) {
+    renderLastCheckedStatus();
+  }
+}
+
 async function refreshStats() {
   if (isRefreshing) return;
 
@@ -380,7 +393,7 @@ async function refreshStats() {
       },
     });
     if (refreshResult.skipped) {
-      renderPopupStatusLines(['Refresh already in progress. Last saved values are shown where available.']);
+      await reloadSavedRefreshData();
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;

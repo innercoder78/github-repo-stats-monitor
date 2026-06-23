@@ -81,6 +81,22 @@ export async function getFullRefreshCoordination() {
   return getRefreshCoordination();
 }
 
+export async function getFullRefreshReuseResult(freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const coordination = await getRefreshCoordination();
+
+  if (isLockActive(coordination)) {
+    const source = coordination.running.source || '';
+    await waitForRunningFullRefresh();
+    return { skipped: true, reason: 'completed-recently', source };
+  }
+
+  if (isFreshTimestamp(coordination.lastCompletedAt, freshnessMs)) {
+    return { skipped: true, reason: 'completed-recently', source: coordination.lastCompletedBy || '' };
+  }
+
+  return { skipped: false };
+}
+
 export async function isFullRefreshFresh(freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
   const coordination = await getRefreshCoordination();
   return isFreshTimestamp(coordination.lastCompletedAt, freshnessMs);
@@ -97,12 +113,14 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   const coordination = await getRefreshCoordination();
 
   if (isLockActive(coordination)) {
-    if (manual && !isManualRefreshSource(coordination.running.source)) {
+    const runningSource = coordination.running.source || '';
+
+    if (manual) {
       await waitForRunningFullRefresh();
-      return runExclusiveFullRefresh(source, refreshTask);
+      return { skipped: true, reason: 'completed-recently', source: runningSource };
     }
 
-    return { skipped: true, reason: 'running', source: coordination.running.source || '' };
+    return { skipped: true, reason: 'running', source: runningSource };
   }
 
   await saveRefreshCoordination({
