@@ -1,6 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
 import { cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
-import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, refreshStatsCache } from '../shared/refresh-stats.js';
+import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -605,19 +605,25 @@ async function refreshSingleRepository(repository) {
     if (fullRefreshReuse.skipped) {
       await reloadSavedRefreshData();
     } else {
-      const refreshResult = await refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
+      const coordinatedRefresh = await runExclusiveUserVisibleGitHubRequest('dashboard-repository', () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
         detectActivity: true,
         skipBadgeActivity: true,
-      });
-      currentLatestStats = refreshResult.latestStats;
-      if (refreshResult.pendingActivity) {
-        currentPendingActivity = refreshResult.pendingActivity;
-      }
+      }));
 
-      if (hasRefreshError(refreshResult.result.stats)) {
-        setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
+      if (coordinatedRefresh.skipped) {
+        await reloadSavedRefreshData();
       } else {
-        setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+        const refreshResult = coordinatedRefresh.result;
+        currentLatestStats = refreshResult.latestStats;
+        if (refreshResult.pendingActivity) {
+          currentPendingActivity = refreshResult.pendingActivity;
+        }
+
+        if (hasRefreshError(refreshResult.result.stats)) {
+          setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
+        } else {
+          setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+        }
       }
     }
   } catch (error) {

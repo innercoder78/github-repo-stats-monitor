@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
-import { runExclusiveFullRefresh, wasManualFullRefreshRecentlyCompleted } from './shared/refresh-stats.js';
+import { runExclusiveFullRefresh, wasManualFullRefreshRecentlyCompleted, wasManualGitHubRequestRecentlyCompleted } from './shared/refresh-stats.js';
 import {
   getNotificationBaselines,
   getPendingActivity,
@@ -411,7 +411,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
 }
 
 async function runBackgroundCheck() {
-  if (await wasManualFullRefreshRecentlyCompleted()) {
+  if (await wasManualFullRefreshRecentlyCompleted() || await wasManualGitHubRequestRecentlyCompleted()) {
     return;
   }
 

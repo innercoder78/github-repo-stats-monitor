@@ -5,7 +5,7 @@ import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingAct
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
 const FULL_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
 const FULL_REFRESH_COORDINATION_KEY = 'fullRefreshCoordination';
-const MANUAL_REFRESH_SOURCES = new Set(['quick-summary', 'dashboard', 'manual']);
+const MANUAL_REFRESH_SOURCES = new Set(['quick-summary', 'dashboard', 'dashboard-repository', 'manual']);
 
 function getRefreshSource(options) {
   return typeof options?.source === 'string' ? options.source : 'manual';
@@ -107,6 +107,62 @@ export async function wasManualFullRefreshRecentlyCompleted(freshnessMs = FULL_R
   return isManualRefreshSource(coordination.lastCompletedBy) && isFreshTimestamp(coordination.lastCompletedAt, freshnessMs);
 }
 
+export async function wasManualGitHubRequestRecentlyCompleted(freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const coordination = await getRefreshCoordination();
+  return isManualRefreshSource(coordination.lastManualRequestCompletedBy)
+    && isFreshTimestamp(coordination.lastManualRequestCompletedAt, freshnessMs);
+}
+
+export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) {
+  const token = createRefreshToken(source);
+  const coordination = await getRefreshCoordination();
+
+  if (isLockActive(coordination)) {
+    const runningSource = coordination.running.source || '';
+    await waitForRunningFullRefresh();
+    return { skipped: true, reason: 'completed-recently', source: runningSource };
+  }
+
+  await saveRefreshCoordination({
+    ...coordination,
+    running: {
+      token,
+      source,
+      manual: true,
+      fullRefresh: false,
+      startedAt: new Date().toISOString(),
+    },
+  });
+
+  const savedCoordination = await getRefreshCoordination();
+  if (savedCoordination.running?.token !== token) {
+    return { skipped: true, reason: 'running', source: savedCoordination.running?.source || '' };
+  }
+
+  try {
+    const result = await requestTask();
+    const completedAt = result?.fetchedAt || new Date().toISOString();
+    const latestCoordination = await getRefreshCoordination();
+    if (latestCoordination.running?.token === token) {
+      await saveRefreshCoordination({
+        ...latestCoordination,
+        running: null,
+        lastManualRequestCompletedAt: completedAt,
+        lastManualRequestCompletedBy: source,
+      });
+    }
+    return { skipped: false, result };
+  } finally {
+    const latestCoordination = await getRefreshCoordination();
+    if (latestCoordination.running?.token === token) {
+      await saveRefreshCoordination({
+        ...latestCoordination,
+        running: null,
+      });
+    }
+  }
+}
+
 export async function runExclusiveFullRefresh(source, refreshTask) {
   const token = createRefreshToken(source);
   const manual = isManualRefreshSource(source);
@@ -129,6 +185,7 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
       token,
       source,
       manual,
+      fullRefresh: true,
       startedAt: new Date().toISOString(),
     },
   });
@@ -149,6 +206,8 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
         lastCompletedAt: completedAt,
         lastCompletedBy: source,
         lastManualCompletedAt: manual ? completedAt : latestCoordination.lastManualCompletedAt || '',
+        lastManualRequestCompletedAt: manual ? completedAt : latestCoordination.lastManualRequestCompletedAt || '',
+        lastManualRequestCompletedBy: manual ? source : latestCoordination.lastManualRequestCompletedBy || '',
       });
     }
     return { skipped: false, result };
