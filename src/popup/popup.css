@@ -71,10 +71,16 @@ h1 {
 }
 
 .popup-status {
+  display: grid;
+  gap: 2px;
   line-height: 1.35;
   margin-bottom: 0;
   min-width: 0;
   white-space: pre-line;
+}
+
+.popup-status-line {
+  display: block;
 }
 
 .settings-summary {

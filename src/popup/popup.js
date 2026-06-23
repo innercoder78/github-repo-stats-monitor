@@ -135,11 +135,34 @@ function formatBackgroundCheckStatus(settings, baselines) {
   return formatCheckedAt(baselines.updatedAt);
 }
 
+function renderPopupStatusLines(lines) {
+  popupStatus.replaceChildren(...lines.map((line) => {
+    const lineElement = document.createElement('span');
+    lineElement.className = 'popup-status-line';
+    lineElement.textContent = line;
+    return lineElement;
+  }));
+}
+
 function renderLastCheckedStatus() {
-  popupStatus.textContent = [
+  renderPopupStatusLines([
     `Manual refresh: ${formatCheckedAt(currentQuickSummaryStatus.manualRefreshAt)}`,
     `Background check: ${formatBackgroundCheckStatus(currentSettings, currentNotificationBaselines)}`,
-  ].join('\n');
+  ]);
+}
+
+function renderSetupGuidanceStatus(settings) {
+  if (settings.repositories.length === 0) {
+    renderPopupStatusLines(['Add repositories in Settings before refreshing stats.']);
+    return true;
+  }
+
+  if (!settings.githubToken) {
+    renderPopupStatusLines(['Add a GitHub token in Settings before refreshing stats.']);
+    return true;
+  }
+
+  return false;
 }
 
 function formatLastUpdated(latestStats, repositories) {
@@ -328,13 +351,15 @@ async function renderSettingsSummary() {
     ]);
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
-    renderLastCheckedStatus();
+    if (!renderSetupGuidanceStatus(currentSettings)) {
+      renderLastCheckedStatus();
+    }
     setRefreshButtonState();
   } catch (error) {
     repositoryCount.textContent = 'Repositories monitored: unavailable';
     tokenStatus.textContent = 'Token saved: unavailable';
     lastUpdated.textContent = 'Last updated: unavailable';
-    popupStatus.textContent = 'Unable to read cached data.';
+    renderPopupStatusLines(['Unable to read cached data.']);
     setRefreshButtonState();
   }
 }
@@ -342,20 +367,20 @@ async function renderSettingsSummary() {
 async function refreshStats() {
   if (isRefreshing) return;
 
-  if (!currentSettings.githubToken) {
-    popupStatus.textContent = 'No token saved. Open Settings and add a GitHub token.';
+  if (currentSettings.repositories.length === 0) {
+    renderPopupStatusLines(['Add repositories in Settings before refreshing stats.']);
     return;
   }
 
-  if (currentSettings.repositories.length === 0) {
-    popupStatus.textContent = 'No repositories configured. Open Settings and add at least one repository.';
+  if (!currentSettings.githubToken) {
+    renderPopupStatusLines(['Add a GitHub token in Settings before refreshing stats.']);
     return;
   }
 
   isRefreshing = true;
   currentQuickSummaryStatus = await saveQuickSummaryStatus({ manualRefreshAt: new Date().toISOString() });
   setRefreshButtonState();
-  popupStatus.textContent = formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length });
+  renderPopupStatusLines([formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length })]);
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
@@ -363,7 +388,7 @@ async function refreshStats() {
       detectActivity: true,
       skipBadgeActivity: true,
       onProgress(progress) {
-        popupStatus.textContent = formatRefreshProgressMessage(progress);
+        renderPopupStatusLines([formatRefreshProgressMessage(progress)]);
       },
     });
     currentLatestStats = refreshResult.latestStats;
