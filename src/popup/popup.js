@@ -371,6 +371,7 @@ async function refreshStats() {
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
+      source: 'quick-summary',
       accountStats: currentAccountStats,
       detectActivity: true,
       skipBadgeActivity: true,
@@ -378,19 +379,23 @@ async function refreshStats() {
         renderPopupStatusLines([formatRefreshProgressMessage(progress)]);
       },
     });
-    currentLatestStats = refreshResult.latestStats;
-    currentAccountStats = refreshResult.accountStats;
-    if (refreshResult.pendingActivity) {
-      currentPendingActivity = refreshResult.pendingActivity;
-    }
-    renderStatsSummary(currentSettings, currentLatestStats);
-
-    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
-
-    if (failureCount === 0) {
-      renderLastCheckedStatus();
+    if (refreshResult.skipped) {
+      renderPopupStatusLines(['Refresh already in progress. Last saved values are shown where available.']);
     } else {
-      renderPopupStatusLines(['Refresh finished with GitHub request errors. Last saved values are shown where available.']);
+      currentLatestStats = refreshResult.latestStats;
+      currentAccountStats = refreshResult.accountStats;
+      if (refreshResult.pendingActivity) {
+        currentPendingActivity = refreshResult.pendingActivity;
+      }
+      renderStatsSummary(currentSettings, currentLatestStats);
+
+      const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
+
+      if (failureCount === 0) {
+        renderLastCheckedStatus();
+      } else {
+        renderPopupStatusLines(['Refresh finished with GitHub request errors. Last saved values are shown where available.']);
+      }
     }
   } catch (error) {
     console.warn('Unable to refresh Quick Summary stats.', error);

@@ -2,6 +2,149 @@ import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTraf
 import { getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, savePendingActivity } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
 
+const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
+const FULL_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
+const FULL_REFRESH_COORDINATION_KEY = 'fullRefreshCoordination';
+const MANUAL_REFRESH_SOURCES = new Set(['quick-summary', 'dashboard', 'manual']);
+
+function getRefreshSource(options) {
+  return typeof options?.source === 'string' ? options.source : 'manual';
+}
+
+function isManualRefreshSource(source) {
+  return MANUAL_REFRESH_SOURCES.has(source);
+}
+
+function createRefreshToken(source) {
+  return `${source}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getStorageArea() {
+  return chrome.storage.local;
+}
+
+function getRefreshCoordination() {
+  return new Promise((resolve, reject) => {
+    getStorageArea().get({ [FULL_REFRESH_COORDINATION_KEY]: {} }, (stored) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(stored[FULL_REFRESH_COORDINATION_KEY] && typeof stored[FULL_REFRESH_COORDINATION_KEY] === 'object'
+        ? stored[FULL_REFRESH_COORDINATION_KEY]
+        : {});
+    });
+  });
+}
+
+function saveRefreshCoordination(coordination) {
+  return new Promise((resolve, reject) => {
+    getStorageArea().set({ [FULL_REFRESH_COORDINATION_KEY]: coordination }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(coordination);
+    });
+  });
+}
+
+function isLockActive(coordination) {
+  const startedAt = Date.parse(coordination?.running?.startedAt || '');
+  return Boolean(coordination?.running?.token) && Number.isFinite(startedAt) && Date.now() - startedAt < FULL_REFRESH_LOCK_STALE_MS;
+}
+
+function isFreshTimestamp(value, freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const timestamp = Date.parse(value || '');
+  return Number.isFinite(timestamp) && Date.now() - timestamp < freshnessMs;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function waitForRunningFullRefresh() {
+  while (isLockActive(await getRefreshCoordination())) {
+    await wait(500);
+  }
+}
+
+export async function getFullRefreshCoordination() {
+  return getRefreshCoordination();
+}
+
+export async function isFullRefreshFresh(freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const coordination = await getRefreshCoordination();
+  return isFreshTimestamp(coordination.lastCompletedAt, freshnessMs);
+}
+
+export async function wasManualFullRefreshRecentlyCompleted(freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const coordination = await getRefreshCoordination();
+  return isManualRefreshSource(coordination.lastCompletedBy) && isFreshTimestamp(coordination.lastCompletedAt, freshnessMs);
+}
+
+export async function runExclusiveFullRefresh(source, refreshTask) {
+  const token = createRefreshToken(source);
+  const manual = isManualRefreshSource(source);
+  const coordination = await getRefreshCoordination();
+
+  if (isLockActive(coordination)) {
+    if (manual && !isManualRefreshSource(coordination.running.source)) {
+      await waitForRunningFullRefresh();
+      return runExclusiveFullRefresh(source, refreshTask);
+    }
+
+    return { skipped: true, reason: 'running', source: coordination.running.source || '' };
+  }
+
+  await saveRefreshCoordination({
+    ...coordination,
+    running: {
+      token,
+      source,
+      manual,
+      startedAt: new Date().toISOString(),
+    },
+  });
+
+  const savedCoordination = await getRefreshCoordination();
+  if (savedCoordination.running?.token !== token) {
+    return { skipped: true, reason: 'running', source: savedCoordination.running?.source || '' };
+  }
+
+  try {
+    const result = await refreshTask();
+    const completedAt = result?.fetchedAt || new Date().toISOString();
+    const latestCoordination = await getRefreshCoordination();
+    if (latestCoordination.running?.token === token) {
+      await saveRefreshCoordination({
+        ...latestCoordination,
+        running: null,
+        lastCompletedAt: completedAt,
+        lastCompletedBy: source,
+        lastManualCompletedAt: manual ? completedAt : latestCoordination.lastManualCompletedAt || '',
+      });
+    }
+    return { skipped: false, result };
+  } finally {
+    const latestCoordination = await getRefreshCoordination();
+    if (latestCoordination.running?.token === token) {
+      await saveRefreshCoordination({
+        ...latestCoordination,
+        running: null,
+      });
+    }
+  }
+}
+
 function hasCachedTraffic(stats) {
   return Boolean(stats?.trafficFetchedAt)
     && Number.isFinite(stats.views)
@@ -132,6 +275,20 @@ async function refreshRepositoryStats(repository, githubToken, previousStats, fe
 }
 
 export async function refreshStatsCache(settings, currentLatestStats, options = {}) {
+  const source = getRefreshSource(options);
+  if (!options.skipFullRefreshCoordination) {
+    const coordinatedRefresh = await runExclusiveFullRefresh(source, () => refreshStatsCache(settings, currentLatestStats, {
+      ...options,
+      skipFullRefreshCoordination: true,
+    }));
+
+    if (coordinatedRefresh.skipped) {
+      return { skipped: true, reason: coordinatedRefresh.reason, source: coordinatedRefresh.source };
+    }
+
+    return coordinatedRefresh.result;
+  }
+
   const { githubToken, repositories } = getRefreshInputs(settings);
   const onProgress = options && typeof options === 'object' ? options.onProgress : undefined;
   const previousAccountStats = options && typeof options === 'object' ? options.accountStats : undefined;

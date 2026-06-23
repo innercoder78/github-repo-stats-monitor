@@ -1,4 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
+import { runExclusiveFullRefresh, wasManualFullRefreshRecentlyCompleted } from './shared/refresh-stats.js';
 import {
   getNotificationBaselines,
   getPendingActivity,
@@ -410,6 +411,17 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
 }
 
 async function runBackgroundCheck() {
+  if (await wasManualFullRefreshRecentlyCompleted()) {
+    return;
+  }
+
+  const coordinatedCheck = await runExclusiveFullRefresh('background', runBackgroundCheckNow);
+  if (coordinatedCheck.skipped) {
+    return;
+  }
+}
+
+async function runBackgroundCheckNow() {
   let settings;
 
   try {
@@ -465,6 +477,8 @@ async function runBackgroundCheck() {
     await updateBadgeFromBadgeActivity(settings, savedPendingActivity.badgeActivity);
   }
   await showActivityNotification(settings, newPendingChanges, shouldCompare);
+
+  return { fetchedAt: checkedAt };
 }
 
 
