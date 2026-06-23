@@ -6,6 +6,7 @@ import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
+import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -26,7 +27,7 @@ const summaryValues = {
   watchers: document.getElementById('total-watchers'),
 };
 
-let currentSettings = { githubToken: '', repositories: [], appearance: 'light' };
+let currentSettings = { githubToken: '', repositories: [], appearance: 'light', displayPreferences: getDefaultDisplayPreferences() };
 let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
@@ -80,8 +81,7 @@ function formatNumber(value) {
 }
 
 function formatRefreshTime(value) {
-  if (!value) return 'Not refreshed yet';
-  return new Date(value).toLocaleString();
+  return formatDisplayTimestamp(value, currentSettings.displayPreferences, 'full') || 'Not refreshed yet';
 }
 
 function formatRefreshProgressMessage(progress) {
@@ -111,13 +111,7 @@ function getValidDate(value) {
 }
 
 function formatCompactRefreshTime(date) {
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatDisplayTimestamp(date, currentSettings.displayPreferences, 'full');
 }
 
 function formatFetchedSummary(stats) {

@@ -12,6 +12,7 @@ import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activ
 import { closeExtensionPage } from '../shared/close-page.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
+import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -25,7 +26,7 @@ const totalWatchers = document.getElementById('total-watchers');
 const popupStatus = document.getElementById('popup-status');
 const refreshButton = document.getElementById('refresh-stats');
 
-let currentSettings = { githubToken: '', repositories: [], appearance: 'light', notifications: { backgroundChecksEnabled: false } };
+let currentSettings = { githubToken: '', repositories: [], appearance: 'light', notifications: { backgroundChecksEnabled: false }, displayPreferences: getDefaultDisplayPreferences() };
 let currentLatestStats = {};
 let currentAccountStats = { login: '', followers: 0, fetchedAt: '' };
 let isRefreshing = false;
@@ -110,21 +111,7 @@ function hasCachedClones(stats) {
 }
 
 function formatCheckedAt(timestamp) {
-  if (!timestamp) {
-    return 'Not yet';
-  }
-
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Not yet';
-  }
-
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
-
-  return `${day}/${month} ${time}`;
+  return formatDisplayTimestamp(timestamp, currentSettings.displayPreferences, 'compact') || 'Not yet';
 }
 
 function formatBackgroundCheckStatus(settings, baselines) {
@@ -182,7 +169,7 @@ function formatLastUpdated(latestStats, repositories) {
     return 'Last updated: Not refreshed yet';
   }
 
-  return `Last updated: ${new Date(timestamps[timestamps.length - 1]).toLocaleString()}`;
+  return `Last updated: ${formatDisplayTimestamp(timestamps[timestamps.length - 1], currentSettings.displayPreferences, 'full')}`;
 }
 
 function setRefreshButtonState() {

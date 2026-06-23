@@ -1,3 +1,5 @@
+import { getDefaultDisplayPreferences, normalizeDisplayPreferences } from './display-format.js';
+
 const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   backgroundChecksEnabled: false,
   trackedStats: Object.freeze({
@@ -16,6 +18,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   repositories: [],
   appearance: 'light',
   notifications: DEFAULT_NOTIFICATION_SETTINGS,
+  displayPreferences: getDefaultDisplayPreferences(),
 });
 
 const DEFAULT_ACCOUNT_STATS = Object.freeze({
@@ -118,6 +121,7 @@ export function getSettings() {
           : [],
         appearance: normalizeAppearance(storedSettings.appearance),
         notifications: normalizeNotificationSettings(storedSettings.notifications),
+        displayPreferences: normalizeDisplayPreferences(storedSettings.displayPreferences),
       });
     });
   });
@@ -131,6 +135,7 @@ export function saveSettings(settings) {
       : [],
     appearance: normalizeAppearance(settings.appearance),
     notifications: normalizeNotificationSettings(settings.notifications),
+    displayPreferences: normalizeDisplayPreferences(settings.displayPreferences),
   };
 
   return new Promise((resolve, reject) => {
