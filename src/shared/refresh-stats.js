@@ -7,6 +7,25 @@ const FULL_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
 const FULL_REFRESH_COORDINATION_KEY = 'fullRefreshCoordination';
 const MANUAL_REFRESH_SOURCES = new Set(['quick-summary', 'dashboard', 'dashboard-repository', 'manual']);
 
+const REPOSITORY_REQUEST_CONCURRENCY_LIMIT = 4;
+
+export async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  const concurrency = Math.max(1, Math.min(Number(limit) || 1, items.length));
+  let nextIndex = 0;
+
+  async function runNext() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, runNext));
+  return results;
+}
+
 function getRefreshSource(options) {
   return typeof options?.source === 'string' ? options.source : 'manual';
 }
@@ -440,7 +459,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
   const accountResult = await refreshAccountStats(githubToken, previousAccountStats, fetchedAt);
   let completed = 0;
-  const results = await Promise.all(repositories.map(async (repository) => {
+  const results = await mapWithConcurrency(repositories, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
     const previousStats = latestStats[repository] || { repository };
     const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
 
@@ -453,7 +472,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     });
 
     return result;
-  }));
+  });
 
   const nextLatestStats = { ...latestStats };
   results.forEach(({ repository, stats }) => {
