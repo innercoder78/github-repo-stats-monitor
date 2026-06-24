@@ -337,6 +337,18 @@ function createChartPanel(label, stats, metricKey, entriesKey = 'dailyViews') {
 }
 
 
+function hasFetchedAccountStats(accountStats) {
+  return Boolean(accountStats?.login)
+    && Boolean(accountStats?.fetchedAt)
+    && Number.isFinite(accountStats.followers);
+}
+
+function hasCurrentAccountViewedBaseline() {
+  return hasFetchedAccountStats(currentAccountStats)
+    && currentViewedBaselines.account?.login === currentAccountStats.login
+    && Number.isFinite(Number(currentViewedBaselines.account?.followers));
+}
+
 function getBaselineDelta(baseline, key, currentValue) {
   if (!Number.isFinite(currentValue)) {
     return 0;
@@ -376,6 +388,10 @@ function createRepositoryActivityNote(repository, stats) {
 }
 
 function createAccountActivityNote() {
+  if (!hasCurrentAccountViewedBaseline()) {
+    return null;
+  }
+
   const followersDelta = getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
 
   if (followersDelta === 0) {
@@ -471,8 +487,12 @@ async function saveDashboardViewedBaselines(renderedRepositories, displayedAccou
     }
   });
 
-  if (displayedAccount && Number.isFinite(currentAccountStats.followers)) {
-    nextViewedBaselines.account = { followers: currentAccountStats.followers, updatedAt: viewedAt };
+  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
+    nextViewedBaselines.account = {
+      login: currentAccountStats.login,
+      followers: currentAccountStats.followers,
+      updatedAt: viewedAt,
+    };
   }
 
   try {
@@ -597,7 +617,7 @@ function renderSummary() {
 
   summaryValues.stars.textContent = totals.metadataCount > 0 ? formatNumber(totals.stars) : '—';
   summaryValues.forks.textContent = totals.metadataCount > 0 ? formatNumber(totals.forks) : '—';
-  summaryValues.accountFollowers.textContent = formatNumber(currentAccountStats.followers);
+  summaryValues.accountFollowers.textContent = hasFetchedAccountStats(currentAccountStats) ? formatNumber(currentAccountStats.followers) : '—';
   summaryValues.watchers.textContent = totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—';
   summaryValues.views.textContent = totals.trafficCount > 0 ? formatNumber(totals.views) : '—';
   summaryValues.clones.textContent = totals.clonesCount > 0 ? formatNumber(totals.clones) : '—';
@@ -613,7 +633,7 @@ function renderSummary() {
     accountMetricBody?.append(accountActivityNote);
   }
 
-  return Number.isFinite(currentAccountStats.followers);
+  return hasFetchedAccountStats(currentAccountStats);
 }
 
 function renderRepositories() {
@@ -642,7 +662,7 @@ function renderRepositories() {
   });
   const displayedAccountActivity = renderSummary();
   markDashboardActivityShown(displayedRepositories, displayedAccountActivity);
-  saveDashboardViewedBaselines(displayedRepositories, true);
+  saveDashboardViewedBaselines(displayedRepositories, displayedAccountActivity);
 }
 
 
