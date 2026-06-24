@@ -1,6 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
 import { cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
-import { refreshRepositoryStatsCache, refreshStatsCache } from '../shared/refresh-stats.js';
+import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -520,6 +520,16 @@ function renderRepositories() {
   markDashboardActivityShown(renderedActivityRepositories);
 }
 
+
+async function reloadSavedRefreshData() {
+  [currentLatestStats, currentAccountStats, currentPendingActivity] = await Promise.all([
+    getLatestStats(),
+    getAccountStats(),
+    getPendingActivity(),
+  ]);
+  renderRepositories();
+}
+
 async function refreshRepositoryStats() {
   if (isRefreshing || refreshingRepository) return;
 
@@ -537,6 +547,7 @@ async function refreshRepositoryStats() {
 
   try {
     const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
+      source: 'dashboard',
       accountStats: currentAccountStats,
       detectActivity: true,
       skipBadgeActivity: true,
@@ -544,21 +555,25 @@ async function refreshRepositoryStats() {
         setStatus(formatRefreshProgressMessage(progress), 'loading');
       },
     });
-    currentLatestStats = refreshResult.latestStats;
-    currentAccountStats = refreshResult.accountStats;
-    if (refreshResult.pendingActivity) {
-      currentPendingActivity = refreshResult.pendingActivity;
-    }
-
-    const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
-    const successCount = refreshResult.results.length - failureCount;
-
-    if (failureCount === 0) {
-      setStatus(`Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
-    } else if (successCount > 0) {
-      setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed, and ${failureCount} had repository, traffic, clone, or referrer errors. Last saved values are shown where available.`, 'warning');
+    if (refreshResult.skipped) {
+      await reloadSavedRefreshData();
     } else {
-      setStatus('Refresh finished with errors for all repositories. Last saved values are shown where available.', 'error');
+      currentLatestStats = refreshResult.latestStats;
+      currentAccountStats = refreshResult.accountStats;
+      if (refreshResult.pendingActivity) {
+        currentPendingActivity = refreshResult.pendingActivity;
+      }
+
+      const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
+      const successCount = refreshResult.results.length - failureCount;
+
+      if (failureCount === 0) {
+        setStatus(`Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+      } else if (successCount > 0) {
+        setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed, and ${failureCount} had repository, traffic, clone, or referrer errors. Last saved values are shown where available.`, 'warning');
+      } else {
+        setStatus('Refresh finished with errors for all repositories. Last saved values are shown where available.', 'error');
+      }
     }
   } catch (error) {
     setStatus(error.message === 'No repositories configured. Open Settings and add at least one repository.'
@@ -586,19 +601,30 @@ async function refreshSingleRepository(repository) {
   setStatus(`Refreshing ${repository}…`, 'loading');
 
   try {
-    const refreshResult = await refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
-      detectActivity: true,
-      skipBadgeActivity: true,
-    });
-    currentLatestStats = refreshResult.latestStats;
-    if (refreshResult.pendingActivity) {
-      currentPendingActivity = refreshResult.pendingActivity;
-    }
-
-    if (hasRefreshError(refreshResult.result.stats)) {
-      setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
+    const fullRefreshReuse = await getFullRefreshReuseResult();
+    if (fullRefreshReuse.skipped) {
+      await reloadSavedRefreshData();
     } else {
-      setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+      const coordinatedRefresh = await runExclusiveUserVisibleGitHubRequest('dashboard-repository', () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
+        detectActivity: true,
+        skipBadgeActivity: true,
+      }));
+
+      if (coordinatedRefresh.skipped) {
+        await reloadSavedRefreshData();
+      } else {
+        const refreshResult = coordinatedRefresh.result;
+        currentLatestStats = refreshResult.latestStats;
+        if (refreshResult.pendingActivity) {
+          currentPendingActivity = refreshResult.pendingActivity;
+        }
+
+        if (hasRefreshError(refreshResult.result.stats)) {
+          setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
+        } else {
+          setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+        }
+      }
     }
   } catch (error) {
     setStatus(`Could not refresh ${repository}. Last saved values are shown where available.`, 'error');
@@ -621,6 +647,10 @@ async function initializeDashboard() {
 
     if (!currentSettings.githubToken) {
       setStatus('No token saved. Open Settings and add a GitHub token to fetch repository metadata, traffic, and clones.', 'warning');
+      return;
+    }
+
+    if (await isFullRefreshFresh()) {
       return;
     }
 
