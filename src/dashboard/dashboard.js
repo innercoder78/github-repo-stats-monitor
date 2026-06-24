@@ -557,6 +557,7 @@ async function refreshRepositoryStats() {
     });
     if (refreshResult.skipped) {
       await reloadSavedRefreshData();
+      setStatus('Showing recently refreshed data.', 'success');
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;
@@ -604,6 +605,7 @@ async function refreshSingleRepository(repository) {
     const fullRefreshReuse = await getFullRefreshReuseResult();
     if (fullRefreshReuse.skipped) {
       await reloadSavedRefreshData();
+      setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
     } else {
       const coordinatedRefresh = await runExclusiveUserVisibleGitHubRequest('dashboard-repository', () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
         detectActivity: true,
@@ -612,6 +614,7 @@ async function refreshSingleRepository(repository) {
 
       if (coordinatedRefresh.skipped) {
         await reloadSavedRefreshData();
+        setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
       } else {
         const refreshResult = coordinatedRefresh.result;
         currentLatestStats = refreshResult.latestStats;
