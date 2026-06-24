@@ -433,9 +433,12 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
 
     const followers = Number(account.followers);
     const previousFollowers = baselines.account.followers;
+    const previousLogin = typeof baselines.account.login === 'string' ? baselines.account.login : '';
+    const fetchedLogin = typeof account.login === 'string' ? account.login : '';
+    const accountLoginChanged = Boolean(previousLogin && fetchedLogin && previousLogin !== fetchedLogin);
     let changed = false;
 
-    if (shouldCompare && Number.isFinite(previousFollowers)) {
+    if (shouldCompare && Number.isFinite(previousFollowers) && !accountLoginChanged) {
       changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges);
     }
 
@@ -600,6 +603,18 @@ async function resetBaselinesForNextAutomaticCheck() {
   }
 }
 
+async function resetAccountBaselineForTokenChange() {
+  try {
+    const baselines = await getNotificationBaselines();
+    await saveNotificationBaselines({
+      ...baselines,
+      account: {},
+    });
+  } catch (error) {
+    console.warn('Unable to reset account notification baseline after token changed.', error);
+  }
+}
+
 async function resetNewlyEnabledStatBaselines(newlyEnabledStats) {
   if (!Object.values(newlyEnabledStats).some(Boolean)) {
     return;
@@ -687,6 +702,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (changes.notifications) {
     handleNotificationSettingsChange(changes.notifications);
     return;
+  }
+
+  if (changes.githubToken) {
+    resetAccountBaselineForTokenChange();
   }
 
   if (changes.githubToken || changes.repositories) {
