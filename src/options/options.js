@@ -5,9 +5,11 @@ import { closeExtensionPage } from '../shared/close-page.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { normalizeDisplayPreferences } from '../shared/display-format.js';
+import { mapWithConcurrency } from '../shared/refresh-stats.js';
 
 const MAX_REPOSITORIES = 20;
 const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
+const CONNECTION_TEST_CONCURRENCY_LIMIT = 4;
 
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
@@ -673,8 +675,10 @@ async function handleConnectionTest() {
   setMessage(testMessage, 'Testing connection…', '');
 
   try {
-    const results = await Promise.all(
-      validation.repositories.map((repository) => testRepositoryConnection(repository, token)),
+    const results = await mapWithConcurrency(
+      validation.repositories,
+      CONNECTION_TEST_CONCURRENCY_LIMIT,
+      (repository) => testRepositoryConnection(repository, token),
     );
 
     testResults.textContent = '';
