@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
+import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
 
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
@@ -234,6 +234,59 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   }
 }
 
+
+function hasFetchedRepositoryNotificationStats(stats) {
+  return !stats?.error
+    && Number.isFinite(Number(stats?.stars))
+    && Number.isFinite(Number(stats?.forks))
+    && Number.isFinite(Number(stats?.subscribers));
+}
+
+export async function syncNotificationBaselinesFromManualRefresh({ results = [], accountStats, accountError = '', fetchedAt = '' } = {}) {
+  const checkedAt = fetchedAt || new Date().toISOString();
+  const baselines = await getNotificationBaselines();
+  const nextBaselines = {
+    ...baselines,
+    account: { ...baselines.account },
+    repositories: { ...baselines.repositories },
+    updatedAt: baselines.updatedAt || checkedAt,
+  };
+  let changed = false;
+
+  if (!accountError && accountStats?.fetchedAt && Number.isFinite(Number(accountStats.followers))) {
+    nextBaselines.account = {
+      ...nextBaselines.account,
+      login: typeof accountStats.login === 'string' ? accountStats.login : nextBaselines.account.login || '',
+      followers: Number(accountStats.followers),
+      updatedAt: accountStats.fetchedAt || checkedAt,
+    };
+    changed = true;
+  }
+
+  results.forEach(({ repository, stats }) => {
+    if (!repository || !hasFetchedRepositoryNotificationStats(stats)) {
+      return;
+    }
+
+    nextBaselines.repositories[repository] = {
+      ...(nextBaselines.repositories[repository] || {}),
+      repository,
+      stars: Number(stats.stars),
+      forks: Number(stats.forks),
+      repoWatchers: Number(stats.subscribers),
+      updatedAt: stats.fetchedAt || checkedAt,
+    };
+    changed = true;
+  });
+
+  if (!changed) {
+    return baselines;
+  }
+
+  nextBaselines.updatedAt = checkedAt;
+  return saveNotificationBaselines(nextBaselines);
+}
+
 function hasCachedTraffic(stats) {
   return Boolean(stats?.trafficFetchedAt)
     && Number.isFinite(stats.views)
@@ -420,6 +473,15 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     : null;
 
   const savedLatestStats = await saveLatestStats(nextLatestStats);
+
+  if (isManualRefreshSource(source)) {
+    await syncNotificationBaselinesFromManualRefresh({
+      results,
+      accountStats: accountResult.accountStats,
+      accountError: accountResult.error,
+      fetchedAt,
+    });
+  }
 
   return {
     fetchedAt,
