@@ -48,6 +48,11 @@ const DEFAULT_NOTIFICATION_BASELINES = Object.freeze({
   initialized: false,
   updatedAt: '',
 });
+const DEFAULT_VIEWED_BASELINES = Object.freeze({
+  account: Object.freeze({}),
+  repositories: Object.freeze({}),
+  updatedAt: '',
+});
 const DEFAULT_QUICK_SUMMARY_STATUS = Object.freeze({
   manualRefreshAt: '',
 });
@@ -435,6 +440,42 @@ function normalizeBaselineRepository(repository, baseline) {
   return normalizedBaseline;
 }
 
+function normalizeViewedBaselineRepository(repository, baseline) {
+  return normalizeBaselineRepository(repository, baseline);
+}
+
+export function normalizeViewedBaselines(baselines) {
+  const viewedBaselines = baselines && typeof baselines === 'object' ? baselines : {};
+  const account = {};
+  const followers = normalizeOptionalNumber(viewedBaselines.account?.followers);
+  const repositories = {};
+  const storedRepositories = viewedBaselines.repositories && typeof viewedBaselines.repositories === 'object'
+    ? viewedBaselines.repositories
+    : {};
+
+  if (followers !== undefined && followers >= 0) {
+    account.followers = followers;
+  }
+
+  if (typeof viewedBaselines.account?.updatedAt === 'string') {
+    account.updatedAt = viewedBaselines.account.updatedAt;
+  }
+
+  Object.entries(storedRepositories).forEach(([repository, baseline]) => {
+    const normalizedBaseline = normalizeViewedBaselineRepository(repository, baseline);
+
+    if (normalizedBaseline) {
+      repositories[normalizedBaseline.repository] = normalizedBaseline;
+    }
+  });
+
+  return {
+    account,
+    repositories,
+    updatedAt: typeof viewedBaselines.updatedAt === 'string' ? viewedBaselines.updatedAt : '',
+  };
+}
+
 export function normalizeNotificationBaselines(baselines) {
   const notificationBaselines = baselines && typeof baselines === 'object' ? baselines : {};
   const account = {};
@@ -500,6 +541,38 @@ export function savePendingActivity(pendingActivity) {
       }
 
       resolve(nextPendingActivity);
+    });
+  });
+}
+
+export function getViewedBaselines() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get({ viewedBaselines: DEFAULT_VIEWED_BASELINES }, (storedData) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizeViewedBaselines(storedData.viewedBaselines));
+    });
+  });
+}
+
+export function saveViewedBaselines(viewedBaselines) {
+  const nextViewedBaselines = normalizeViewedBaselines(viewedBaselines);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ viewedBaselines: nextViewedBaselines }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(nextViewedBaselines);
     });
   });
 }
