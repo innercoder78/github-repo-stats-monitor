@@ -6,11 +6,13 @@ import {
   getNotificationBaselines,
   getPendingActivity,
   getSettings,
+  getViewedBaselines,
   normalizeNotificationSettings,
   saveAccountStats,
   saveLatestStats,
   saveNotificationBaselines,
   savePendingActivity,
+  saveViewedBaselines,
 } from './shared/storage.js';
 
 const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
@@ -422,13 +424,13 @@ async function mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadat
 
 async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
   if (!settings.notifications.trackedStats.accountFollowers) {
-    return false;
+    return { checked: false, changed: false };
   }
 
   try {
     const account = await fetchAuthenticatedAccount(settings.githubToken);
     if (!hasFetchedNumber(account.followers)) {
-      return false;
+      return { checked: false, changed: false };
     }
 
     const followers = Number(account.followers);
@@ -450,16 +452,16 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     };
     await mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt);
 
-    return changed;
+    return { checked: true, changed };
   } catch (error) {
     console.warn('Unable to check account followers in the background.', error);
-    return false;
+    return { checked: false, changed: false };
   }
 }
 
 async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
   if (!hasRepositoryStatEnabled(settings.notifications.trackedStats)) {
-    return false;
+    return { checked: false, changed: false };
   }
 
   try {
@@ -467,6 +469,8 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
     const previousBaseline = baselines.repositories[repository] || {};
     const nextBaseline = { ...previousBaseline, repository, updatedAt: checkedAt };
     let changed = false;
+
+    let checked = false;
 
     REPOSITORY_STATS.forEach(({ setting, baselineKey, deltaKey, currentKey, label }) => {
       if (!settings.notifications.trackedStats[setting]) {
@@ -477,6 +481,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
         return;
       }
 
+      checked = true;
       const currentValue = Number(metadata[currentKey]);
       const previousValue = previousBaseline[baselineKey];
 
@@ -487,12 +492,16 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
       nextBaseline[baselineKey] = currentValue;
     });
 
+    if (!checked) {
+      return { checked: false, changed: false };
+    }
+
     baselines.repositories[repository] = nextBaseline;
     await mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadata, checkedAt);
-    return changed;
+    return { checked: true, changed };
   } catch (error) {
     console.warn(`Unable to check ${repository} in the background.`, error);
-    return false;
+    return { checked: false, changed: false };
   }
 }
 
@@ -536,21 +545,28 @@ async function runBackgroundCheckNow() {
   const pendingActivity = createEmptyPendingActivity(existingPendingActivity);
   const shouldCompare = Boolean(baselines.initialized);
   let pendingChanged = false;
+  let hadSuccessfulCheck = false;
   // Keep the raw deltas from this background check separate from the net pending
   // activity that Quick Summary and Dashboard display. A raw +1 should still
   // alert even when it cancels an older unresolved -1 in pending activity.
   const detectedChanges = { account: [], repositories: {} };
 
   cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
-  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) || pendingChanged;
+  const accountResult = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+  hadSuccessfulCheck = accountResult.checked || hadSuccessfulCheck;
+  pendingChanged = accountResult.changed || pendingChanged;
 
   for (const repository of settings.repositories) {
-    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) || pendingChanged;
+    const repositoryResult = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+    hadSuccessfulCheck = repositoryResult.checked || hadSuccessfulCheck;
+    pendingChanged = repositoryResult.changed || pendingChanged;
   }
 
-  baselines.initialized = true;
-  baselines.updatedAt = checkedAt;
-  await saveNotificationBaselines(baselines);
+  if (hadSuccessfulCheck) {
+    baselines.initialized = true;
+    baselines.updatedAt = checkedAt;
+    await saveNotificationBaselines(baselines);
+  }
 
   if (pendingChanged) {
     pendingActivity.updatedAt = checkedAt;
@@ -570,6 +586,55 @@ async function runBackgroundCheckNow() {
   return { fetchedAt: checkedAt };
 }
 
+
+function removeUnconfiguredRepositoryEntries(repositoryEntries, repositorySet) {
+  const nextEntries = {};
+
+  Object.entries(repositoryEntries || {}).forEach(([repository, value]) => {
+    if (repositorySet.has(repository)) {
+      nextEntries[repository] = value;
+    }
+  });
+
+  return nextEntries;
+}
+
+async function cleanupRemovedRepositoryStorage(repositories) {
+  const repositorySet = new Set(Array.isArray(repositories) ? repositories : []);
+
+  try {
+    const [settings, latestStats, pendingActivity, viewedBaselines, notificationBaselines] = await Promise.all([
+      getSettings(),
+      getLatestStats(),
+      getPendingActivity(),
+      getViewedBaselines(),
+      getNotificationBaselines(),
+    ]);
+    const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
+    nextPendingActivity.repositories = removeUnconfiguredRepositoryEntries(nextPendingActivity.repositories, repositorySet);
+    nextPendingActivity.badgeActivity = {
+      ...(nextPendingActivity.badgeActivity || {}),
+      repositories: removeUnconfiguredRepositoryEntries(nextPendingActivity.badgeActivity?.repositories, repositorySet),
+    };
+
+    await Promise.all([
+      saveLatestStats(removeUnconfiguredRepositoryEntries(latestStats, repositorySet)),
+      savePendingActivity(nextPendingActivity),
+      saveViewedBaselines({
+        ...viewedBaselines,
+        repositories: removeUnconfiguredRepositoryEntries(viewedBaselines.repositories, repositorySet),
+      }),
+      saveNotificationBaselines({
+        ...notificationBaselines,
+        repositories: removeUnconfiguredRepositoryEntries(notificationBaselines.repositories, repositorySet),
+      }),
+    ]);
+
+    await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
+  } catch (error) {
+    console.warn('Unable to clean up removed repository activity.', error);
+  }
+}
 
 function wasBackgroundChecksEnabled(change) {
   return Boolean(change?.oldValue?.backgroundChecksEnabled) === false
@@ -706,6 +771,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   if (changes.githubToken) {
     resetAccountBaselineForTokenChange();
+  }
+
+  if (changes.repositories) {
+    cleanupRemovedRepositoryStorage(changes.repositories.newValue);
   }
 
   if (changes.githubToken || changes.repositories) {

@@ -416,26 +416,3 @@ html[data-appearance="dark"] .confirmation-dialog::backdrop {
 .import-repository-selection-status {
   justify-self: start;
 }
-
-.import-search-label {
-  margin-top: 12px;
-}
-
-.import-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.import-actions button {
-  flex: 0 1 auto;
-}
-
-.import-empty-message {
-  margin: 0;
-}
-
-@media (max-width: 640px) {
-  .import-actions button { flex: 1 1 100%; }
-}

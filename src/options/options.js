@@ -1,4 +1,4 @@
-import { fetchAuthenticatedRepositoriesPage, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
+import { fetchAuthenticatedRepositories, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { closeExtensionPage } from '../shared/close-page.js';
@@ -10,7 +10,6 @@ import { mapWithConcurrency } from '../shared/refresh-stats.js';
 const MAX_REPOSITORIES = 20;
 const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
 const CONNECTION_TEST_CONCURRENCY_LIMIT = 4;
-const IMPORT_PAGE_SIZE = 50;
 
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
@@ -42,8 +41,6 @@ const importPanel = document.getElementById('import-panel');
 const importMessage = document.getElementById('import-message');
 const testResults = document.getElementById('test-results');
 const importResults = document.getElementById('import-results');
-const importSearchInput = document.getElementById('import-search');
-const loadMoreImportedRepositoriesButton = document.getElementById('load-more-imported-repositories');
 const addImportedRepositoriesButton = document.getElementById('add-imported-repositories');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
 const notificationMessage = document.getElementById('notification-message');
@@ -54,9 +51,6 @@ const cancelResetButton = document.getElementById('cancel-reset');
 let isTestingConnection = false;
 let isImportingRepositories = false;
 let importedRepositories = [];
-let selectedImportedRepositories = new Set();
-let importNextPage = 1;
-let importHasMore = false;
 
 applySavedAppearance();
 
@@ -124,12 +118,6 @@ function clearImportResults() {
   setMessage(importMessage, '', '');
   importResults.textContent = '';
   importedRepositories = [];
-  selectedImportedRepositories = new Set();
-  importNextPage = 1;
-  importHasMore = false;
-  importSearchInput.value = '';
-  loadMoreImportedRepositoriesButton.hidden = true;
-  loadMoreImportedRepositoriesButton.disabled = true;
   addImportedRepositoriesButton.disabled = true;
   importPanel.hidden = true;
 }
@@ -364,7 +352,9 @@ function getVisibleRepositoryNames() {
 }
 
 function getSelectedImportedRepositories() {
-  return Array.from(selectedImportedRepositories);
+  return Array.from(importResults.querySelectorAll('.import-repository-checkbox:checked'))
+    .map((checkbox) => checkbox.dataset.repository)
+    .filter(Boolean);
 }
 
 function updateImportSelectionState(shouldShowLimitMessage = true) {
@@ -382,7 +372,6 @@ function updateImportSelectionState(shouldShowLimitMessage = true) {
     const isAlreadyMonitored = monitoredRepositories.has(repositoryName);
     if (isAlreadyMonitored && checkbox.checked) {
       checkbox.checked = false;
-      selectedImportedRepositories.delete(repositoryName);
       selectedCount = getSelectedImportedRepositories().length;
     }
 
@@ -431,23 +420,15 @@ function renderImportedRepository(repository, monitoredRepositories) {
   checkbox.className = 'import-repository-checkbox';
   checkbox.type = 'checkbox';
   checkbox.dataset.repository = normalizedName;
-  checkbox.checked = selectedImportedRepositories.has(normalizedName);
   checkbox.addEventListener('change', () => {
-    if (checkbox.checked) {
-      selectedImportedRepositories.add(normalizedName);
-    } else {
-      selectedImportedRepositories.delete(normalizedName);
-    }
-
     const selectedCount = getSelectedImportedRepositories().length;
     const remainingSlots = getRemainingRepositorySlots();
 
     if (selectedCount > remainingSlots) {
       checkbox.checked = false;
-      selectedImportedRepositories.delete(normalizedName);
       setMessage(importMessage, 'You can configure up to 20 repositories. Remove a repository before adding more.', 'error');
     } else {
-      setImportSummaryMessage();
+      setMessage(importMessage, `${importedRepositories.length} repositories returned. Select repositories to add to Settings.`, 'success');
     }
 
     updateImportSelectionState();
@@ -487,41 +468,12 @@ function renderImportedRepository(repository, monitoredRepositories) {
   return card;
 }
 
-function getFilteredImportedRepositories() {
-  const query = importSearchInput.value.trim().toLowerCase();
-  if (!query) {
-    return importedRepositories;
-  }
-
-  return importedRepositories.filter((repository) => normalizeRepositoryName(repository.fullName).includes(query));
-}
-
-function setImportSummaryMessage(type = 'success') {
-  const visibleCount = getFilteredImportedRepositories().length;
-  const loadedText = `${importedRepositories.length} loaded${importHasMore ? ' so far' : ''}`;
-  const selectedCount = getSelectedImportedRepositories().length;
-  const searchText = importSearchInput.value.trim() ? `${visibleCount} match the current search. ` : '';
-  const loadMoreText = importHasMore ? ', or load more results' : '';
-  setMessage(importMessage, `${loadedText}. ${searchText}${selectedCount} selected. Select repositories to add to Settings${loadMoreText}.`, type);
-}
-
-function renderImportedRepositories() {
+function renderImportedRepositories(repositories) {
   importResults.textContent = '';
   const monitoredRepositories = getVisibleRepositoryNames();
-  const visibleRepositories = getFilteredImportedRepositories();
-  visibleRepositories.forEach((repository) => {
+  repositories.forEach((repository) => {
     importResults.append(renderImportedRepository(repository, monitoredRepositories));
   });
-
-  if (importedRepositories.length > 0 && visibleRepositories.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'muted import-empty-message';
-    empty.textContent = 'No loaded repositories match this search. Clear the search or load more results.';
-    importResults.append(empty);
-  }
-
-  loadMoreImportedRepositoriesButton.hidden = !importHasMore;
-  loadMoreImportedRepositoriesButton.disabled = isImportingRepositories;
   updateImportSelectionState();
 }
 
@@ -565,64 +517,16 @@ function handleAddImportedRepositories() {
     addedCount += 1;
   });
 
-  selectedNames.forEach((repositoryName) => selectedImportedRepositories.delete(repositoryName));
+  importResults.querySelectorAll('.import-repository-checkbox:checked').forEach((checkbox) => {
+    checkbox.checked = false;
+  });
 
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   clearTestResults();
   setMessage(importMessage, `Added ${addedCount} ${addedCount === 1 ? 'repository' : 'repositories'}. Review the list, then click Save Settings.`, 'success');
   updateRepositoryControls();
-  renderImportedRepositories();
   updateImportSelectionState(false);
-}
-
-async function loadImportedRepositoryPage({ reset = false } = {}) {
-  if (isImportingRepositories) {
-    return;
-  }
-
-  const token = tokenInput.value.trim();
-  if (!token) {
-    setMessage(importMessage, MISSING_TOKEN_MESSAGE, 'error');
-    return;
-  }
-
-  isImportingRepositories = true;
-  importRepositoriesButton.disabled = true;
-  loadMoreImportedRepositoriesButton.disabled = true;
-  importRepositoriesButton.textContent = reset ? 'Loading…' : 'Import from GitHub';
-  setMessage(importMessage, reset ? 'Loading repositories from GitHub…' : 'Loading more repositories from GitHub…', '');
-
-  try {
-    const result = await fetchAuthenticatedRepositoriesPage(token, { page: importNextPage, perPage: IMPORT_PAGE_SIZE });
-    const existingNames = new Set(importedRepositories.map((repository) => normalizeRepositoryName(repository.fullName)));
-    const nextRepositories = result.repositories.filter((repository) => {
-      const normalizedName = normalizeRepositoryName(repository.fullName);
-      if (!normalizedName || existingNames.has(normalizedName)) {
-        return false;
-      }
-      existingNames.add(normalizedName);
-      return true;
-    });
-
-    importedRepositories = [...importedRepositories, ...nextRepositories];
-    importNextPage = result.page + 1;
-    importHasMore = result.hasNextPage;
-    renderImportedRepositories();
-
-    if (importedRepositories.length === 0) {
-      setMessage(importMessage, 'No repositories were returned for this token.', '');
-    } else {
-      setImportSummaryMessage();
-    }
-  } catch (error) {
-    setMessage(importMessage, getSafeErrorMessage(error), 'error');
-  } finally {
-    isImportingRepositories = false;
-    importRepositoriesButton.disabled = false;
-    importRepositoriesButton.textContent = 'Import from GitHub';
-    loadMoreImportedRepositoriesButton.disabled = !importHasMore;
-  }
 }
 
 async function handleRepositoryImport() {
@@ -636,12 +540,6 @@ async function handleRepositoryImport() {
   showImportPanel();
   importResults.textContent = '';
   importedRepositories = [];
-  selectedImportedRepositories = new Set();
-  importNextPage = 1;
-  importHasMore = false;
-  importSearchInput.value = '';
-  loadMoreImportedRepositoriesButton.hidden = true;
-  loadMoreImportedRepositoriesButton.disabled = true;
   addImportedRepositoriesButton.disabled = true;
 
   const token = tokenInput.value.trim();
@@ -650,7 +548,29 @@ async function handleRepositoryImport() {
     return;
   }
 
-  await loadImportedRepositoryPage({ reset: true });
+  isImportingRepositories = true;
+  importRepositoriesButton.disabled = true;
+  importRepositoriesButton.textContent = 'Loading…';
+  setMessage(importMessage, 'Loading repositories from GitHub…', '');
+
+  try {
+    const repositories = await fetchAuthenticatedRepositories(token);
+    if (repositories.length === 0) {
+      setMessage(importMessage, 'No repositories were returned for this token.', '');
+      return;
+    }
+
+    importedRepositories = repositories;
+    renderImportedRepositories(importedRepositories);
+    setMessage(importMessage, `${repositories.length} repositories returned. Select repositories to add to Settings.`, 'success');
+    updateImportSelectionState();
+  } catch (error) {
+    setMessage(importMessage, getSafeErrorMessage(error), 'error');
+  } finally {
+    isImportingRepositories = false;
+    importRepositoriesButton.disabled = false;
+    importRepositoriesButton.textContent = 'Import from GitHub';
+  }
 }
 
 function getSafeErrorMessage(error) {
@@ -839,13 +759,6 @@ function closeResetConfirmation(shouldReturnFocus = true) {
 
 importRepositoriesButton.addEventListener('click', handleRepositoryImport);
 addImportedRepositoriesButton.addEventListener('click', handleAddImportedRepositories);
-loadMoreImportedRepositoriesButton.addEventListener('click', () => loadImportedRepositoryPage());
-importSearchInput.addEventListener('input', () => {
-  renderImportedRepositories();
-  if (importedRepositories.length > 0) {
-    setImportSummaryMessage();
-  }
-});
 tokenInput.addEventListener('input', updateAddButtonState);
 
 addRepositoryButton.addEventListener('click', () => {
