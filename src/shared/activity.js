@@ -93,6 +93,7 @@ export function recordAccountActivityDelta(pendingActivity, delta, detectedChang
       ...pendingActivity.account,
       followersDelta,
       quickSummaryShown: false,
+      dashboardShown: false,
     };
   }
 
@@ -209,7 +210,7 @@ export function createDeltaElement(delta, label) {
 export function cleanupShownPendingActivity(pendingActivity) {
   const nextActivity = createEmptyPendingActivity(pendingActivity);
 
-  if (nextActivity.account.quickSummaryShown) {
+  if (nextActivity.account.quickSummaryShown && nextActivity.account.dashboardShown) {
     nextActivity.account = {};
   }
 

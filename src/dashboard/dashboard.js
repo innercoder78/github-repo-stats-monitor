@@ -1,5 +1,5 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
-import { cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
+import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
 import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
@@ -352,8 +352,21 @@ function createRepositoryActivityNote(activity) {
   return note;
 }
 
-async function markDashboardActivityShown(renderedRepositories) {
-  if (renderedRepositories.size === 0) {
+function createAccountActivityNote(activity) {
+  const followersDelta = Number(activity?.followersDelta) || 0;
+
+  if (followersDelta === 0 || activity?.dashboardShown) {
+    return null;
+  }
+
+  const note = document.createElement('span');
+  note.className = 'activity-note';
+  note.append(createDeltaElement(followersDelta, ACTIVITY_DELTA_LABELS.followersDelta));
+  return note;
+}
+
+async function markDashboardActivityShown(renderedRepositories, displayedAccountActivity) {
+  if (renderedRepositories.size === 0 && !displayedAccountActivity) {
     return;
   }
 
@@ -368,6 +381,19 @@ async function markDashboardActivityShown(renderedRepositories) {
   };
   let changed = false;
   let badgeActivityCleared = false;
+
+  if (displayedAccountActivity
+    && Number(nextPendingActivity.account.followersDelta) !== 0
+    && !nextPendingActivity.account.dashboardShown) {
+    nextPendingActivity.account.dashboardShown = true;
+    changed = true;
+  }
+
+  if (displayedAccountActivity && nextPendingActivity.badgeActivity.account) {
+    nextPendingActivity.badgeActivity.account = false;
+    changed = true;
+    badgeActivityCleared = true;
+  }
 
   renderedRepositories.forEach((repository) => {
     const activity = nextPendingActivity.repositories[repository];
@@ -517,6 +543,19 @@ function renderSummary() {
   summaryValues.watchers.textContent = totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—';
   summaryValues.views.textContent = totals.trafficCount > 0 ? formatNumber(totals.views) : '—';
   summaryValues.clones.textContent = totals.clonesCount > 0 ? formatNumber(totals.clones) : '—';
+
+  const accountMetric = summaryValues.accountFollowers.closest('.metric');
+  const accountMetricBody = summaryValues.accountFollowers.closest('.metric-body');
+  const accountActivityNote = createAccountActivityNote(currentPendingActivity.account);
+  accountMetric?.classList.remove('activity-highlight');
+  accountMetricBody?.querySelector('.activity-note')?.remove();
+
+  if (accountActivityNote) {
+    accountMetric?.classList.add('activity-highlight');
+    accountMetricBody?.append(accountActivityNote);
+  }
+
+  return Boolean(accountActivityNote);
 }
 
 function renderRepositories() {
@@ -543,8 +582,8 @@ function renderRepositories() {
     displayedRepositories.add(repository);
     repoGrid.append(card);
   });
-  renderSummary();
-  markDashboardActivityShown(displayedRepositories);
+  const displayedAccountActivity = renderSummary();
+  markDashboardActivityShown(displayedRepositories, displayedAccountActivity);
 }
 
 
