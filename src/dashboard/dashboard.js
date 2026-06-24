@@ -1,6 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity } from '../shared/storage.js';
 import { cleanupShownPendingActivity, createDeltaElement, getRepositoryActivityDeltas } from '../shared/activity.js';
-import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache } from '../shared/refresh-stats.js';
+import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -152,6 +152,27 @@ function setRefreshButtonState() {
   refreshButton.disabled = refreshInProgress || currentSettings.repositories.length === 0 || !currentSettings.githubToken;
   refreshButton.textContent = isRefreshing ? 'Refreshing…' : 'Refresh Now';
   refreshButton.setAttribute('aria-busy', String(refreshInProgress));
+}
+
+
+function countBadgeActivityPlaces(badgeActivity) {
+  const accountCount = badgeActivity?.account ? 1 : 0;
+  const repositoryCount = Object.values(badgeActivity?.repositories || {}).filter(Boolean).length;
+
+  return accountCount + repositoryCount;
+}
+
+async function updateBadgeTextFromDashboardReview(badgeActivity) {
+  if (!globalThis.chrome?.action?.setBadgeText) {
+    return;
+  }
+
+  try {
+    const remainingCount = countBadgeActivityPlaces(badgeActivity);
+    await globalThis.chrome.action.setBadgeText({ text: remainingCount > 0 ? String(remainingCount) : '' });
+  } catch (error) {
+    console.warn('Unable to update the extension badge after Dashboard review.', error);
+  }
 }
 
 function showNotice(title, message) {
@@ -344,18 +365,27 @@ async function markDashboardActivityShown(renderedRepositories) {
     ...currentPendingActivity,
     account: { ...currentPendingActivity.account },
     repositories: { ...currentPendingActivity.repositories },
+    badgeActivity: {
+      ...(currentPendingActivity.badgeActivity || {}),
+      repositories: { ...(currentPendingActivity.badgeActivity?.repositories || {}) },
+    },
   };
   let changed = false;
+  let badgeActivityCleared = false;
 
   renderedRepositories.forEach((repository) => {
     const activity = nextPendingActivity.repositories[repository];
 
-    if (!activity || activity.dashboardShown) {
-      return;
+    if (activity && !activity.dashboardShown) {
+      nextPendingActivity.repositories[repository] = { ...activity, dashboardShown: true };
+      changed = true;
     }
 
-    nextPendingActivity.repositories[repository] = { ...activity, dashboardShown: true };
-    changed = true;
+    if (nextPendingActivity.badgeActivity.repositories[repository]) {
+      delete nextPendingActivity.badgeActivity.repositories[repository];
+      changed = true;
+      badgeActivityCleared = true;
+    }
   });
 
   if (!changed) {
@@ -364,6 +394,9 @@ async function markDashboardActivityShown(renderedRepositories) {
 
   try {
     currentPendingActivity = await savePendingActivity(cleanupShownPendingActivity(nextPendingActivity));
+    if (badgeActivityCleared) {
+      await updateBadgeTextFromDashboardReview(currentPendingActivity.badgeActivity);
+    }
   } catch (error) {
     console.warn('Unable to mark Dashboard activity as shown.', error);
   }
@@ -508,16 +541,14 @@ function renderRepositories() {
 
   hideNotice();
   setRefreshButtonState();
-  const renderedActivityRepositories = new Set();
+  const displayedRepositories = new Set();
   currentSettings.repositories.forEach((repository) => {
     const card = createRepositoryCard(repository, currentLatestStats[repository]);
-    if (card.classList.contains('activity-highlight')) {
-      renderedActivityRepositories.add(repository);
-    }
+    displayedRepositories.add(repository);
     repoGrid.append(card);
   });
   renderSummary();
-  markDashboardActivityShown(renderedActivityRepositories);
+  markDashboardActivityShown(displayedRepositories);
 }
 
 
@@ -618,6 +649,10 @@ async function refreshSingleRepository(repository) {
       } else {
         const refreshResult = coordinatedRefresh.result;
         currentLatestStats = refreshResult.latestStats;
+        await syncNotificationBaselinesFromManualRefresh({
+          results: [refreshResult.result],
+          fetchedAt: refreshResult.fetchedAt,
+        });
         if (refreshResult.pendingActivity) {
           currentPendingActivity = refreshResult.pendingActivity;
         }
