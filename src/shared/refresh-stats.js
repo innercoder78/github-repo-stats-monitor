@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, savePendingActivity } from './storage.js';
+import { getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
 
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
@@ -117,6 +117,10 @@ export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) 
   const token = createRefreshToken(source);
   const coordination = await getRefreshCoordination();
 
+  if (isManualRefreshSource(source) && isFreshTimestamp(coordination.lastManualRequestCompletedAt)) {
+    return { skipped: true, reason: 'completed-recently', source: coordination.lastManualRequestCompletedBy || '' };
+  }
+
   if (isLockActive(coordination)) {
     const runningSource = coordination.running.source || '';
     await waitForRunningFullRefresh();
@@ -150,6 +154,7 @@ export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) 
         lastManualRequestCompletedAt: completedAt,
         lastManualRequestCompletedBy: source,
       });
+      await saveQuickSummaryStatus({ manualRefreshAt: completedAt });
     }
     return { skipped: false, result };
   } finally {
@@ -167,6 +172,10 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   const token = createRefreshToken(source);
   const manual = isManualRefreshSource(source);
   const coordination = await getRefreshCoordination();
+
+  if (manual && isFreshTimestamp(coordination.lastManualRequestCompletedAt)) {
+    return { skipped: true, reason: 'completed-recently', source: coordination.lastManualRequestCompletedBy || '' };
+  }
 
   if (isLockActive(coordination)) {
     const runningSource = coordination.running.source || '';
@@ -209,6 +218,9 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
         lastManualRequestCompletedAt: manual ? completedAt : latestCoordination.lastManualRequestCompletedAt || '',
         lastManualRequestCompletedBy: manual ? source : latestCoordination.lastManualRequestCompletedBy || '',
       });
+      if (manual) {
+        await saveQuickSummaryStatus({ manualRefreshAt: completedAt });
+      }
     }
     return { skipped: false, result };
   } finally {

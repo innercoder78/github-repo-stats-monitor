@@ -6,7 +6,6 @@ import {
   getQuickSummaryStatus,
   getSettings,
   savePendingActivity,
-  saveQuickSummaryStatus,
 } from '../shared/storage.js';
 import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
@@ -358,6 +357,7 @@ async function reloadSavedRefreshData() {
     getAccountStats(),
     getPendingActivity(),
   ]);
+  currentQuickSummaryStatus = await getQuickSummaryStatus();
   renderStatsSummary(currentSettings, currentLatestStats);
   if (!renderSetupGuidanceStatus(currentSettings)) {
     renderLastCheckedStatus();
@@ -378,7 +378,6 @@ async function refreshStats() {
   }
 
   isRefreshing = true;
-  currentQuickSummaryStatus = await saveQuickSummaryStatus({ manualRefreshAt: new Date().toISOString() });
   setRefreshButtonState();
   renderPopupStatusLines([formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length })]);
 
@@ -397,6 +396,7 @@ async function refreshStats() {
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;
+      currentQuickSummaryStatus = await getQuickSummaryStatus();
       if (refreshResult.pendingActivity) {
         currentPendingActivity = refreshResult.pendingActivity;
       }

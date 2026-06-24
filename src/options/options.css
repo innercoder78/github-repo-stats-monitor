@@ -162,7 +162,11 @@ select {
 .message {
   font-weight: 700;
   margin: 10px 0 0;
-  min-height: 1.2em;
+}
+
+.message:empty {
+  display: none;
+  margin: 0;
 }
 
 .message.error { color: var(--error); }
@@ -191,6 +195,11 @@ button:disabled {
   display: grid;
   gap: 12px;
   margin-top: 14px;
+}
+
+.test-results:empty {
+  display: none;
+  margin: 0;
 }
 
 .test-result-card {
