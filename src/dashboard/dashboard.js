@@ -345,11 +345,7 @@ function createRepositoryActivityNote(activity) {
 
   const note = document.createElement('p');
   note.className = 'activity-note';
-  deltas.forEach(({ delta, label }, index) => {
-    if (index > 0) {
-      note.append(document.createTextNode(' · '));
-    }
-
+  deltas.forEach(({ delta, label }) => {
     note.append(createDeltaElement(delta, label));
   });
 

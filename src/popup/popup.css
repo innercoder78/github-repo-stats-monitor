@@ -217,25 +217,19 @@ button:disabled {
 }
 
 .activity-highlight {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent), 0 8px 22px rgba(140, 149, 159, 0.14);
+  background: radial-gradient(circle at top right, color-mix(in srgb, var(--success) 18%, transparent), transparent 58%), var(--surface);
+  border-color: color-mix(in srgb, var(--success) 64%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent), 0 12px 28px color-mix(in srgb, var(--success) 18%, transparent);
 }
 
 .activity-note {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
-  border-radius: 10px;
-  color: var(--text);
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.72rem;
-  font-weight: 800;
-  line-height: 1.35;
+  gap: 5px;
   margin-top: 8px;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
-  padding: 6px 8px;
 }
 
 .activity-note:empty {
@@ -246,11 +240,24 @@ button:disabled {
 }
 
 .activity-delta {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
   font-weight: 900;
+  line-height: 1.15;
   max-width: 100%;
   overflow-wrap: anywhere;
+  padding: 3px 8px;
   white-space: normal;
 }
 
-.activity-delta-positive { color: var(--success); }
-.activity-delta-negative { color: var(--error); }
+.activity-note .activity-delta.activity-delta-positive {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+
+.activity-note .activity-delta.activity-delta-negative {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  color: var(--error);
+}

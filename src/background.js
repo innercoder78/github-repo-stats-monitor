@@ -122,6 +122,21 @@ function formatNotificationBody(changes) {
   return `${NOTIFICATION_PREFIX} ${formattedDeltas.join(' and ')}${repositoryContext}.`;
 }
 
+function createChromeNotification(notificationId, options) {
+  return new Promise((resolve, reject) => {
+    chrome.notifications.create(notificationId, options, () => {
+      const error = chrome.runtime?.lastError;
+
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
 async function showActivityNotification(settings, changes, shouldCompare) {
   if (!shouldCompare
     || !settings.notifications.backgroundChecksEnabled
@@ -133,14 +148,15 @@ async function showActivityNotification(settings, changes, shouldCompare) {
   }
 
   try {
-    await chrome.notifications.create({
+    const notificationId = `github-repo-stats-monitor-activity-${Date.now()}`;
+    await createChromeNotification(notificationId, {
       type: 'basic',
-      iconUrl: 'assets/icons/icon-128.png',
+      iconUrl: chrome.runtime.getURL('assets/icons/icon-128.png'),
       title: NOTIFICATION_TITLE,
       message: formatNotificationBody(changes),
     });
   } catch (error) {
-    console.warn('Unable to show background activity notification.', error);
+    console.warn('Unable to show background activity notification. Chrome or OS notification settings may be blocking notifications.', error);
   }
 }
 
