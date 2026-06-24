@@ -82,7 +82,7 @@ function countBadgeActivityPlaces(badgeActivity) {
   return accountCount + repositoryCount;
 }
 
-function getNewPendingSummary(changes) {
+function getDetectedActivitySummary(changes) {
   const newChanges = changes && typeof changes === 'object' ? changes : { account: [], repositories: {} };
   const accountDeltas = Array.isArray(newChanges.account) ? newChanges.account : [];
   const repositories = newChanges.repositories && typeof newChanges.repositories === 'object'
@@ -95,13 +95,13 @@ function getNewPendingSummary(changes) {
   return { accountDeltas: accountDeltas.filter(({ delta }) => delta !== 0), changedRepositories };
 }
 
-function hasNewPendingActivity(changes) {
-  const { accountDeltas, changedRepositories } = getNewPendingSummary(changes);
+function hasDetectedActivity(changes) {
+  const { accountDeltas, changedRepositories } = getDetectedActivitySummary(changes);
   return accountDeltas.length > 0 || changedRepositories.length > 0;
 }
 
 function formatNotificationBody(changes) {
-  const { accountDeltas, changedRepositories } = getNewPendingSummary(changes);
+  const { accountDeltas, changedRepositories } = getDetectedActivitySummary(changes);
   const repositoryCount = changedRepositories.length;
   const hasAccountChanges = accountDeltas.length > 0;
   const placeCount = repositoryCount + (hasAccountChanges ? 1 : 0);
@@ -150,7 +150,7 @@ async function showActivityNotification(settings, changes, shouldCompare) {
     || !settings.notifications.backgroundChecksEnabled
     || !settings.notifications.systemNotificationsEnabled
     || !hasEnabledTrackedStat(settings.notifications.trackedStats)
-    || !hasNewPendingActivity(changes)
+    || !hasDetectedActivity(changes)
     || !chrome.notifications?.create) {
     return;
   }
@@ -268,9 +268,13 @@ function applyDelta(value, delta) {
   return nextValue === 0 ? undefined : nextValue;
 }
 
-function recordAccountDelta(pendingActivity, delta, newPendingChanges) {
+function recordAccountDelta(pendingActivity, delta, detectedChanges) {
   if (delta === 0) {
     return false;
+  }
+
+  if (detectedChanges) {
+    detectedChanges.account.push({ delta, label: ACCOUNT_FOLLOWERS_LABEL });
   }
 
   const followersDelta = applyDelta(pendingActivity.account?.followersDelta, delta);
@@ -285,16 +289,20 @@ function recordAccountDelta(pendingActivity, delta, newPendingChanges) {
     };
   }
 
-  if (newPendingChanges && followersDelta !== undefined) {
-    newPendingChanges.account.push({ delta, label: ACCOUNT_FOLLOWERS_LABEL });
-  }
-
   return true;
 }
 
-function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, newPendingChanges) {
+function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges) {
   if (delta === 0) {
     return false;
+  }
+
+  if (detectedChanges) {
+    if (!detectedChanges.repositories[repository]) {
+      detectedChanges.repositories[repository] = [];
+    }
+
+    detectedChanges.repositories[repository].push({ delta, label });
   }
 
   const existingActivity = pendingActivity.repositories[repository] || {};
@@ -319,30 +327,22 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, lab
     delete pendingActivity.repositories[repository];
   }
 
-  if (newPendingChanges && nextDelta !== undefined) {
-    if (!newPendingChanges.repositories[repository]) {
-      newPendingChanges.repositories[repository] = [];
-    }
-
-    newPendingChanges.repositories[repository].push({ delta, label });
-  }
-
   return true;
 }
 
 
-function mergeBadgeActivity(pendingActivity, newPendingChanges, checkedAt) {
-  if (!hasNewPendingActivity(newPendingChanges)) {
+function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
+  if (!hasDetectedActivity(detectedChanges)) {
     return;
   }
 
   pendingActivity.badgeActivity = {
-    account: Boolean(pendingActivity.badgeActivity?.account || newPendingChanges.account.length > 0),
+    account: Boolean(pendingActivity.badgeActivity?.account || detectedChanges.account.length > 0),
     repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
     updatedAt: checkedAt,
   };
 
-  Object.entries(newPendingChanges.repositories || {}).forEach(([repository, deltas]) => {
+  Object.entries(detectedChanges.repositories || {}).forEach(([repository, deltas]) => {
     if (Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0)) {
       pendingActivity.badgeActivity.repositories[repository] = true;
     }
@@ -420,7 +420,7 @@ async function mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadat
   });
 }
 
-async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) {
+async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
   if (!settings.notifications.trackedStats.accountFollowers) {
     return false;
   }
@@ -436,7 +436,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     let changed = false;
 
     if (shouldCompare && Number.isFinite(previousFollowers)) {
-      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, newPendingChanges);
+      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges);
     }
 
     baselines.account = {
@@ -454,7 +454,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
   }
 }
 
-async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) {
+async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
   if (!hasRepositoryStatEnabled(settings.notifications.trackedStats)) {
     return false;
   }
@@ -478,7 +478,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
       const previousValue = previousBaseline[baselineKey];
 
       if (shouldCompare && Number.isFinite(previousValue)) {
-        changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue, label, newPendingChanges) || changed;
+        changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue, label, detectedChanges) || changed;
       }
 
       nextBaseline[baselineKey] = currentValue;
@@ -533,13 +533,16 @@ async function runBackgroundCheckNow() {
   const pendingActivity = createEmptyPendingActivity(existingPendingActivity);
   const shouldCompare = Boolean(baselines.initialized);
   let pendingChanged = false;
-  const newPendingChanges = { account: [], repositories: {} };
+  // Keep the raw deltas from this background check separate from the net pending
+  // activity that Quick Summary and Dashboard display. A raw +1 should still
+  // alert even when it cancels an older unresolved -1 in pending activity.
+  const detectedChanges = { account: [], repositories: {} };
 
   cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
-  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) || pendingChanged;
+  pendingChanged = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) || pendingChanged;
 
   for (const repository of settings.repositories) {
-    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) || pendingChanged;
+    pendingChanged = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) || pendingChanged;
   }
 
   baselines.initialized = true;
@@ -550,16 +553,16 @@ async function runBackgroundCheckNow() {
     pendingActivity.updatedAt = checkedAt;
 
     if (settings.notifications.badgeEnabled) {
-      mergeBadgeActivity(pendingActivity, newPendingChanges, checkedAt);
+      mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt);
     }
   }
 
   const savedPendingActivity = await savePendingActivity(pendingActivity);
 
-  if (hasNewPendingActivity(newPendingChanges)) {
+  if (hasDetectedActivity(detectedChanges)) {
     await updateBadgeFromBadgeActivity(settings, savedPendingActivity.badgeActivity);
   }
-  await showActivityNotification(settings, newPendingChanges, shouldCompare);
+  await showActivityNotification(settings, detectedChanges, shouldCompare);
 
   return { fetchedAt: checkedAt };
 }
