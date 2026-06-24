@@ -113,9 +113,9 @@ function formatNotificationBody(changes) {
       : '';
     const firstRepository = changedRepositories[0];
     const firstRepositoryDelta = firstRepository?.deltas?.find(({ delta }) => delta !== 0);
-    const firstChange = hasAccountChanges
-      ? formattedAccountDeltas[0]
-      : `${formatDelta(firstRepositoryDelta?.delta, firstRepositoryDelta?.label)} in ${firstRepository.repository}`;
+    const firstChange = firstRepositoryDelta
+      ? `${formatDelta(firstRepositoryDelta.delta, firstRepositoryDelta.label)} in ${firstRepository.repository}`
+      : formattedAccountDeltas[0];
     return `${firstChange}, with changes in ${placeCount} ${pluralizeLabel('place', placeCount)}${accountSummary}. Open the extension to review them.`;
   }
 
