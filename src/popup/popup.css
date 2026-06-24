@@ -112,7 +112,6 @@ h1 {
   display: grid;
   gap: 10px;
   grid-template-columns: auto minmax(0, 1fr);
-  min-height: 102px;
   min-width: 0;
   padding: 10px;
 }
@@ -237,6 +236,13 @@ button:disabled {
   min-width: 0;
   overflow-wrap: anywhere;
   padding: 6px 8px;
+}
+
+.activity-note:empty {
+  border: 0;
+  display: none;
+  margin: 0;
+  padding: 0;
 }
 
 .activity-delta {

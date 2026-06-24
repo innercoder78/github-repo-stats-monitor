@@ -429,6 +429,13 @@ button:disabled {
   padding: 8px 10px;
 }
 
+.activity-note:empty {
+  border: 0;
+  display: none;
+  margin: 0;
+  padding: 0;
+}
+
 .activity-delta {
   font-weight: 900;
   max-width: 100%;
