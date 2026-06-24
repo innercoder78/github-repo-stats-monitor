@@ -1,10 +1,14 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
 import { runExclusiveFullRefresh, wasManualFullRefreshRecentlyCompleted, wasManualGitHubRequestRecentlyCompleted } from './shared/refresh-stats.js';
 import {
+  getAccountStats,
+  getLatestStats,
   getNotificationBaselines,
   getPendingActivity,
   getSettings,
   normalizeNotificationSettings,
+  saveAccountStats,
+  saveLatestStats,
   saveNotificationBaselines,
   savePendingActivity,
 } from './shared/storage.js';
@@ -23,7 +27,6 @@ const REPOSITORY_DELTA_LABELS = Object.freeze({
 });
 const ACCOUNT_FOLLOWERS_LABEL = 'Account Follower';
 const NOTIFICATION_TITLE = 'Changes Detected';
-const NOTIFICATION_PREFIX = 'GitHub Repo Stats Monitor found';
 const BADGE_BACKGROUND_COLOR = '#2f81f7';
 
 function getSafeInterval(minutes) {
@@ -108,18 +111,23 @@ function formatNotificationBody(changes) {
     const accountSummary = hasAccountChanges && formattedAccountDeltas.length > 0
       ? `, including ${formattedAccountDeltas.join(' and ')}`
       : '';
-    return `${NOTIFICATION_PREFIX} changes in ${placeCount} ${pluralizeLabel('place', placeCount)}${accountSummary}. Open the extension to review them.`;
+    const firstRepository = changedRepositories[0];
+    const firstRepositoryDelta = firstRepository?.deltas?.find(({ delta }) => delta !== 0);
+    const firstChange = hasAccountChanges
+      ? formattedAccountDeltas[0]
+      : `${formatDelta(firstRepositoryDelta?.delta, firstRepositoryDelta?.label)} in ${firstRepository.repository}`;
+    return `${firstChange}, with changes in ${placeCount} ${pluralizeLabel('place', placeCount)}${accountSummary}. Open the extension to review them.`;
   }
 
   if (hasAccountChanges) {
-    return `${NOTIFICATION_PREFIX} ${formattedAccountDeltas.join(' and ')}.`;
+    return `${formattedAccountDeltas.join(' and ')}.`;
   }
 
   const changedRepository = changedRepositories[0];
   const formattedDeltas = (changedRepository?.deltas || []).map(({ delta, label }) => formatDelta(delta, label));
   const repositoryContext = changedRepository?.repository ? ` in ${changedRepository.repository}` : '';
 
-  return `${NOTIFICATION_PREFIX} ${formattedDeltas.join(' and ')}${repositoryContext}.`;
+  return `${formattedDeltas.join(' and ')}${repositoryContext}.`;
 }
 
 function createChromeNotification(notificationId, options) {
@@ -363,6 +371,55 @@ function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   });
 }
 
+
+function hasFetchedNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
+async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt) {
+  if (!hasFetchedNumber(account?.followers)) {
+    return null;
+  }
+
+  const existingAccountStats = await getAccountStats();
+  return saveAccountStats({
+    ...existingAccountStats,
+    login: typeof account.login === 'string' ? account.login : existingAccountStats.login,
+    followers: Number(account.followers),
+    fetchedAt: checkedAt,
+  });
+}
+
+async function mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadata, checkedAt) {
+  const metadataFields = [
+    ['stars', metadata?.stars],
+    ['forks', metadata?.forks],
+    ['subscribers', metadata?.subscribers],
+  ].filter(([, value]) => hasFetchedNumber(value));
+
+  if (metadataFields.length === 0) {
+    return null;
+  }
+
+  const latestStats = await getLatestStats();
+  const previousStats = latestStats[repository] || { repository };
+  const nextStats = {
+    ...previousStats,
+    repository,
+    fetchedAt: checkedAt,
+    error: '',
+  };
+
+  metadataFields.forEach(([key, value]) => {
+    nextStats[key] = Number(value);
+  });
+
+  return saveLatestStats({
+    ...latestStats,
+    [repository]: nextStats,
+  });
+}
+
 async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, newPendingChanges) {
   if (!settings.notifications.trackedStats.accountFollowers) {
     return false;
@@ -370,7 +427,11 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
 
   try {
     const account = await fetchAuthenticatedAccount(settings.githubToken);
-    const followers = Number(account.followers) || 0;
+    if (!hasFetchedNumber(account.followers)) {
+      return false;
+    }
+
+    const followers = Number(account.followers);
     const previousFollowers = baselines.account.followers;
     let changed = false;
 
@@ -384,6 +445,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
       followers,
       updatedAt: checkedAt,
     };
+    await mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt);
 
     return changed;
   } catch (error) {
@@ -408,7 +470,11 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
         return;
       }
 
-      const currentValue = Number(metadata[currentKey]) || 0;
+      if (!hasFetchedNumber(metadata[currentKey])) {
+        return;
+      }
+
+      const currentValue = Number(metadata[currentKey]);
       const previousValue = previousBaseline[baselineKey];
 
       if (shouldCompare && Number.isFinite(previousValue)) {
@@ -419,6 +485,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
     });
 
     baselines.repositories[repository] = nextBaseline;
+    await mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadata, checkedAt);
     return changed;
   } catch (error) {
     console.warn(`Unable to check ${repository} in the background.`, error);
