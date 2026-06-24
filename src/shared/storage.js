@@ -338,6 +338,7 @@ function normalizePendingAccountActivity(activity) {
   return {
     followersDelta,
     quickSummaryShown: Boolean(activity?.quickSummaryShown),
+    dashboardShown: Boolean(activity?.dashboardShown),
   };
 }
 
