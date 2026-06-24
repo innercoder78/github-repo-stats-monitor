@@ -283,6 +283,7 @@ export async function syncNotificationBaselinesFromManualRefresh({ results = [],
     return baselines;
   }
 
+  nextBaselines.initialized = true;
   nextBaselines.updatedAt = checkedAt;
   return saveNotificationBaselines(nextBaselines);
 }
