@@ -1,6 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
 import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
-import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
+import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -703,7 +703,7 @@ async function refreshRepositoryStats() {
     });
     if (refreshResult.skipped) {
       await reloadSavedRefreshData();
-      setStatus('Showing recently refreshed data.', 'success');
+      setStatus('Showing saved data from a recent refresh.', 'success');
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;
@@ -751,7 +751,7 @@ async function refreshSingleRepository(repository) {
     const fullRefreshReuse = await getFullRefreshReuseResult();
     if (fullRefreshReuse.skipped) {
       await reloadSavedRefreshData();
-      setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
+      setStatus(`Showing saved data from a recent refresh for ${repository}.`, 'success');
     } else {
       const coordinatedRefresh = await runExclusiveUserVisibleGitHubRequest('dashboard-repository', () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
         detectActivity: true,
@@ -760,7 +760,7 @@ async function refreshSingleRepository(repository) {
 
       if (coordinatedRefresh.skipped) {
         await reloadSavedRefreshData();
-        setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
+        setStatus(`Showing saved data from a recent refresh for ${repository}.`, 'success');
       } else {
         const refreshResult = coordinatedRefresh.result;
         currentLatestStats = refreshResult.latestStats;
@@ -803,11 +803,7 @@ async function initializeDashboard() {
       return;
     }
 
-    if (await isFullRefreshFresh()) {
-      return;
-    }
-
-    await refreshRepositoryStats();
+    setStatus('Showing saved data. Click Refresh Now to fetch the latest data from GitHub.', '');
   } catch (error) {
     setStatus('Unable to load dashboard data from local storage.', 'error');
     repoGrid.textContent = '';

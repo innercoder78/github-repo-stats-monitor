@@ -82,51 +82,58 @@ export async function fetchAuthenticatedAccount(token) {
   };
 }
 
-export async function fetchAuthenticatedRepositories(token) {
+export async function fetchAuthenticatedRepositoriesPage(token, { page = 1, perPage = 50 } = {}) {
   const safeToken = typeof token === 'string' ? token.trim() : '';
 
   if (!safeToken) {
     throw new Error('A GitHub token is required before importing repositories.');
   }
 
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePerPage = Math.min(100, Math.max(1, Number(perPage) || 50));
+  let response;
+
+  try {
+    const url = new URL('https://api.github.com/user/repos');
+    url.searchParams.set('visibility', 'all');
+    url.searchParams.set('affiliation', 'owner,collaborator,organization_member');
+    url.searchParams.set('sort', 'full_name');
+    url.searchParams.set('direction', 'asc');
+    url.searchParams.set('per_page', String(safePerPage));
+    url.searchParams.set('page', String(safePage));
+
+    response = await fetch(url.toString(), {
+      headers: getGitHubHeaders(safeToken),
+    });
+  } catch (error) {
+    throw new Error('Network failure while contacting GitHub repositories API. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    throw new Error(getAuthenticatedRepositoriesErrorMessage(response.status));
+  }
+
+  const data = await response.json();
+  const repositories = Array.isArray(data)
+    ? data.map(mapAuthenticatedRepository).filter((repository) => repository.fullName)
+    : [];
+  const linkHeader = response.headers.get('Link') || '';
+  const hasNextPage = /<[^>]+[?&]page=\d+[^>]*>;\s*rel="next"/.test(linkHeader)
+    || linkHeader.includes('rel="next"')
+    || repositories.length === safePerPage;
+
+  return { repositories, page: safePage, perPage: safePerPage, hasNextPage };
+}
+
+export async function fetchAuthenticatedRepositories(token) {
   const repositories = [];
   let page = 1;
   let hasNextPage = true;
 
   while (hasNextPage) {
-    let response;
-
-    try {
-      const url = new URL('https://api.github.com/user/repos');
-      url.searchParams.set('visibility', 'all');
-      url.searchParams.set('affiliation', 'owner,collaborator,organization_member');
-      url.searchParams.set('sort', 'full_name');
-      url.searchParams.set('direction', 'asc');
-      url.searchParams.set('per_page', '100');
-      url.searchParams.set('page', String(page));
-
-      response = await fetch(url.toString(), {
-        headers: getGitHubHeaders(safeToken),
-      });
-    } catch (error) {
-      throw new Error('Network failure while contacting GitHub repositories API. Check your connection and try again.');
-    }
-
-    if (!response.ok) {
-      throw new Error(getAuthenticatedRepositoriesErrorMessage(response.status));
-    }
-
-    const data = await response.json();
-    const pageRepositories = Array.isArray(data) ? data.map(mapAuthenticatedRepository).filter((repository) => repository.fullName) : [];
-    repositories.push(...pageRepositories);
-
-    const linkHeader = response.headers.get('Link') || '';
-    hasNextPage = /<[^>]+[?&]page=\d+[^>]*>;\s*rel="next"/.test(linkHeader) || (linkHeader.includes('rel="next"'));
-
-    if (!hasNextPage && Array.isArray(data) && data.length === 100) {
-      hasNextPage = true;
-    }
-
+    const result = await fetchAuthenticatedRepositoriesPage(token, { page, perPage: 100 });
+    repositories.push(...result.repositories);
+    hasNextPage = result.hasNextPage;
     page += 1;
   }
 
