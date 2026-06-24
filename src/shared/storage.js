@@ -457,6 +457,10 @@ export function normalizeViewedBaselines(baselines) {
     account.followers = followers;
   }
 
+  if (typeof viewedBaselines.account?.login === 'string') {
+    account.login = viewedBaselines.account.login;
+  }
+
   if (typeof viewedBaselines.account?.updatedAt === 'string') {
     account.updatedAt = viewedBaselines.account.updatedAt;
   }

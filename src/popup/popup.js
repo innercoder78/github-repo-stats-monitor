@@ -204,6 +204,18 @@ function addQuickSummaryActivity(valueElement, delta, label) {
   metricBody?.append(note);
 }
 
+function hasFetchedAccountStats(accountStats) {
+  return Boolean(accountStats?.login)
+    && Boolean(accountStats?.fetchedAt)
+    && Number.isFinite(accountStats.followers);
+}
+
+function hasCurrentAccountViewedBaseline() {
+  return hasFetchedAccountStats(currentAccountStats)
+    && currentViewedBaselines.account?.login === currentAccountStats.login
+    && Number.isFinite(Number(currentViewedBaselines.account?.followers));
+}
+
 function getBaselineDelta(baseline, key, currentValue) {
   if (!Number.isFinite(currentValue)) {
     return 0;
@@ -230,6 +242,10 @@ function getQuickSummaryViewedDeltas() {
 }
 
 function getQuickSummaryAccountDelta() {
+  if (!hasCurrentAccountViewedBaseline()) {
+    return 0;
+  }
+
   return getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
 }
 
@@ -310,8 +326,12 @@ async function saveQuickSummaryViewedBaselines(consideredRepositories, displayed
     }
   });
 
-  if (displayedAccount && Number.isFinite(currentAccountStats.followers)) {
-    nextViewedBaselines.account = { followers: currentAccountStats.followers, updatedAt: viewedAt };
+  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
+    nextViewedBaselines.account = {
+      login: currentAccountStats.login,
+      followers: currentAccountStats.followers,
+      updatedAt: viewedAt,
+    };
   }
 
   try {
@@ -327,7 +347,7 @@ function renderQuickSummaryActivity() {
   const repositoryDeltas = getQuickSummaryViewedDeltas();
   const consideredRepositories = new Set(currentSettings.repositories.filter((repository) => hasCachedMetadata(currentLatestStats[repository])));
   const pendingAccountDelta = getQuickSummaryAccountDelta();
-  const accountFollowersDisplayed = Number.isFinite(currentAccountStats.followers);
+  const accountFollowersDisplayed = hasFetchedAccountStats(currentAccountStats);
   const showAccountFollowerPill = accountFollowersDisplayed && pendingAccountDelta !== 0;
 
   if (repositoryDeltas.starsDelta !== 0) {
@@ -384,7 +404,7 @@ function renderStatsSummary(settings, latestStats) {
   lastUpdated.textContent = formatLastUpdated(latestStats, settings.repositories);
   totalStars.textContent = hasAnyCachedMetadata ? formatNumber(totals.stars) : '—';
   totalForks.textContent = hasAnyCachedMetadata ? formatNumber(totals.forks) : '—';
-  accountFollowers.textContent = formatNumber(currentAccountStats.followers);
+  accountFollowers.textContent = hasFetchedAccountStats(currentAccountStats) ? formatNumber(currentAccountStats.followers) : '—';
   totalWatchers.textContent = hasAnyCachedMetadata ? formatNumber(totals.watchers) : '—';
   totalViews.textContent = hasAnyCachedTraffic ? formatNumber(totals.views) : '—';
   totalClones.textContent = hasAnyCachedClones ? formatNumber(totals.clones) : '—';
