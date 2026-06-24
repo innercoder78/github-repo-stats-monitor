@@ -75,9 +75,13 @@ export function createEmptyPendingChanges() {
   return { account: [], repositories: {} };
 }
 
-export function recordAccountActivityDelta(pendingActivity, delta, newPendingChanges) {
+export function recordAccountActivityDelta(pendingActivity, delta, detectedChanges) {
   if (delta === 0) {
     return false;
+  }
+
+  if (detectedChanges) {
+    detectedChanges.account.push({ delta, label: ACTIVITY_DELTA_LABELS.followersDelta });
   }
 
   const followersDelta = applyDelta(pendingActivity.account?.followersDelta, delta);
@@ -92,16 +96,20 @@ export function recordAccountActivityDelta(pendingActivity, delta, newPendingCha
     };
   }
 
-  if (newPendingChanges && followersDelta !== undefined) {
-    newPendingChanges.account.push({ delta, label: ACTIVITY_DELTA_LABELS.followersDelta });
-  }
-
   return true;
 }
 
-export function recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, delta, label, newPendingChanges) {
+export function recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges) {
   if (delta === 0) {
     return false;
+  }
+
+  if (detectedChanges) {
+    if (!detectedChanges.repositories[repository]) {
+      detectedChanges.repositories[repository] = [];
+    }
+
+    detectedChanges.repositories[repository].push({ delta, label });
   }
 
   const existingActivity = pendingActivity.repositories[repository] || {};
@@ -126,18 +134,10 @@ export function recordRepositoryActivityDelta(pendingActivity, repository, delta
     delete pendingActivity.repositories[repository];
   }
 
-  if (newPendingChanges && nextDelta !== undefined) {
-    if (!newPendingChanges.repositories[repository]) {
-      newPendingChanges.repositories[repository] = [];
-    }
-
-    newPendingChanges.repositories[repository].push({ delta, label });
-  }
-
   return true;
 }
 
-export function detectPendingActivityFromStats(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, pendingActivity, checkedAt, repositories, newPendingChanges) {
+export function detectPendingActivityFromStats(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, pendingActivity, checkedAt, repositories, detectedChanges) {
   const trackedStats = getTrackedStats(settings);
   let changed = false;
 
@@ -146,7 +146,7 @@ export function detectPendingActivityFromStats(settings, previousLatestStats, ne
     const nextFollowers = Number(nextAccountStats?.followers);
 
     if (hasAccountFollowersBaseline(previousAccountStats) && Number.isFinite(nextFollowers)) {
-      changed = recordAccountActivityDelta(pendingActivity, nextFollowers - previousFollowers, newPendingChanges) || changed;
+      changed = recordAccountActivityDelta(pendingActivity, nextFollowers - previousFollowers, detectedChanges) || changed;
     }
   }
 
@@ -163,7 +163,7 @@ export function detectPendingActivityFromStats(settings, previousLatestStats, ne
       const nextValue = Number(nextStats?.[currentKey]);
 
       if (hasTrackedStatBaseline(previousStats, previousKey) && Number.isFinite(nextValue)) {
-        changed = recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, nextValue - previousValue, label, newPendingChanges) || changed;
+        changed = recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, nextValue - previousValue, label, detectedChanges) || changed;
       }
     });
   });
@@ -175,10 +175,10 @@ export function detectPendingActivityFromStats(settings, previousLatestStats, ne
   return changed;
 }
 
-export function mergeBadgeActivity(pendingActivity, newPendingChanges, checkedAt) {
-  const accountChanges = Array.isArray(newPendingChanges?.account) ? newPendingChanges.account : [];
-  const repositoryChanges = newPendingChanges?.repositories && typeof newPendingChanges.repositories === 'object'
-    ? newPendingChanges.repositories
+export function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
+  const accountChanges = Array.isArray(detectedChanges?.account) ? detectedChanges.account : [];
+  const repositoryChanges = detectedChanges?.repositories && typeof detectedChanges.repositories === 'object'
+    ? detectedChanges.repositories
     : {};
 
   if (!accountChanges.some(({ delta }) => delta !== 0)
