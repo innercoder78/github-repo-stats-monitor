@@ -407,26 +407,19 @@ button:disabled {
 }
 
 .activity-highlight {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), var(--shadow);
+  background: radial-gradient(circle at top right, color-mix(in srgb, var(--success) 16%, transparent), transparent 56%), var(--surface);
+  border-color: color-mix(in srgb, var(--success) 62%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 20%, transparent), var(--shadow);
 }
 
 .activity-note {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
-  border-radius: 10px;
-  color: var(--text);
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  font-size: 0.84rem;
-  font-weight: 800;
-  gap: 0 0.25rem;
-  line-height: 1.4;
+  gap: 6px;
   margin: 0 0 14px;
   max-width: 100%;
   min-width: 0;
-  overflow-wrap: anywhere;
-  padding: 8px 10px;
 }
 
 .activity-note:empty {
@@ -437,14 +430,27 @@ button:disabled {
 }
 
 .activity-delta {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
   font-weight: 900;
+  line-height: 1.15;
   max-width: 100%;
   overflow-wrap: anywhere;
+  padding: 4px 9px;
   white-space: normal;
 }
 
-.activity-delta-positive { color: var(--success); }
-.activity-delta-negative { color: var(--error); }
+.activity-note .activity-delta.activity-delta-positive {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+
+.activity-note .activity-delta.activity-delta-negative {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  color: var(--error);
+}
 
 .dashboard-footer-actions {
   display: flex;
