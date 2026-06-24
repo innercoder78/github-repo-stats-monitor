@@ -327,7 +327,8 @@ function renderQuickSummaryActivity() {
   const repositoryDeltas = getQuickSummaryViewedDeltas();
   const consideredRepositories = new Set(currentSettings.repositories.filter((repository) => hasCachedMetadata(currentLatestStats[repository])));
   const pendingAccountDelta = getQuickSummaryAccountDelta();
-  const displayedAccountActivity = Number.isFinite(currentAccountStats.followers);
+  const accountFollowersDisplayed = Number.isFinite(currentAccountStats.followers);
+  const showAccountFollowerPill = accountFollowersDisplayed && pendingAccountDelta !== 0;
 
   if (repositoryDeltas.starsDelta !== 0) {
     addQuickSummaryActivity(totalStars, repositoryDeltas.starsDelta, 'Star');
@@ -341,12 +342,12 @@ function renderQuickSummaryActivity() {
     addQuickSummaryActivity(totalWatchers, repositoryDeltas.repoWatchersDelta, 'Repo Watcher');
   }
 
-  if (displayedAccountActivity) {
+  if (showAccountFollowerPill) {
     addQuickSummaryActivity(accountFollowers, pendingAccountDelta, 'Account Follower');
   }
 
-  markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity);
-  saveQuickSummaryViewedBaselines(consideredRepositories, displayedAccountActivity);
+  markQuickSummaryActivityShown(consideredRepositories, accountFollowersDisplayed);
+  saveQuickSummaryViewedBaselines(consideredRepositories, accountFollowersDisplayed);
 }
 
 function renderStatsSummary(settings, latestStats) {
