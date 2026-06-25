@@ -335,7 +335,7 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, lab
 
 function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
   if (!hasDetectedActivity(detectedChanges)) {
-    return;
+    return false;
   }
 
   pendingActivity.badgeActivity = {
@@ -349,28 +349,37 @@ function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
       pendingActivity.badgeActivity.repositories[repository] = true;
     }
   });
+
+  return true;
 }
 
 function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   const repositorySet = new Set(repositories);
+  let baselinesChanged = false;
+  let pendingActivityChanged = false;
 
   Object.keys(baselines.repositories).forEach((repository) => {
     if (!repositorySet.has(repository)) {
       delete baselines.repositories[repository];
+      baselinesChanged = true;
     }
   });
 
   Object.keys(pendingActivity.repositories).forEach((repository) => {
     if (!repositorySet.has(repository)) {
       delete pendingActivity.repositories[repository];
+      pendingActivityChanged = true;
     }
   });
 
   Object.keys(pendingActivity.badgeActivity?.repositories || {}).forEach((repository) => {
     if (!repositorySet.has(repository)) {
       delete pendingActivity.badgeActivity.repositories[repository];
+      pendingActivityChanged = true;
     }
   });
+
+  return { baselinesChanged, pendingActivityChanged };
 }
 
 
@@ -392,7 +401,7 @@ async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt) {
   });
 }
 
-async function mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadata, checkedAt) {
+function createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt) {
   const metadataFields = [
     ['stars', metadata?.stars],
     ['forks', metadata?.forks],
@@ -403,23 +412,26 @@ async function mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadat
     return null;
   }
 
-  const latestStats = await getLatestStats();
-  const previousStats = latestStats[repository] || { repository };
-  const nextStats = {
-    ...previousStats,
+  return {
     repository,
-    fetchedAt: checkedAt,
-    error: '',
+    updates: Object.fromEntries([
+      ...metadataFields.map(([key, value]) => [key, Number(value)]),
+      ['fetchedAt', checkedAt],
+      ['error', ''],
+    ]),
   };
+}
 
-  metadataFields.forEach(([key, value]) => {
-    nextStats[key] = Number(value);
-  });
+function mergeRepositoryMetadataStatsPatches(latestStats, metadataPatches) {
+  return metadataPatches.reduce((nextLatestStats, { repository, updates }) => {
+    nextLatestStats[repository] = {
+      ...(nextLatestStats[repository] || { repository }),
+      repository,
+      ...updates,
+    };
 
-  return saveLatestStats({
-    ...latestStats,
-    [repository]: nextStats,
-  });
+    return nextLatestStats;
+  }, { ...latestStats });
 }
 
 async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
@@ -497,8 +509,11 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
     }
 
     baselines.repositories[repository] = nextBaseline;
-    await mergeFetchedRepositoryMetadataIntoCachedStats(repository, metadata, checkedAt);
-    return { checked: true, changed };
+    return {
+      checked: true,
+      changed,
+      metadataPatch: createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt),
+    };
   } catch (error) {
     console.warn(`Unable to check ${repository} in the background.`, error);
     return { checked: false, changed: false };
@@ -546,12 +561,16 @@ async function runBackgroundCheckNow() {
   const shouldCompare = Boolean(baselines.initialized);
   let pendingChanged = false;
   let hadSuccessfulCheck = false;
+  let baselinesChanged = false;
+  const repositoryMetadataPatches = [];
   // Keep the raw deltas from this background check separate from the net pending
   // activity that Quick Summary and Dashboard display. A raw +1 should still
   // alert even when it cancels an older unresolved -1 in pending activity.
   const detectedChanges = { account: [], repositories: {} };
 
-  cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
+  const cleanupResult = cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
+  baselinesChanged = cleanupResult.baselinesChanged || baselinesChanged;
+  pendingChanged = cleanupResult.pendingActivityChanged || pendingChanged;
   const accountResult = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
   hadSuccessfulCheck = accountResult.checked || hadSuccessfulCheck;
   pendingChanged = accountResult.changed || pendingChanged;
@@ -560,11 +579,22 @@ async function runBackgroundCheckNow() {
     const repositoryResult = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
     hadSuccessfulCheck = repositoryResult.checked || hadSuccessfulCheck;
     pendingChanged = repositoryResult.changed || pendingChanged;
+
+    if (repositoryResult.metadataPatch) {
+      repositoryMetadataPatches.push(repositoryResult.metadataPatch);
+    }
+  }
+
+  if (repositoryMetadataPatches.length > 0) {
+    const latestStats = await getLatestStats();
+    await saveLatestStats(mergeRepositoryMetadataStatsPatches(latestStats, repositoryMetadataPatches));
   }
 
   if (hadSuccessfulCheck) {
     baselines.initialized = true;
     baselines.updatedAt = checkedAt;
+    await saveNotificationBaselines(baselines);
+  } else if (baselinesChanged) {
     await saveNotificationBaselines(baselines);
   }
 
@@ -572,14 +602,19 @@ async function runBackgroundCheckNow() {
     pendingActivity.updatedAt = checkedAt;
 
     if (settings.notifications.badgeEnabled) {
-      mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt);
+      pendingChanged = mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) || pendingChanged;
     }
   }
 
-  const savedPendingActivity = await savePendingActivity(pendingActivity);
+  let badgeActivity = pendingActivity.badgeActivity;
+
+  if (pendingChanged) {
+    const savedPendingActivity = await savePendingActivity(pendingActivity);
+    badgeActivity = savedPendingActivity.badgeActivity;
+  }
 
   if (hasDetectedActivity(detectedChanges)) {
-    await updateBadgeFromBadgeActivity(settings, savedPendingActivity.badgeActivity);
+    await updateBadgeFromBadgeActivity(settings, badgeActivity);
   }
   await showActivityNotification(settings, detectedChanges, shouldCompare);
 
@@ -589,14 +624,17 @@ async function runBackgroundCheckNow() {
 
 function removeUnconfiguredRepositoryEntries(repositoryEntries, repositorySet) {
   const nextEntries = {};
+  let changed = false;
 
   Object.entries(repositoryEntries || {}).forEach(([repository, value]) => {
     if (repositorySet.has(repository)) {
       nextEntries[repository] = value;
+    } else {
+      changed = true;
     }
   });
 
-  return nextEntries;
+  return { entries: nextEntries, changed };
 }
 
 async function cleanupRemovedRepositoryStorage(repositories) {
@@ -610,27 +648,46 @@ async function cleanupRemovedRepositoryStorage(repositories) {
       getViewedBaselines(),
       getNotificationBaselines(),
     ]);
+    const latestStatsCleanup = removeUnconfiguredRepositoryEntries(latestStats, repositorySet);
+    const pendingRepositoriesCleanup = removeUnconfiguredRepositoryEntries(pendingActivity.repositories, repositorySet);
+    const pendingBadgeRepositoriesCleanup = removeUnconfiguredRepositoryEntries(pendingActivity.badgeActivity?.repositories, repositorySet);
+    const viewedBaselinesCleanup = removeUnconfiguredRepositoryEntries(viewedBaselines.repositories, repositorySet);
+    const notificationBaselinesCleanup = removeUnconfiguredRepositoryEntries(notificationBaselines.repositories, repositorySet);
     const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
-    nextPendingActivity.repositories = removeUnconfiguredRepositoryEntries(nextPendingActivity.repositories, repositorySet);
-    nextPendingActivity.badgeActivity = {
-      ...(nextPendingActivity.badgeActivity || {}),
-      repositories: removeUnconfiguredRepositoryEntries(nextPendingActivity.badgeActivity?.repositories, repositorySet),
-    };
+    const cleanupTasks = [];
 
-    await Promise.all([
-      saveLatestStats(removeUnconfiguredRepositoryEntries(latestStats, repositorySet)),
-      savePendingActivity(nextPendingActivity),
-      saveViewedBaselines({
+    if (latestStatsCleanup.changed) {
+      cleanupTasks.push(saveLatestStats(latestStatsCleanup.entries));
+    }
+
+    if (pendingRepositoriesCleanup.changed || pendingBadgeRepositoriesCleanup.changed) {
+      nextPendingActivity.repositories = pendingRepositoriesCleanup.entries;
+      nextPendingActivity.badgeActivity = {
+        ...(nextPendingActivity.badgeActivity || {}),
+        repositories: pendingBadgeRepositoriesCleanup.entries,
+      };
+      cleanupTasks.push(savePendingActivity(nextPendingActivity));
+    }
+
+    if (viewedBaselinesCleanup.changed) {
+      cleanupTasks.push(saveViewedBaselines({
         ...viewedBaselines,
-        repositories: removeUnconfiguredRepositoryEntries(viewedBaselines.repositories, repositorySet),
-      }),
-      saveNotificationBaselines({
-        ...notificationBaselines,
-        repositories: removeUnconfiguredRepositoryEntries(notificationBaselines.repositories, repositorySet),
-      }),
-    ]);
+        repositories: viewedBaselinesCleanup.entries,
+      }));
+    }
 
-    await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
+    if (notificationBaselinesCleanup.changed) {
+      cleanupTasks.push(saveNotificationBaselines({
+        ...notificationBaselines,
+        repositories: notificationBaselinesCleanup.entries,
+      }));
+    }
+
+    await Promise.all(cleanupTasks);
+
+    if (pendingRepositoriesCleanup.changed || pendingBadgeRepositoriesCleanup.changed) {
+      await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
+    }
   } catch (error) {
     console.warn('Unable to clean up removed repository activity.', error);
   }
@@ -766,9 +823,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     return;
   }
 
-  const shouldScheduleBackgroundCheckAlarm = Boolean(
+  const hasRelevantChange = Boolean(
     changes.notifications || changes.githubToken || changes.repositories,
   );
+
+  if (!hasRelevantChange) {
+    return;
+  }
 
   (async () => {
     if (changes.notifications) {
@@ -783,9 +844,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       await cleanupRemovedRepositoryStorage(changes.repositories.newValue);
     }
 
-    if (shouldScheduleBackgroundCheckAlarm) {
-      await scheduleBackgroundCheckAlarm();
-    }
+    await scheduleBackgroundCheckAlarm();
   })().catch((error) => {
     console.warn('Unable to handle storage changes in the background.', error);
   });
