@@ -1,6 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
 import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
-import { getFullRefreshReuseResult, isFullRefreshFresh, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
+import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -113,6 +113,36 @@ function getValidDate(value) {
 
 function formatCompactRefreshTime(date) {
   return formatDisplayTimestamp(date, currentSettings.displayPreferences, 'full');
+}
+
+function getLatestDashboardRefreshDate() {
+  const candidates = [
+    currentAccountStats?.fetchedAt,
+    ...Object.values(currentLatestStats || {}).flatMap((stats) => [
+      stats?.fetchedAt,
+      stats?.trafficFetchedAt,
+      stats?.clonesFetchedAt,
+      stats?.referrersFetchedAt,
+    ]),
+  ]
+    .map(getValidDate)
+    .filter(Boolean);
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return candidates.reduce((latest, date) => (date > latest ? date : latest), candidates[0]);
+}
+
+function formatSavedDataStatus() {
+  const latestRefreshDate = getLatestDashboardRefreshDate();
+
+  if (!latestRefreshDate) {
+    return 'Showing saved data. No saved refresh has completed yet. Click Refresh to update.';
+  }
+
+  return `Showing saved data. Last refreshed: ${formatRefreshTime(latestRefreshDate)}. Click Refresh to update.`;
 }
 
 function formatFetchedSummary(stats) {
@@ -803,11 +833,7 @@ async function initializeDashboard() {
       return;
     }
 
-    if (await isFullRefreshFresh()) {
-      return;
-    }
-
-    await refreshRepositoryStats();
+    setStatus(formatSavedDataStatus());
   } catch (error) {
     setStatus('Unable to load dashboard data from local storage.', 'error');
     repoGrid.textContent = '';
