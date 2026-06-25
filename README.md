@@ -6,7 +6,19 @@ It is designed for manual review plus optional background checks on an interval,
 
 ## Current Version
 
-2.2.1
+2.2.2
+
+## Version 2.2.2 Maintenance Update
+
+Version 2.2.2 is a performance and stability hardening update after 2.2.1. It does not add new features; it focuses on reducing unnecessary local storage work during existing background-check and cleanup flows.
+
+Maintenance highlights:
+
+* Background checks now reduce unnecessary Chrome storage writes.
+* Repository metadata cache updates are batched during background checks.
+* Pending activity is no longer saved when nothing changed.
+* Removed-repository cleanup avoids unnecessary storage saves when there is nothing to clean.
+* The storage-change listener now ignores unrelated local storage changes earlier.
 
 ## What It Shows
 
