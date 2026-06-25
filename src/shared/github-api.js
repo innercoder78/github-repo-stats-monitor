@@ -1,5 +1,50 @@
 const GITHUB_API_VERSION = '2022-11-28';
 
+const GITHUB_API_ACTIVITY_KEY = 'githubApiActivity';
+
+function getStorageArea() {
+  return chrome.storage.local;
+}
+
+function getStoredGitHubApiActivity() {
+  return new Promise((resolve) => {
+    if (!globalThis.chrome?.storage?.local) {
+      resolve({ activeCount: 0, lastFinishedAt: '' });
+      return;
+    }
+    getStorageArea().get({ [GITHUB_API_ACTIVITY_KEY]: { activeCount: 0, lastFinishedAt: '' } }, (stored) => {
+      const activity = stored[GITHUB_API_ACTIVITY_KEY] && typeof stored[GITHUB_API_ACTIVITY_KEY] === 'object' ? stored[GITHUB_API_ACTIVITY_KEY] : {};
+      resolve({ activeCount: Math.max(0, Number(activity.activeCount) || 0), lastFinishedAt: typeof activity.lastFinishedAt === 'string' ? activity.lastFinishedAt : '' });
+    });
+  });
+}
+
+async function saveGitHubApiActivity(activity) {
+  if (!globalThis.chrome?.storage?.local) return;
+  await new Promise((resolve) => {
+    getStorageArea().set({ [GITHUB_API_ACTIVITY_KEY]: activity }, resolve);
+  });
+}
+
+async function recordGitHubApiActivityStart() {
+  const activity = await getStoredGitHubApiActivity();
+  await saveGitHubApiActivity({ ...activity, activeCount: activity.activeCount + 1 });
+}
+
+async function recordGitHubApiActivityFinish() {
+  const activity = await getStoredGitHubApiActivity();
+  await saveGitHubApiActivity({ activeCount: Math.max(0, activity.activeCount - 1), lastFinishedAt: new Date().toISOString() });
+}
+
+async function fetchGitHub(url, options) {
+  await recordGitHubApiActivityStart();
+  try {
+    return await fetch(url, options);
+  } finally {
+    await recordGitHubApiActivityFinish();
+  }
+}
+
 function sanitizeRepository(repository) {
   return String(repository || '').trim().toLowerCase();
 }
@@ -63,7 +108,7 @@ export async function fetchAuthenticatedAccount(token) {
   let response;
 
   try {
-    response = await fetch('https://api.github.com/user', {
+    response = await fetchGitHub('https://api.github.com/user', {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
@@ -105,7 +150,7 @@ export async function fetchAuthenticatedRepositories(token) {
       url.searchParams.set('per_page', '100');
       url.searchParams.set('page', String(page));
 
-      response = await fetch(url.toString(), {
+      response = await fetchGitHub(url.toString(), {
         headers: getGitHubHeaders(safeToken),
       });
     } catch (error) {
@@ -166,7 +211,7 @@ export async function fetchRepositoryMetadata(repository, token) {
   let response;
 
   try {
-    response = await fetch(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}`, {
+    response = await fetchGitHub(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}`, {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
@@ -193,7 +238,7 @@ export async function fetchRepositoryTrafficViews(repository, token) {
   let response;
 
   try {
-    response = await fetch(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/views?per=day`, {
+    response = await fetchGitHub(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/views?per=day`, {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
@@ -227,7 +272,7 @@ export async function fetchRepositoryTrafficClones(repository, token) {
   let response;
 
   try {
-    response = await fetch(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/clones?per=day`, {
+    response = await fetchGitHub(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/clones?per=day`, {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
@@ -260,7 +305,7 @@ export async function fetchRepositoryTrafficReferrers(repository, token) {
   let response;
 
   try {
-    response = await fetch(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/popular/referrers`, {
+    response = await fetchGitHub(`https://api.github.com/repos/${getRepositoryApiPath(normalizedRepository)}/traffic/popular/referrers`, {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {

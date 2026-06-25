@@ -53,6 +53,14 @@ const DEFAULT_VIEWED_BASELINES = Object.freeze({
   repositories: Object.freeze({}),
   updatedAt: '',
 });
+export const DEFAULT_VERSION_CHECK_STATUS = Object.freeze({
+  checkedAt: '',
+  localVersion: '',
+  latestVersion: '',
+  updateAvailable: false,
+  latestReleaseUrl: 'https://github.com/innercoder78/github-repo-stats-monitor/releases/latest',
+  error: '',
+});
 const DEFAULT_QUICK_SUMMARY_STATUS = Object.freeze({
   manualRefreshAt: '',
 });
@@ -647,6 +655,53 @@ export function saveQuickSummaryStatus(status) {
       }
 
       resolve(nextQuickSummaryStatus);
+    });
+  });
+}
+
+
+export function normalizeVersionCheckStatus(status) {
+  const versionStatus = status && typeof status === 'object' ? status : {};
+  return {
+    checkedAt: typeof versionStatus.checkedAt === 'string' ? versionStatus.checkedAt : '',
+    localVersion: typeof versionStatus.localVersion === 'string' ? versionStatus.localVersion : '',
+    latestVersion: typeof versionStatus.latestVersion === 'string' ? versionStatus.latestVersion : '',
+    updateAvailable: Boolean(versionStatus.updateAvailable),
+    latestReleaseUrl: typeof versionStatus.latestReleaseUrl === 'string' && versionStatus.latestReleaseUrl
+      ? versionStatus.latestReleaseUrl
+      : DEFAULT_VERSION_CHECK_STATUS.latestReleaseUrl,
+    error: typeof versionStatus.error === 'string' ? versionStatus.error : '',
+  };
+}
+
+export function getVersionCheckStatus() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get({ versionCheckStatus: DEFAULT_VERSION_CHECK_STATUS }, (storedData) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizeVersionCheckStatus(storedData.versionCheckStatus));
+    });
+  });
+}
+
+export function saveVersionCheckStatus(status) {
+  const nextVersionCheckStatus = normalizeVersionCheckStatus(status);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ versionCheckStatus: nextVersionCheckStatus }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(nextVersionCheckStatus);
     });
   });
 }

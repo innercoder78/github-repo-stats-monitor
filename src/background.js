@@ -14,8 +14,10 @@ import {
   savePendingActivity,
   saveViewedBaselines,
 } from './shared/storage.js';
+import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
 
 const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
+const VERSION_CHECK_ALARM_PERIOD_MINUTES = 60;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const REPOSITORY_STATS = Object.freeze([
   { setting: 'stars', baselineKey: 'stars', deltaKey: 'starsDelta', currentKey: 'stars', label: 'Star' },
@@ -223,6 +225,21 @@ function canRunBackgroundChecks(settings) {
     (notifications.trackedStats.accountFollowers)
     || (hasRepositoryStatEnabled(notifications.trackedStats) && settings.repositories.length > 0),
   );
+}
+
+async function scheduleVersionCheckAlarm() {
+  await chrome.alarms.create(VERSION_CHECK_ALARM_NAME, {
+    delayInMinutes: VERSION_CHECK_ALARM_PERIOD_MINUTES,
+    periodInMinutes: VERSION_CHECK_ALARM_PERIOD_MINUTES,
+  });
+}
+
+async function attemptVersionCheck() {
+  try {
+    await runVersionCheck();
+  } catch (error) {
+    console.warn('Unable to check for extension updates.', error);
+  }
 }
 
 async function scheduleBackgroundCheckAlarm() {
@@ -812,10 +829,14 @@ async function handleNotificationSettingsChange(change, { scheduleAlarm = true }
 
 chrome.runtime.onInstalled.addListener(() => {
   scheduleBackgroundCheckAlarm();
+  scheduleVersionCheckAlarm();
+  attemptVersionCheck();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   scheduleBackgroundCheckAlarm();
+  scheduleVersionCheckAlarm();
+  attemptVersionCheck();
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -851,9 +872,12 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name !== BACKGROUND_CHECK_ALARM_NAME) {
+  if (alarm.name === BACKGROUND_CHECK_ALARM_NAME) {
+    runBackgroundCheck();
     return;
   }
 
-  runBackgroundCheck();
+  if (alarm.name === VERSION_CHECK_ALARM_NAME) {
+    attemptVersionCheck();
+  }
 });

@@ -1,11 +1,12 @@
 import { fetchAuthenticatedRepositories, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
-import { getSettings, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
+import { getSettings, getVersionCheckStatus, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { normalizeDisplayPreferences } from '../shared/display-format.js';
 import { mapWithConcurrency } from '../shared/refresh-stats.js';
+import { openLatestReleasePage } from '../shared/version-check.js';
 
 const MAX_REPOSITORIES = 20;
 const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
@@ -47,12 +48,32 @@ const notificationMessage = document.getElementById('notification-message');
 const resetConfirmationDialog = document.getElementById('reset-confirmation-dialog');
 const confirmResetButton = document.getElementById('confirm-reset');
 const cancelResetButton = document.getElementById('cancel-reset');
+const extensionVersionCard = document.getElementById('extension-version-card');
+const extensionVersionTitle = document.getElementById('extension-version-title');
+const extensionVersionCurrent = document.getElementById('extension-version-current');
+const extensionVersionStatus = document.getElementById('extension-version-status');
+const viewLatestVersionButton = document.getElementById('view-latest-version');
 
 let isTestingConnection = false;
 let isImportingRepositories = false;
 let importedRepositories = [];
+let currentVersionCheckStatus = null;
 
 applySavedAppearance();
+
+viewLatestVersionButton.addEventListener('click', () => openLatestReleasePage(currentVersionCheckStatus || {}));
+
+function renderExtensionVersion(status) {
+  currentVersionCheckStatus = status || {};
+  const localVersion = currentVersionCheckStatus.localVersion || chrome.runtime.getManifest()?.version || 'unknown';
+  extensionVersionTitle.textContent = currentVersionCheckStatus.updateAvailable ? 'Update available' : 'Extension Version';
+  extensionVersionCurrent.textContent = `You are using version ${localVersion}.`;
+  extensionVersionStatus.textContent = currentVersionCheckStatus.updateAvailable
+    ? `Version ${currentVersionCheckStatus.latestVersion} is available.`
+    : 'You are using the latest version.';
+  viewLatestVersionButton.hidden = !currentVersionCheckStatus.updateAvailable;
+}
+
 
 function setMessage(element, text, type = '') {
   element.textContent = text;
@@ -721,8 +742,9 @@ function renderSettings(settings) {
 
 async function loadSettings() {
   try {
-    const settings = await getSettings();
+    const [settings, versionStatus] = await Promise.all([getSettings(), getVersionCheckStatus()]);
     renderSettings(settings);
+    renderExtensionVersion(versionStatus);
   } catch (error) {
     setMessage(statusMessage, 'Unable to load saved settings. Please try again.', 'error');
   }
