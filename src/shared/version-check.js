@@ -1,11 +1,11 @@
 import { getVersionCheckStatus, saveVersionCheckStatus } from './storage.js';
+import { fetchGitHub, getGitHubApiActivity } from './github-api.js';
 
 export const VERSION_CHECK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000;
 export const VERSION_CHECK_QUIET_WINDOW_MS = 2 * 60 * 1000;
 export const LATEST_RELEASE_URL = 'https://github.com/innercoder78/github-repo-stats-monitor/releases/latest';
 export const REMOTE_MANIFEST_API_URL = 'https://api.github.com/repos/innercoder78/github-repo-stats-monitor/contents/manifest.json';
 export const VERSION_CHECK_ALARM_NAME = 'githubRepoStatsMonitorVersionCheck';
-const GITHUB_API_ACTIVITY_KEY = 'githubApiActivity';
 
 export function parseVersionParts(version) {
   return String(version || '').trim().split('.').map((part) => {
@@ -43,29 +43,6 @@ export function hasQuietWindowPassed(activity, now = Date.now()) {
   return !Number.isFinite(finishedAt) || now - finishedAt >= VERSION_CHECK_QUIET_WINDOW_MS;
 }
 
-function getStorageArea() {
-  return chrome.storage.local;
-}
-
-export function getGitHubApiActivity() {
-  return new Promise((resolve, reject) => {
-    getStorageArea().get({ [GITHUB_API_ACTIVITY_KEY]: { activeCount: 0, lastFinishedAt: '' } }, (stored) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(error);
-        return;
-      }
-      const activity = stored[GITHUB_API_ACTIVITY_KEY] && typeof stored[GITHUB_API_ACTIVITY_KEY] === 'object'
-        ? stored[GITHUB_API_ACTIVITY_KEY]
-        : {};
-      resolve({
-        activeCount: Math.max(0, Number(activity.activeCount) || 0),
-        lastFinishedAt: typeof activity.lastFinishedAt === 'string' ? activity.lastFinishedAt : '',
-      });
-    });
-  });
-}
-
 function decodeBase64Json(content) {
   const cleanedContent = String(content || '').replace(/\s/g, '');
   const decoded = atob(cleanedContent);
@@ -73,7 +50,7 @@ function decodeBase64Json(content) {
 }
 
 export async function fetchRemoteManifestVersion() {
-  const response = await fetch(REMOTE_MANIFEST_API_URL, {
+  const response = await fetchGitHub(REMOTE_MANIFEST_API_URL, {
     headers: {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
@@ -98,10 +75,13 @@ export function buildVersionCheckStatus(localVersion, latestVersion, checkedAt =
   };
 }
 
-export function buildFailedVersionCheckStatus(previousStatus, localVersion, error) {
+export function buildFailedVersionCheckStatus(previousStatus, localVersion, error, checkedAt = new Date().toISOString()) {
+  const latestVersion = typeof previousStatus?.latestVersion === 'string' ? previousStatus.latestVersion : '';
   return {
-    ...previousStatus,
-    localVersion: previousStatus.localVersion || localVersion,
+    checkedAt,
+    localVersion,
+    latestVersion,
+    updateAvailable: Boolean(latestVersion) && compareVersions(latestVersion, localVersion) > 0,
     latestReleaseUrl: LATEST_RELEASE_URL,
     error: error?.message || 'Version check failed.',
   };

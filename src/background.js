@@ -17,7 +17,7 @@ import {
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
 
 const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
-const VERSION_CHECK_ALARM_PERIOD_MINUTES = 60;
+const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const REPOSITORY_STATS = Object.freeze([
   { setting: 'stars', baselineKey: 'stars', deltaKey: 'starsDelta', currentKey: 'stars', label: 'Star' },

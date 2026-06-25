@@ -66,6 +66,7 @@ viewLatestVersionButton.addEventListener('click', () => openLatestReleasePage(cu
 function renderExtensionVersion(status) {
   currentVersionCheckStatus = status || {};
   const localVersion = currentVersionCheckStatus.localVersion || chrome.runtime.getManifest()?.version || 'unknown';
+  extensionVersionCard.classList.toggle('update-available', Boolean(currentVersionCheckStatus.updateAvailable));
   extensionVersionTitle.textContent = currentVersionCheckStatus.updateAvailable ? 'Update available' : 'Extension Version';
   extensionVersionCurrent.textContent = `You are using version ${localVersion}.`;
   extensionVersionStatus.textContent = currentVersionCheckStatus.updateAvailable

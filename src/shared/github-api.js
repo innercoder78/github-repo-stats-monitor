@@ -6,7 +6,7 @@ function getStorageArea() {
   return chrome.storage.local;
 }
 
-function getStoredGitHubApiActivity() {
+export function getGitHubApiActivity() {
   return new Promise((resolve) => {
     if (!globalThis.chrome?.storage?.local) {
       resolve({ activeCount: 0, lastFinishedAt: '' });
@@ -27,16 +27,16 @@ async function saveGitHubApiActivity(activity) {
 }
 
 async function recordGitHubApiActivityStart() {
-  const activity = await getStoredGitHubApiActivity();
+  const activity = await getGitHubApiActivity();
   await saveGitHubApiActivity({ ...activity, activeCount: activity.activeCount + 1 });
 }
 
 async function recordGitHubApiActivityFinish() {
-  const activity = await getStoredGitHubApiActivity();
+  const activity = await getGitHubApiActivity();
   await saveGitHubApiActivity({ activeCount: Math.max(0, activity.activeCount - 1), lastFinishedAt: new Date().toISOString() });
 }
 
-async function fetchGitHub(url, options) {
+export async function fetchGitHub(url, options) {
   await recordGitHubApiActivityStart();
   try {
     return await fetch(url, options);

@@ -417,7 +417,7 @@ html[data-appearance="dark"] .confirmation-dialog::backdrop {
   justify-self: start;
 }
 
-#extension-version-card {
+#extension-version-card.update-available {
   border-color: var(--warning-border);
   background: var(--warning-bg);
 }
