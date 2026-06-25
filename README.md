@@ -6,7 +6,16 @@ It is designed for manual review plus optional background checks on an interval,
 
 ## Current Version
 
-2.2
+2.2.1
+
+## Version 2.2.1
+
+Version 2.2.1 is a maintenance and hardening update after Version 2.2. It keeps the extension focused on manual review plus optional interval-based background checks.
+
+* The Dashboard no longer refreshes automatically when opened; use **Refresh Now** or per-repository **Refresh** when you want updated data.
+* Background checks include reliability improvements for saved repositories and tracked account follower checks.
+* Removed-repository cleanup is improved so stale saved stats and activity state are cleaned up more consistently.
+* Settings save now handles related cleanup work together when repository configuration changes are saved.
 
 ## What It Shows
 
@@ -39,7 +48,7 @@ The Chrome toolbar popup provides a compact Quick Summary of saved repository an
 
 ### Dashboard
 
-The Dashboard provides a larger review surface with summary totals, account followers, repository cards, traffic charts, referring sites, GitHub repository links, saved-value fallback notices, and per-repository refresh actions. Repository order follows the order saved in Settings.
+The Dashboard provides a larger review surface with summary totals, account followers, repository cards, traffic charts, referring sites, GitHub repository links, saved-value fallback notices, and per-repository refresh actions. It reads saved values when opened and no longer refreshes automatically on open. Repository order follows the order saved in Settings.
 
 ### Settings
 
@@ -133,7 +142,7 @@ The token is stored locally in Chrome extension storage. It is not hard-coded in
 
 Manual refreshes update saved data when you choose to refresh.
 
-The Dashboard has a full **Refresh Now** action. A full Dashboard refresh shows progress as repositories complete. Dashboard repository cards also have a per-repository **Refresh** button. A per-repository refresh updates only that repository.
+The Dashboard reads saved values when opened and does not refresh automatically on open. Use the full **Refresh Now** action when you want to update Dashboard data. A full Dashboard refresh shows progress as repositories complete. Dashboard repository cards also have a per-repository **Refresh** button. A per-repository refresh updates only that repository.
 
 The Quick Summary popup reads saved values when opened. It can also refresh saved repository stats, and the popup shows progress while repositories refresh.
 
