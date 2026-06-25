@@ -8,15 +8,6 @@ It is designed for manual review plus optional background checks on an interval,
 
 2.2.1
 
-## Version 2.2.1
-
-Version 2.2.1 is a maintenance and hardening update after Version 2.2. It keeps the extension focused on manual review plus optional interval-based background checks.
-
-* The Dashboard no longer refreshes automatically when opened; use **Refresh Now** or per-repository **Refresh** when you want updated data.
-* Background checks include reliability improvements for saved repositories and tracked account follower checks.
-* Removed-repository cleanup is improved so stale saved stats and activity state are cleaned up more consistently.
-* Settings save now handles related cleanup work together when repository configuration changes are saved.
-
 ## What It Shows
 
 Supported repository stats, where available:
