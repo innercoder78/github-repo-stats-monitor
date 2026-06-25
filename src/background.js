@@ -724,7 +724,7 @@ async function resetNewlyEnabledStatBaselines(newlyEnabledStats) {
   }
 }
 
-async function handleNotificationSettingsChange(change) {
+async function handleNotificationSettingsChange(change, { scheduleAlarm = true } = {}) {
   const nextNotifications = normalizeNotificationSettings(change?.newValue);
   const settings = { ...(await getSettings()), notifications: nextNotifications };
 
@@ -734,7 +734,9 @@ async function handleNotificationSettingsChange(change) {
     await resetNewlyEnabledStatBaselines(getNewlyEnabledTrackedStats(change));
   }
 
-  await scheduleBackgroundCheckAlarm();
+  if (scheduleAlarm) {
+    await scheduleBackgroundCheckAlarm();
+  }
 
   try {
     if (!settings.notifications.backgroundChecksEnabled || !settings.notifications.badgeEnabled) {
@@ -764,22 +766,29 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     return;
   }
 
-  if (changes.notifications) {
-    handleNotificationSettingsChange(changes.notifications);
-    return;
-  }
+  const shouldScheduleBackgroundCheckAlarm = Boolean(
+    changes.notifications || changes.githubToken || changes.repositories,
+  );
 
-  if (changes.githubToken) {
-    resetAccountBaselineForTokenChange();
-  }
+  (async () => {
+    if (changes.notifications) {
+      await handleNotificationSettingsChange(changes.notifications, { scheduleAlarm: false });
+    }
 
-  if (changes.repositories) {
-    cleanupRemovedRepositoryStorage(changes.repositories.newValue);
-  }
+    if (changes.githubToken) {
+      await resetAccountBaselineForTokenChange();
+    }
 
-  if (changes.githubToken || changes.repositories) {
-    scheduleBackgroundCheckAlarm();
-  }
+    if (changes.repositories) {
+      await cleanupRemovedRepositoryStorage(changes.repositories.newValue);
+    }
+
+    if (shouldScheduleBackgroundCheckAlarm) {
+      await scheduleBackgroundCheckAlarm();
+    }
+  })().catch((error) => {
+    console.warn('Unable to handle storage changes in the background.', error);
+  });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
