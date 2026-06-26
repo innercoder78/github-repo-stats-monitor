@@ -1,6 +1,7 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
 import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
+import { runTrackedGitHubActivity } from './github-activity.js';
 
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
 const FULL_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
@@ -163,7 +164,7 @@ export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) 
   }
 
   try {
-    const result = await requestTask();
+    const result = await runTrackedGitHubActivity(source, requestTask);
     const completedAt = result?.fetchedAt || new Date().toISOString();
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {
@@ -224,7 +225,7 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   }
 
   try {
-    const result = await refreshTask();
+    const result = await runTrackedGitHubActivity(source, refreshTask);
     const completedAt = result?.fetchedAt || new Date().toISOString();
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {

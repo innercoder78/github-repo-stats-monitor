@@ -1,5 +1,6 @@
 import { getVersionCheckStatus, saveVersionCheckStatus } from './storage.js';
-import { fetchGitHub, getGitHubApiActivity } from './github-api.js';
+import { fetchGitHub } from './github-api.js';
+import { getGitHubActivityStatus, runTrackedGitHubActivity } from './github-activity.js';
 
 export const VERSION_CHECK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000;
 export const VERSION_CHECK_QUIET_WINDOW_MS = 2 * 60 * 1000;
@@ -38,7 +39,9 @@ export function isVersionCheckStatusStale(status, now = Date.now()) {
 }
 
 export function hasQuietWindowPassed(activity, now = Date.now()) {
-  if (activity?.activeCount > 0) return false;
+  if (activity?.active) return false;
+  const quietUntil = Date.parse(activity?.quietUntil || '');
+  if (Number.isFinite(quietUntil)) return now >= quietUntil;
   const finishedAt = Date.parse(activity?.lastFinishedAt || '');
   return !Number.isFinite(finishedAt) || now - finishedAt >= VERSION_CHECK_QUIET_WINDOW_MS;
 }
@@ -49,7 +52,7 @@ function decodeBase64Json(content) {
   return JSON.parse(decoded);
 }
 
-export async function fetchRemoteManifestVersion() {
+async function fetchRemoteManifestVersionNow() {
   const response = await fetchGitHub(REMOTE_MANIFEST_API_URL, {
     headers: {
       Accept: 'application/vnd.github+json',
@@ -62,6 +65,10 @@ export async function fetchRemoteManifestVersion() {
   const version = String(manifest?.version || '').trim();
   if (!version) throw new Error('Remote manifest did not include a version.');
   return version;
+}
+
+export function fetchRemoteManifestVersion() {
+  return runTrackedGitHubActivity('version-check', fetchRemoteManifestVersionNow);
 }
 
 export function buildVersionCheckStatus(localVersion, latestVersion, checkedAt = new Date().toISOString()) {
@@ -88,7 +95,7 @@ export function buildFailedVersionCheckStatus(previousStatus, localVersion, erro
 }
 
 export async function shouldRunVersionCheck() {
-  const [status, activity] = await Promise.all([getVersionCheckStatus(), getGitHubApiActivity()]);
+  const [status, activity] = await Promise.all([getVersionCheckStatus(), getGitHubActivityStatus()]);
   return isVersionCheckStatusStale(status) && hasQuietWindowPassed(activity);
 }
 
@@ -97,7 +104,7 @@ export async function runVersionCheck() {
   const localVersion = getLocalManifestVersion();
 
   if (!isVersionCheckStatusStale(previousStatus)) return { checked: false, reason: 'cache-fresh' };
-  if (!hasQuietWindowPassed(await getGitHubApiActivity())) return { checked: false, reason: 'not-quiet' };
+  if (!hasQuietWindowPassed(await getGitHubActivityStatus())) return { checked: false, reason: 'not-quiet' };
 
   try {
     const latestVersion = await fetchRemoteManifestVersion();

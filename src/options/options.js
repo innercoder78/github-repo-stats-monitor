@@ -7,6 +7,7 @@ import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { normalizeDisplayPreferences } from '../shared/display-format.js';
 import { mapWithConcurrency } from '../shared/refresh-stats.js';
 import { openLatestReleasePage } from '../shared/version-check.js';
+import { runTrackedGitHubActivity } from '../shared/github-activity.js';
 
 const MAX_REPOSITORIES = 20;
 const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
@@ -576,7 +577,7 @@ async function handleRepositoryImport() {
   setMessage(importMessage, 'Loading repositories from GitHub…', '');
 
   try {
-    const repositories = await fetchAuthenticatedRepositories(token);
+    const repositories = await runTrackedGitHubActivity('repository-import', () => fetchAuthenticatedRepositories(token));
     if (repositories.length === 0) {
       setMessage(importMessage, 'No repositories were returned for this token.', '');
       return;
@@ -697,11 +698,11 @@ async function handleConnectionTest() {
   setMessage(testMessage, 'Testing connection…', '');
 
   try {
-    const results = await mapWithConcurrency(
+    const results = await runTrackedGitHubActivity('connection-test', () => mapWithConcurrency(
       validation.repositories,
       CONNECTION_TEST_CONCURRENCY_LIMIT,
       (repository) => testRepositoryConnection(repository, token),
-    );
+    ));
 
     testResults.textContent = '';
     results.forEach(renderTestResult);

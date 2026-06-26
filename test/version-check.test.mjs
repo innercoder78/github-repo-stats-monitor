@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 const storageData = {};
 let manifestVersion = '2.3';
+let storageSetCount = 0;
 
 globalThis.chrome = {
   runtime: {
@@ -20,6 +21,7 @@ globalThis.chrome = {
         callback(result);
       },
       set(values, callback) {
+        storageSetCount += 1;
         Object.assign(storageData, values);
         callback?.();
       },
@@ -43,6 +45,14 @@ const {
   VERSION_CHECK_CACHE_DURATION_MS,
   VERSION_CHECK_QUIET_WINDOW_MS,
 } = await import('../src/shared/version-check.js');
+const {
+  GITHUB_ACTIVITY_KEY,
+  GITHUB_ACTIVITY_STALE_MS,
+  getGitHubActivityStatus,
+  markGitHubActivityFinished,
+  markGitHubActivityStarted,
+} = await import('../src/shared/github-activity.js');
+const { fetchRepositoryMetadata } = await import('../src/shared/github-api.js');
 
 assert.equal(compareVersions('2.3.1', '2.3'), 1);
 assert.equal(compareVersions('2.3.2', '2.3.1'), 1);
@@ -55,9 +65,9 @@ assert.equal(buildVersionCheckStatus('2.10', '2.9', '2026-06-25T00:00:00.000Z').
 assert.equal(buildVersionCheckStatus('2.3', '2.3', '2026-06-25T00:00:00.000Z').localVersion, '2.3');
 assert.equal(isVersionCheckStatusStale({ checkedAt: new Date(Date.now() - VERSION_CHECK_CACHE_DURATION_MS - 1).toISOString() }), true);
 assert.equal(isVersionCheckStatusStale({ checkedAt: new Date(Date.now() - 1000).toISOString() }), false);
-assert.equal(hasQuietWindowPassed({ activeCount: 1, lastFinishedAt: '' }), false);
-assert.equal(hasQuietWindowPassed({ activeCount: 0, lastFinishedAt: new Date(Date.now() - VERSION_CHECK_QUIET_WINDOW_MS - 1).toISOString() }), true);
-assert.equal(hasQuietWindowPassed({ activeCount: 0, lastFinishedAt: new Date().toISOString() }), false);
+assert.equal(hasQuietWindowPassed({ active: true, quietUntil: '' }), false);
+assert.equal(hasQuietWindowPassed({ active: false, quietUntil: new Date(Date.now() - 1).toISOString() }), true);
+assert.equal(hasQuietWindowPassed({ active: false, quietUntil: new Date(Date.now() + VERSION_CHECK_QUIET_WINDOW_MS).toISOString() }), false);
 
 const failedCheckedAt = '2026-06-25T12:00:00.000Z';
 const failedKnownUpdate = buildFailedVersionCheckStatus(
@@ -81,8 +91,38 @@ assert.equal(failedCaughtUp.localVersion, '2.3');
 assert.equal(failedCaughtUp.latestVersion, '2.3');
 assert.equal(failedCaughtUp.updateAvailable, false);
 
-storageData.githubApiActivity = { activeCount: 0, lastFinishedAt: '' };
+storageData[GITHUB_ACTIVITY_KEY] = {};
+storageSetCount = 0;
+const activity = await markGitHubActivityStarted('manual-refresh');
+let status = await getGitHubActivityStatus();
+assert.equal(status.active, true);
+assert.equal(hasQuietWindowPassed(status), false);
+await markGitHubActivityFinished(activity, 'manual-refresh');
+status = await getGitHubActivityStatus();
+assert.equal(status.active, false);
+assert.equal(hasQuietWindowPassed(status), false);
+assert.equal(storageSetCount, 2);
+
+storageData[GITHUB_ACTIVITY_KEY] = {
+  activeToken: 'stale-token',
+  activeSource: 'manual-refresh',
+  activeStartedAt: new Date(Date.now() - GITHUB_ACTIVITY_STALE_MS - 1000).toISOString(),
+  activeUntil: new Date(Date.now() - 1000).toISOString(),
+  quietUntil: new Date(Date.now() - 1000).toISOString(),
+};
+status = await getGitHubActivityStatus();
+assert.equal(status.active, false);
+assert.equal(hasQuietWindowPassed(status), true);
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+storageSetCount = 0;
+await fetchRepositoryMetadata('innercoder78/github-repo-stats-monitor', 'token');
+assert.equal(storageSetCount, 0);
+assert.deepEqual(storageData[GITHUB_ACTIVITY_KEY], {});
+
 const remoteVersion = await fetchRemoteManifestVersion();
 assert.equal(remoteVersion, '2.3.1');
-assert.equal(storageData.githubApiActivity.activeCount, 0);
-assert.ok(Date.parse(storageData.githubApiActivity.lastFinishedAt));
+status = await getGitHubActivityStatus();
+assert.equal(status.active, false);
+assert.ok(Date.parse(status.lastFinishedAt));
+assert.equal(status.lastFinishedSource, 'version-check');

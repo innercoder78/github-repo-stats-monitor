@@ -1,48 +1,7 @@
 const GITHUB_API_VERSION = '2022-11-28';
 
-const GITHUB_API_ACTIVITY_KEY = 'githubApiActivity';
-
-function getStorageArea() {
-  return chrome.storage.local;
-}
-
-export function getGitHubApiActivity() {
-  return new Promise((resolve) => {
-    if (!globalThis.chrome?.storage?.local) {
-      resolve({ activeCount: 0, lastFinishedAt: '' });
-      return;
-    }
-    getStorageArea().get({ [GITHUB_API_ACTIVITY_KEY]: { activeCount: 0, lastFinishedAt: '' } }, (stored) => {
-      const activity = stored[GITHUB_API_ACTIVITY_KEY] && typeof stored[GITHUB_API_ACTIVITY_KEY] === 'object' ? stored[GITHUB_API_ACTIVITY_KEY] : {};
-      resolve({ activeCount: Math.max(0, Number(activity.activeCount) || 0), lastFinishedAt: typeof activity.lastFinishedAt === 'string' ? activity.lastFinishedAt : '' });
-    });
-  });
-}
-
-async function saveGitHubApiActivity(activity) {
-  if (!globalThis.chrome?.storage?.local) return;
-  await new Promise((resolve) => {
-    getStorageArea().set({ [GITHUB_API_ACTIVITY_KEY]: activity }, resolve);
-  });
-}
-
-async function recordGitHubApiActivityStart() {
-  const activity = await getGitHubApiActivity();
-  await saveGitHubApiActivity({ ...activity, activeCount: activity.activeCount + 1 });
-}
-
-async function recordGitHubApiActivityFinish() {
-  const activity = await getGitHubApiActivity();
-  await saveGitHubApiActivity({ activeCount: Math.max(0, activity.activeCount - 1), lastFinishedAt: new Date().toISOString() });
-}
-
-export async function fetchGitHub(url, options) {
-  await recordGitHubApiActivityStart();
-  try {
-    return await fetch(url, options);
-  } finally {
-    await recordGitHubApiActivityFinish();
-  }
+export function fetchGitHub(url, options) {
+  return fetch(url, options);
 }
 
 function sanitizeRepository(repository) {
