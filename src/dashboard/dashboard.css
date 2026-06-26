@@ -241,6 +241,25 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   grid-row: 2;
 }
 
+.summary-delta {
+  display: inline-block;
+  font-size: 0.68em;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  margin-left: 8px;
+  text-shadow: 0 0 10px currentColor;
+  vertical-align: baseline;
+}
+
+.summary-delta-positive {
+  color: #38f28b;
+}
+
+.summary-delta-negative {
+  color: #ff6b78;
+}
+
 .metric strong {
   color: var(--text);
   display: block;
@@ -444,7 +463,7 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 .repo-metric-activity:empty { display: none; }
 
 .activity-delta {
-  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 44%, transparent);
   border-radius: 7px;
   display: inline-flex;
   font-size: 0.78rem;
@@ -457,8 +476,17 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   white-space: nowrap;
 }
 
-.activity-delta-positive { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
-.activity-delta-negative { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
+.activity-delta-positive {
+  background: rgba(12, 90, 48, 0.58);
+  box-shadow: 0 0 0 1px rgba(56, 242, 139, 0.08), 0 0 16px rgba(56, 242, 139, 0.16);
+  color: #38f28b;
+}
+
+.activity-delta-negative {
+  background: rgba(118, 20, 34, 0.56);
+  box-shadow: 0 0 0 1px rgba(255, 107, 120, 0.08), 0 0 16px rgba(255, 107, 120, 0.14);
+  color: #ff6b78;
+}
 
 .activity-highlight {
   border-color: color-mix(in srgb, var(--success) 48%, var(--border));
