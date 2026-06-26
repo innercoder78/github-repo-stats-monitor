@@ -1,4 +1,4 @@
-import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
+import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines, getVersionCheckStatus } from '../shared/storage.js';
 import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
 import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
@@ -7,6 +7,7 @@ import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
+import { openLatestReleasePage } from '../shared/version-check.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -18,6 +19,9 @@ const refreshButton = document.getElementById('refresh-now');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
 const closeDashboardButton = document.getElementById('close-dashboard');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
+const updateBanner = document.getElementById('update-banner');
+const updateBody = document.getElementById('update-body');
+const viewLatestVersionButton = document.getElementById('view-latest-version');
 const summaryValues = {
   views: document.getElementById('total-views'),
   stars: document.getElementById('total-stars'),
@@ -39,6 +43,7 @@ let currentPendingActivity = {
   updatedAt: '',
 };
 let currentViewedBaselines = { account: {}, repositories: {}, updatedAt: '' };
+let currentVersionCheckStatus = null;
 
 applySavedAppearance();
 
@@ -71,6 +76,15 @@ function createIcon(name, className = 'metric-icon', size = 20) {
 
   icon.append(svg);
   return icon;
+}
+
+viewLatestVersionButton.addEventListener('click', () => openLatestReleasePage(currentVersionCheckStatus || {}));
+
+function renderUpdateBanner() {
+  const status = currentVersionCheckStatus || {};
+  updateBanner.hidden = !status.updateAvailable;
+  if (!status.updateAvailable) return;
+  updateBody.textContent = `You are using version ${status.localVersion}. Version ${status.latestVersion} is available.`;
 }
 
 function openSettings() {
@@ -819,9 +833,10 @@ async function refreshSingleRepository(repository) {
 
 async function initializeDashboard() {
   try {
-    [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity(), getViewedBaselines()]);
+    [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines, currentVersionCheckStatus] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity(), getViewedBaselines(), getVersionCheckStatus()]);
     applyAppearance(currentSettings.appearance);
     renderRepositories();
+    renderUpdateBanner();
 
     if (currentSettings.repositories.length === 0) {
       setStatus('Setup needed: no repositories configured yet. Open Settings to add repositories.', 'warning');

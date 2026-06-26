@@ -261,3 +261,22 @@ button:disabled {
   background: color-mix(in srgb, var(--error) 15%, transparent);
   color: var(--error);
 }
+
+.update-card {
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.update-card h2 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.update-card p {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}

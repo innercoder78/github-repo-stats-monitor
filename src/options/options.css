@@ -416,3 +416,12 @@ html[data-appearance="dark"] .confirmation-dialog::backdrop {
 .import-repository-selection-status {
   justify-self: start;
 }
+
+#extension-version-card.update-available {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+#extension-version-card p {
+  margin: 0 0 6px;
+}

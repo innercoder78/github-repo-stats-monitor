@@ -4,6 +4,7 @@ import {
   getNotificationBaselines,
   getPendingActivity,
   getQuickSummaryStatus,
+  getVersionCheckStatus,
   getSettings,
   savePendingActivity,
   getViewedBaselines,
@@ -14,6 +15,7 @@ import { closeExtensionPage } from '../shared/close-page.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
+import { openLatestReleasePage } from '../shared/version-check.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -26,6 +28,9 @@ const accountFollowers = document.getElementById('account-followers');
 const totalWatchers = document.getElementById('total-watchers');
 const popupStatus = document.getElementById('popup-status');
 const refreshButton = document.getElementById('refresh-stats');
+const updateCard = document.getElementById('update-card');
+const updateBody = document.getElementById('update-body');
+const viewLatestVersionButton = document.getElementById('view-latest-version');
 
 let currentSettings = { githubToken: '', repositories: [], appearance: 'light', notifications: { backgroundChecksEnabled: false }, displayPreferences: getDefaultDisplayPreferences() };
 let currentLatestStats = {};
@@ -40,6 +45,7 @@ let currentPendingActivity = {
 let currentNotificationBaselines = { account: {}, repositories: {}, initialized: false, updatedAt: '' };
 let currentQuickSummaryStatus = { manualRefreshAt: '' };
 let currentViewedBaselines = { account: {}, repositories: {}, updatedAt: '' };
+let currentVersionCheckStatus = null;
 
 applySavedAppearance();
 
@@ -81,6 +87,7 @@ document.getElementById('open-settings').addEventListener('click', () => {
 document.getElementById('close-popup').addEventListener('click', closeExtensionPage);
 
 refreshButton.addEventListener('click', refreshStats);
+viewLatestVersionButton.addEventListener('click', () => openLatestReleasePage(currentVersionCheckStatus || {}));
 
 function formatNumber(value) {
   return Number.isFinite(value) ? value.toLocaleString() : '—';
@@ -131,6 +138,13 @@ function renderPopupStatusLines(lines) {
     lineElement.textContent = line;
     return lineElement;
   }));
+}
+
+function renderUpdateCard() {
+  const status = currentVersionCheckStatus || {};
+  updateCard.hidden = !status.updateAvailable;
+  if (!status.updateAvailable) return;
+  updateBody.textContent = `You are using version ${status.localVersion}. Version ${status.latestVersion} is available.`;
 }
 
 function renderLastCheckedStatus() {
@@ -421,6 +435,7 @@ async function renderSettingsSummary() {
       currentNotificationBaselines,
       currentQuickSummaryStatus,
       currentViewedBaselines,
+      currentVersionCheckStatus,
     ] = await Promise.all([
       getSettings(),
       getLatestStats(),
@@ -429,9 +444,11 @@ async function renderSettingsSummary() {
       getNotificationBaselines(),
       getQuickSummaryStatus(),
       getViewedBaselines(),
+      getVersionCheckStatus(),
     ]);
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
+    renderUpdateCard();
     if (!renderSetupGuidanceStatus(currentSettings)) {
       renderLastCheckedStatus();
     }
@@ -497,6 +514,7 @@ async function refreshStats() {
         currentPendingActivity = refreshResult.pendingActivity;
       }
       renderStatsSummary(currentSettings, currentLatestStats);
+      renderUpdateCard();
 
       const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
 
