@@ -1,7 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
 import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
 import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveRepositoryRefresh, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
-import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
@@ -51,11 +50,7 @@ const svgIconPaths = {
   forks: '<path d="M7 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM21 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM7 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM5 7v10M19 7v1a4 4 0 0 1-4 4H9a4 4 0 0 0-4 4v1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
   clones: '<path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
   watchers: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
-  referrers: [
-    '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>',
-    '<path d="M3 12h7m4 0h7M12 3a14 14 0 0 1 2.2 5M12 21a14 14 0 0 1-2.2-5M8 8h8M8 16h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>',
-    '<path d="M14 15.5h3.5a2.5 2.5 0 0 0 0-5H14m-4 0H6.5a2.5 2.5 0 0 0 0 5H10m-1-2.5h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path>',
-  ].join(''),
+  referrers: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>',
 };
 
 function createIcon(name, className = 'metric-icon', size = 20) {
@@ -241,27 +236,46 @@ function hasCachedReferrers(stats) {
   return Boolean(stats?.referrersFetchedAt) && Array.isArray(stats.referrers);
 }
 
-function createMetric(label, value = '—', iconName = '') {
+function createMetric(label, value = '—', iconName = '', activityDelta = null) {
   const metric = document.createElement('div');
-  metric.className = 'metric';
+  metric.className = 'metric repo-metric';
 
-  const metricBody = document.createElement('span');
-  metricBody.className = 'metric-body';
-
-  const metricLabel = document.createElement('span');
-  metricLabel.textContent = label;
+  const top = document.createElement('div');
+  top.className = 'repo-metric-top';
 
   const metricValue = document.createElement('strong');
   metricValue.textContent = value;
 
-  metricBody.append(metricLabel, metricValue);
+  top.append(createIcon(iconName, 'metric-icon repo-metric-icon', 18), metricValue);
 
-  if (iconName) {
-    metric.append(createIcon(iconName), metricBody);
-  } else {
-    metric.append(metricBody);
+  const metricLabel = document.createElement('span');
+  metricLabel.className = 'repo-metric-label';
+  metricLabel.textContent = label;
+
+  const activitySlot = document.createElement('div');
+  activitySlot.className = 'repo-metric-activity';
+  if (activityDelta && activityDelta.delta !== 0) {
+    activitySlot.append(createDeltaElement(activityDelta.delta, activityDelta.label));
   }
 
+  metric.append(top, metricLabel, activitySlot);
+  return metric;
+}
+
+function createSummaryMetric(label, valueId, iconName) {
+  const metric = document.createElement('div');
+  metric.className = 'metric summary-metric';
+  metric.append(createIcon(iconName, 'metric-icon summary-metric-icon', 22));
+
+  const body = document.createElement('span');
+  body.className = 'metric-body';
+  const labelElement = document.createElement('span');
+  labelElement.textContent = label;
+  const value = document.createElement('strong');
+  value.id = valueId;
+  value.textContent = '—';
+  body.append(labelElement, value);
+  metric.append(body);
   return metric;
 }
 
@@ -269,12 +283,12 @@ function hasRefreshError(stats) {
   return Boolean(stats?.error || stats?.trafficError || stats?.clonesError || stats?.referrersError);
 }
 
-function createRepositoryNameElement(repository) {
+function createRepositoryNameElement(repository, displayText = repository) {
   const title = document.createElement('h2');
   const repositoryUrl = getRepositoryUrl(repository);
 
   if (!repositoryUrl) {
-    title.textContent = repository || 'Repository';
+    title.textContent = displayText || repository || 'Repository';
     return title;
   }
 
@@ -283,7 +297,7 @@ function createRepositoryNameElement(repository) {
   link.href = repositoryUrl;
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
-  link.textContent = repository;
+  link.textContent = displayText;
   title.append(link);
   return title;
 }
@@ -348,23 +362,6 @@ function createReferrersSection(stats) {
   return section;
 }
 
-function createChartPanel(label, stats, metricKey, entriesKey = 'dailyViews') {
-  const panel = document.createElement('section');
-  panel.className = 'chart-panel';
-  panel.setAttribute('aria-label', label);
-
-  const heading = document.createElement('h3');
-  heading.textContent = label;
-
-  const chart = createSvgLineChart(stats?.[entriesKey], {
-    metricKey,
-    metricLabel: label.replace(', last 14 days', ''),
-    title: `${label} for ${stats?.repository || 'repository'}`,
-  });
-
-  panel.append(heading, chart);
-  return panel;
-}
 
 
 function hasFetchedAccountStats(accountStats) {
@@ -388,34 +385,21 @@ function getBaselineDelta(baseline, key, currentValue) {
   return Number.isFinite(baselineValue) ? currentValue - baselineValue : 0;
 }
 
-function getRepositoryViewedDeltas(repository, stats) {
+function getRepositoryViewedDeltaMap(repository, stats) {
   if (!hasCachedMetadata(stats)) {
-    return [];
+    return {};
   }
 
   const baseline = currentViewedBaselines.repositories?.[repository];
-  return [
-    { delta: getBaselineDelta(baseline, 'stars', stats.stars), label: ACTIVITY_DELTA_LABELS.starsDelta },
-    { delta: getBaselineDelta(baseline, 'forks', stats.forks), label: ACTIVITY_DELTA_LABELS.forksDelta },
-    { delta: getBaselineDelta(baseline, 'repoWatchers', stats.subscribers), label: 'Watcher' },
-  ].filter(({ delta }) => delta !== 0);
+  const deltas = {
+    stars: { delta: getBaselineDelta(baseline, 'stars', stats.stars), label: ACTIVITY_DELTA_LABELS.starsDelta },
+    forks: { delta: getBaselineDelta(baseline, 'forks', stats.forks), label: ACTIVITY_DELTA_LABELS.forksDelta },
+    watchers: { delta: getBaselineDelta(baseline, 'repoWatchers', stats.subscribers), label: 'Watcher' },
+  };
+
+  return Object.fromEntries(Object.entries(deltas).filter(([, value]) => value.delta !== 0));
 }
 
-function createRepositoryActivityNote(repository, stats) {
-  const deltas = getRepositoryViewedDeltas(repository, stats);
-
-  if (deltas.length === 0) {
-    return null;
-  }
-
-  const note = document.createElement('p');
-  note.className = 'activity-note';
-  deltas.forEach(({ delta, label }) => {
-    note.append(createDeltaElement(delta, label));
-  });
-
-  return note;
-}
 
 function createAccountActivityNote() {
   if (!hasCurrentAccountViewedBaseline()) {
@@ -532,61 +516,80 @@ async function saveDashboardViewedBaselines(renderedRepositories, displayedAccou
   }
 }
 
+function createRepositoryIdentity(repository, stats) {
+  const identity = document.createElement('div');
+  identity.className = 'repo-identity';
+
+  const iconBlock = document.createElement('span');
+  iconBlock.className = 'repo-icon-block';
+  iconBlock.append(createIcon('referrers', 'repo-icon-glyph', 24));
+
+  const text = document.createElement('div');
+  text.className = 'repo-identity-text';
+
+  const [owner = '', name = repository] = repository.split('/');
+  const displayName = name || repository;
+  const title = createRepositoryNameElement(repository, displayName);
+  title.classList.add('repo-name');
+
+  const fullName = document.createElement('p');
+  fullName.className = 'repo-full-name';
+  fullName.textContent = repository;
+
+  const fetched = document.createElement('p');
+  fetched.className = 'repo-fetched-line';
+  const dot = document.createElement('span');
+  dot.className = 'repo-fetched-dot';
+  dot.setAttribute('aria-hidden', 'true');
+  fetched.append(dot, document.createTextNode(formatFetchedSummary(stats)));
+
+  text.append(title, fullName, fetched);
+  identity.append(iconBlock, text);
+  return identity;
+}
+
 function createRepositoryCard(repository, stats) {
   const card = document.createElement('article');
   card.className = 'card repo-card';
-  const activityNote = createRepositoryActivityNote(repository, stats);
+  const deltaMap = getRepositoryViewedDeltaMap(repository, stats);
 
-  if (activityNote) {
+  if (Object.keys(deltaMap).length > 0) {
     card.classList.add('activity-highlight');
   }
 
-  const header = document.createElement('div');
-  header.className = 'repo-card-header';
+  const mainRow = document.createElement('div');
+  mainRow.className = 'repo-main-row';
 
   const repositoryRefreshButton = document.createElement('button');
   const isRepositoryRefreshing = refreshingRepository === repository;
   repositoryRefreshButton.type = 'button';
   repositoryRefreshButton.className = 'repo-refresh-button secondary';
-  repositoryRefreshButton.textContent = isRepositoryRefreshing ? 'Refreshing…' : 'Refresh';
+  repositoryRefreshButton.textContent = isRepositoryRefreshing ? '⟳' : '↻';
   repositoryRefreshButton.disabled = isRefreshing || Boolean(refreshingRepository);
-  repositoryRefreshButton.setAttribute('aria-label', `Refresh ${repository}`);
+  repositoryRefreshButton.title = isRepositoryRefreshing ? `Refreshing ${repository}` : `Refresh ${repository}`;
+  repositoryRefreshButton.setAttribute('aria-label', isRepositoryRefreshing ? `Refreshing ${repository}` : `Refresh ${repository}`);
   repositoryRefreshButton.setAttribute('aria-busy', String(isRepositoryRefreshing));
   repositoryRefreshButton.addEventListener('click', () => refreshSingleRepository(repository));
 
-  header.append(createRepositoryNameElement(repository), repositoryRefreshButton);
-
-  const meta = document.createElement('p');
-  meta.className = 'muted repo-meta';
-  meta.textContent = formatFetchedSummary(stats);
+  const left = document.createElement('div');
+  left.className = 'repo-left';
+  left.append(createRepositoryIdentity(repository, stats), repositoryRefreshButton);
 
   const cachedStats = hasCachedMetadata(stats) ? stats : null;
   const cachedTraffic = hasCachedTraffic(stats) ? stats : null;
   const cachedClones = hasCachedClones(stats) ? stats : null;
   const metricGrid = document.createElement('div');
-  metricGrid.className = 'metric-grid';
+  metricGrid.className = 'metric-grid repo-metrics';
   metricGrid.append(
-    createMetric('Watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—', 'watchers'),
-    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—', 'stars'),
-    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—', 'forks'),
-    createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—', 'views'),
-    createMetric('Clones, last 14 days', cachedClones ? formatNumber(cachedClones.clones) : '—', 'clones'),
+    createMetric('Watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—', 'watchers', deltaMap.watchers),
+    createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—', 'stars', deltaMap.stars),
+    createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—', 'forks', deltaMap.forks),
+    createMetric('Views', cachedTraffic ? formatNumber(cachedTraffic.views) : '—', 'views'),
+    createMetric('Clones', cachedClones ? formatNumber(cachedClones.clones) : '—', 'clones'),
   );
 
-  const charts = document.createElement('div');
-  charts.className = 'charts';
-  charts.append(
-    createChartPanel('Views, last 14 days', stats, 'views'),
-    createChartPanel('Clones, last 14 days', stats, 'clones', 'dailyClones'),
-  );
-
-  card.append(header, meta);
-
-  if (activityNote) {
-    card.append(activityNote);
-  }
-
-  card.append(metricGrid);
+  mainRow.append(left, metricGrid);
+  card.append(mainRow);
 
   const hasError = hasRefreshError(stats);
   if (hasError && (cachedStats || cachedTraffic || cachedClones || hasCachedReferrers(stats))) {
@@ -617,7 +620,7 @@ function createRepositoryCard(repository, stats) {
     card.append(clonesErrorMessage);
   }
 
-  card.append(charts, createReferrersSection(stats));
+  card.append(createReferrersSection(stats));
   return card;
 }
 
