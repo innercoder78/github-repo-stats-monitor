@@ -42,6 +42,7 @@ const {
   fetchRemoteManifestVersion,
   isVersionCheckStatusStale,
   hasQuietWindowPassed,
+  shouldShowUpdateAvailable,
   VERSION_CHECK_CACHE_DURATION_MS,
   VERSION_CHECK_QUIET_WINDOW_MS,
 } = await import('../src/shared/version-check.js');
@@ -64,6 +65,12 @@ assert.equal(buildVersionCheckStatus('2.3', '2.3.1', '2026-06-25T00:00:00.000Z')
 assert.equal(buildVersionCheckStatus('2.4', '2.3.9', '2026-06-25T00:00:00.000Z').updateAvailable, false);
 assert.equal(buildVersionCheckStatus('2.10', '2.9', '2026-06-25T00:00:00.000Z').updateAvailable, false);
 assert.equal(buildVersionCheckStatus('2.3', '2.3', '2026-06-25T00:00:00.000Z').localVersion, '2.3');
+assert.equal(shouldShowUpdateAvailable({ updateAvailable: true, localVersion: '2.3', latestVersion: '2.3.1' }), true);
+assert.equal(shouldShowUpdateAvailable({ updateAvailable: false, localVersion: '2.3', latestVersion: '2.3.1' }), false);
+assert.equal(shouldShowUpdateAvailable({ updateAvailable: true, localVersion: '', latestVersion: '2.3.1' }), false);
+assert.equal(shouldShowUpdateAvailable({ updateAvailable: true, localVersion: '2.3', latestVersion: '' }), false);
+assert.equal(shouldShowUpdateAvailable({ updateAvailable: true, localVersion: '2.3', latestVersion: '2.3' }), false);
+assert.equal(shouldShowUpdateAvailable({ updateAvailable: true, localVersion: '2.4', latestVersion: '2.3.9' }), false);
 assert.equal(isVersionCheckStatusStale({ checkedAt: new Date(Date.now() - VERSION_CHECK_CACHE_DURATION_MS - 1).toISOString() }), true);
 assert.equal(isVersionCheckStatusStale({ checkedAt: new Date(Date.now() - 1000).toISOString() }), false);
 assert.equal(hasQuietWindowPassed({ active: true, quietUntil: '' }), false);

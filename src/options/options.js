@@ -6,7 +6,7 @@ import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { normalizeDisplayPreferences } from '../shared/display-format.js';
 import { mapWithConcurrency } from '../shared/refresh-stats.js';
-import { openLatestReleasePage } from '../shared/version-check.js';
+import { openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
 import { runTrackedGitHubActivity } from '../shared/github-activity.js';
 
 const MAX_REPOSITORIES = 20;
@@ -66,14 +66,16 @@ viewLatestVersionButton.addEventListener('click', () => openLatestReleasePage(cu
 
 function renderExtensionVersion(status) {
   currentVersionCheckStatus = status || {};
-  const localVersion = currentVersionCheckStatus.localVersion || chrome.runtime.getManifest()?.version || 'unknown';
-  extensionVersionCard.classList.toggle('update-available', Boolean(currentVersionCheckStatus.updateAvailable));
-  extensionVersionTitle.textContent = currentVersionCheckStatus.updateAvailable ? 'Update available' : 'Extension Version';
+  const showUpdateAvailable = shouldShowUpdateAvailable(currentVersionCheckStatus);
+  const localVersion = String(currentVersionCheckStatus.localVersion || chrome.runtime.getManifest()?.version || 'unknown').trim();
+  const latestVersion = String(currentVersionCheckStatus.latestVersion || '').trim();
+  extensionVersionCard.classList.toggle('update-available', showUpdateAvailable);
+  extensionVersionTitle.textContent = showUpdateAvailable ? 'Update available' : 'Extension Version';
   extensionVersionCurrent.textContent = `You are using version ${localVersion}.`;
-  extensionVersionStatus.textContent = currentVersionCheckStatus.updateAvailable
-    ? `Version ${currentVersionCheckStatus.latestVersion} is available.`
+  extensionVersionStatus.textContent = showUpdateAvailable
+    ? `Version ${latestVersion} is available.`
     : 'You are using the latest version.';
-  viewLatestVersionButton.hidden = !currentVersionCheckStatus.updateAvailable;
+  viewLatestVersionButton.hidden = !showUpdateAvailable;
 }
 
 

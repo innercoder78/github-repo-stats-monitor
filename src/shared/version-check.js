@@ -29,6 +29,17 @@ export function compareVersions(left, right) {
   return 0;
 }
 
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export function shouldShowUpdateAvailable(status) {
+  if (!status || typeof status !== 'object' || status.updateAvailable !== true) return false;
+  if (!isNonEmptyString(status.localVersion) || !isNonEmptyString(status.latestVersion)) return false;
+  return compareVersions(status.latestVersion, status.localVersion) > 0;
+}
+
 export function getLocalManifestVersion() {
   return String(chrome.runtime.getManifest()?.version || '').trim();
 }
