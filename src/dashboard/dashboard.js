@@ -375,6 +375,22 @@ function getBaselineDelta(baseline, key, currentValue) {
   return Number.isFinite(baselineValue) ? currentValue - baselineValue : 0;
 }
 
+function createSummaryDeltaElement(delta) {
+  const numericDelta = Number(delta) || 0;
+  const deltaElement = document.createElement('span');
+  deltaElement.className = `summary-delta ${numericDelta > 0 ? 'summary-delta-positive' : 'summary-delta-negative'}`;
+  deltaElement.textContent = `${numericDelta > 0 ? '+' : '-'}${Math.abs(numericDelta)}`;
+  return deltaElement;
+}
+
+function setSummaryValue(valueElement, value, delta = 0) {
+  valueElement.replaceChildren(document.createTextNode(value));
+
+  if (delta !== 0) {
+    valueElement.append(createSummaryDeltaElement(delta));
+  }
+}
+
 function getRepositoryViewedDeltaMap(repository, stats) {
   if (!hasCachedMetadata(stats)) {
     return {};
@@ -390,22 +406,22 @@ function getRepositoryViewedDeltaMap(repository, stats) {
   return Object.fromEntries(Object.entries(deltas).filter(([, value]) => value.delta !== 0));
 }
 
+function getVisibleRepositorySummaryDeltas() {
+  return currentSettings.repositories.reduce((accumulator, repository) => {
+    const deltaMap = getRepositoryViewedDeltaMap(repository, currentLatestStats[repository]);
+    accumulator.stars += Number(deltaMap.stars?.delta) || 0;
+    accumulator.forks += Number(deltaMap.forks?.delta) || 0;
+    accumulator.watchers += Number(deltaMap.watchers?.delta) || 0;
+    return accumulator;
+  }, { stars: 0, forks: 0, watchers: 0 });
+}
 
-function createAccountActivityNote() {
+function getAccountFollowersDelta() {
   if (!hasCurrentAccountViewedBaseline()) {
-    return null;
+    return 0;
   }
 
-  const followersDelta = getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
-
-  if (followersDelta === 0) {
-    return null;
-  }
-
-  const note = document.createElement('span');
-  note.className = 'activity-note';
-  note.append(createDeltaElement(followersDelta, ACTIVITY_DELTA_LABELS.followersDelta));
-  return note;
+  return getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
 }
 
 async function markDashboardActivityShown(renderedRepositories, displayedAccountActivity) {
@@ -641,22 +657,21 @@ function renderSummary() {
     return accumulator;
   }, { metadataCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, watchers: 0, views: 0, clones: 0 });
 
-  summaryValues.stars.textContent = totals.metadataCount > 0 ? formatNumber(totals.stars) : '—';
-  summaryValues.forks.textContent = totals.metadataCount > 0 ? formatNumber(totals.forks) : '—';
-  summaryValues.accountFollowers.textContent = hasFetchedAccountStats(currentAccountStats) ? formatNumber(currentAccountStats.followers) : '—';
-  summaryValues.watchers.textContent = totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—';
-  summaryValues.views.textContent = totals.trafficCount > 0 ? formatNumber(totals.views) : '—';
-  summaryValues.clones.textContent = totals.clonesCount > 0 ? formatNumber(totals.clones) : '—';
+  const summaryDeltas = getVisibleRepositorySummaryDeltas();
+  const followersDelta = getAccountFollowersDelta();
+
+  setSummaryValue(summaryValues.stars, totals.metadataCount > 0 ? formatNumber(totals.stars) : '—', summaryDeltas.stars);
+  setSummaryValue(summaryValues.forks, totals.metadataCount > 0 ? formatNumber(totals.forks) : '—', summaryDeltas.forks);
+  setSummaryValue(summaryValues.accountFollowers, hasFetchedAccountStats(currentAccountStats) ? formatNumber(currentAccountStats.followers) : '—', followersDelta);
+  setSummaryValue(summaryValues.watchers, totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—', summaryDeltas.watchers);
+  setSummaryValue(summaryValues.views, totals.trafficCount > 0 ? formatNumber(totals.views) : '—');
+  setSummaryValue(summaryValues.clones, totals.clonesCount > 0 ? formatNumber(totals.clones) : '—');
 
   const accountMetric = summaryValues.accountFollowers.closest('.metric');
-  const accountMetricBody = summaryValues.accountFollowers.closest('.metric-body');
-  const accountActivityNote = createAccountActivityNote();
   accountMetric?.classList.remove('activity-highlight');
-  accountMetricBody?.querySelector('.activity-note')?.remove();
 
-  if (accountActivityNote) {
+  if (followersDelta !== 0) {
     accountMetric?.classList.add('activity-highlight');
-    accountMetricBody?.append(accountActivityNote);
   }
 
   return hasFetchedAccountStats(currentAccountStats);
