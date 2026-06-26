@@ -2,43 +2,65 @@
   display: none !important;
 }
 
-body { min-width: 340px; }
+body {
+  min-width: 340px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(47, 129, 247, 0.14), transparent 34%),
+    radial-gradient(circle at 100% 18%, rgba(88, 166, 255, 0.12), transparent 30%),
+    var(--bg);
+}
 
 .popup-shell {
-  --popup-glow: rgba(9, 105, 218, 0.12);
-  --popup-card-gradient: linear-gradient(145deg, var(--surface), var(--surface-muted));
+  --popup-glow: rgba(9, 105, 218, 0.13);
+  --popup-card-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(246, 248, 250, 0.9));
+  --popup-card-border: color-mix(in srgb, var(--accent) 18%, var(--border));
+  --popup-soft-shadow: 0 14px 34px rgba(140, 149, 159, 0.18);
+  --popup-inset: inset 0 1px 0 rgba(255, 255, 255, 0.58);
   padding: 12px;
   width: 340px;
 }
 
+html[data-appearance="dark"] body {
+  background:
+    radial-gradient(circle at -12% 28%, rgba(56, 139, 253, 0.22), transparent 38%),
+    radial-gradient(circle at 112% 0%, rgba(31, 111, 235, 0.2), transparent 32%),
+    linear-gradient(180deg, #0b111a 0%, var(--bg) 100%);
+}
+
 html[data-appearance="dark"] .popup-shell {
-  --popup-glow: rgba(47, 129, 247, 0.18);
+  --popup-glow: rgba(47, 129, 247, 0.24);
+  --popup-card-bg: linear-gradient(145deg, rgba(22, 27, 34, 0.9), rgba(13, 17, 23, 0.88));
+  --popup-card-border: color-mix(in srgb, var(--accent) 28%, var(--border));
+  --popup-soft-shadow: 0 16px 40px rgba(1, 4, 9, 0.52);
+  --popup-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .popup-hero {
   align-items: flex-start;
-  background: radial-gradient(circle at top right, var(--popup-glow), transparent 54%), var(--popup-card-gradient);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
+  background:
+    radial-gradient(circle at top right, var(--popup-glow), transparent 58%),
+    var(--popup-card-bg);
+  border: 1px solid var(--popup-card-border);
+  border-radius: 20px;
+  box-shadow: var(--popup-soft-shadow), var(--popup-inset);
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(0, 1fr) auto;
-  margin-bottom: 8px;
-  padding: 12px;
+  margin-bottom: 9px;
+  padding: 13px;
 }
 
 .eyebrow {
   color: var(--accent);
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  margin-bottom: 4px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  margin-bottom: 5px;
   text-transform: uppercase;
 }
 
 h1 {
-  font-size: 1.1rem;
+  font-size: 1.08rem;
   line-height: 1.25;
   margin-bottom: 6px;
 }
@@ -50,26 +72,26 @@ h1 {
 }
 
 .status-panel {
-  background: var(--surface);
+  background: var(--popup-card-bg);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border-radius: 18px;
+  box-shadow: var(--popup-soft-shadow), var(--popup-inset);
   display: grid;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 9px;
   padding: 10px;
 }
 
 .status-copy {
   align-items: center;
-  column-gap: 12px;
+  column-gap: 10px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   row-gap: 4px;
 }
 
 .status-title {
-  font-weight: 800;
+  font-weight: 900;
   margin-bottom: 0;
   min-width: 0;
 }
@@ -80,6 +102,7 @@ h1 {
   line-height: 1.35;
   margin-bottom: 0;
   min-width: 0;
+  overflow-wrap: anywhere;
   white-space: pre-line;
 }
 
@@ -88,80 +111,87 @@ h1 {
 }
 
 .settings-summary {
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   display: grid;
   gap: 5px;
-  padding: 10px;
+  padding: 9px 10px;
 }
 
 .settings-summary p {
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.8rem;
+  font-weight: 750;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .metric-grid {
+  display: grid;
   gap: 8px;
-  margin-bottom: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 9px;
 }
 
 .metric {
-  align-items: center;
-  background: radial-gradient(circle at top right, var(--popup-glow), transparent 58%), var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 6px 18px rgba(140, 149, 159, 0.1);
+  align-items: stretch;
+  background:
+    radial-gradient(circle at top right, var(--popup-glow), transparent 62%),
+    var(--popup-card-bg);
+  border: 1px solid var(--popup-card-border);
+  border-radius: 17px;
+  box-shadow: 0 10px 24px rgba(140, 149, 159, 0.13), var(--popup-inset);
   display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-height: 86px;
   min-width: 0;
   padding: 10px;
 }
 
 html[data-appearance="dark"] .metric {
-  box-shadow: 0 6px 18px rgba(1, 4, 9, 0.24);
+  box-shadow: 0 12px 30px rgba(1, 4, 9, 0.35), var(--popup-inset);
 }
 
 .popup-shell .metric .metric-icon {
   align-items: center;
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
   border-radius: 12px;
   color: var(--accent);
   display: inline-flex;
-  flex: 0 0 36px;
   font-size: 0;
-  height: 36px;
+  height: 34px;
   justify-content: center;
   line-height: 0;
   margin: 0;
-  width: 36px;
+  width: 34px;
 }
 
 .popup-shell .metric .metric-icon svg {
   display: block;
   fill: none;
-  height: 20px;
+  height: 19px;
   margin: 0;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  width: 20px;
+  width: 19px;
 }
 
 .metric .metric-body {
-  display: block;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
 .metric .metric-body span {
   color: var(--muted);
   display: block;
-  font-size: 0.72rem;
-  font-weight: 700;
-  margin-bottom: 5px;
+  font-size: 0.71rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  margin-bottom: 4px;
 }
 
 .metric .metric-body .metric-label {
@@ -169,14 +199,18 @@ html[data-appearance="dark"] .metric {
 }
 
 .metric .metric-body .metric-period {
-  font-size: 0.64rem;
-  margin-bottom: 5px;
+  font-size: 0.62rem;
+  font-weight: 750;
+  margin-bottom: 4px;
 }
 
 .metric strong {
+  color: var(--text);
   display: block;
   font-size: 1.45rem;
-  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   overflow-wrap: anywhere;
 }
 
@@ -185,16 +219,21 @@ html[data-appearance="dark"] .metric {
   gap: 8px;
 }
 
+.actions > button:not(.popup-close) {
+  border-radius: 12px;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
 .popup-refresh {
   align-self: center;
-  font-size: 0.82rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
   grid-column: 2;
   grid-row: 1 / span 2;
   justify-self: end;
   padding: 8px 10px;
   white-space: nowrap;
 }
-
 
 .utility-actions {
   display: flex;
@@ -221,9 +260,11 @@ button:disabled {
 }
 
 .activity-highlight {
-  background: radial-gradient(circle at top right, color-mix(in srgb, var(--success) 18%, transparent), transparent 58%), var(--surface);
   border-color: color-mix(in srgb, var(--success) 64%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent), 0 12px 28px color-mix(in srgb, var(--success) 18%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--success) 18%, transparent),
+    0 14px 28px color-mix(in srgb, var(--success) 16%, transparent),
+    var(--popup-inset);
 }
 
 .activity-note {
@@ -231,9 +272,10 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 8px;
+  margin-top: auto;
   max-width: 100%;
   min-width: 0;
+  padding-top: 7px;
 }
 
 .activity-note:empty {
@@ -247,12 +289,12 @@ button:disabled {
   border: 1px solid currentColor;
   border-radius: 999px;
   display: inline-flex;
-  font-size: 0.72rem;
+  font-size: 0.69rem;
   font-weight: 900;
   line-height: 1.15;
   max-width: 100%;
   overflow-wrap: anywhere;
-  padding: 3px 8px;
+  padding: 3px 7px;
   white-space: normal;
 }
 
@@ -267,20 +309,24 @@ button:disabled {
 }
 
 .update-card {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--warning) 18%, transparent), transparent 58%),
+    var(--warning-bg);
   border: 1px solid var(--warning-border);
-  background: var(--warning-bg);
-  border-radius: 14px;
+  border-radius: 16px;
+  box-shadow: var(--popup-soft-shadow), var(--popup-inset);
+  margin-bottom: 9px;
   padding: 12px;
-  margin-bottom: 12px;
 }
 
 .update-card h2 {
-  margin: 0 0 6px;
   font-size: 0.95rem;
+  margin: 0 0 6px;
 }
 
 .update-card p {
-  margin: 0 0 10px;
-  color: var(--text-muted);
+  color: var(--text-muted, var(--muted));
   font-size: 0.85rem;
+  line-height: 1.35;
+  margin: 0 0 10px;
 }
