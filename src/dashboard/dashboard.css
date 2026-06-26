@@ -15,10 +15,10 @@ html[data-appearance="dark"] body {
 }
 
 .dashboard-shell {
-  --dashboard-activity-green: #22ff7a;
-  --dashboard-activity-green-bg: rgba(6, 84, 39, 0.46);
-  --dashboard-activity-red: #ff3b4f;
-  --dashboard-activity-red-bg: rgba(100, 12, 24, 0.48);
+  --dashboard-activity-green: #00ff66;
+  --dashboard-activity-green-bg: rgba(0, 96, 42, 0.42);
+  --dashboard-activity-red: #ff3030;
+  --dashboard-activity-red-bg: rgba(112, 18, 18, 0.44);
   margin: 0 auto;
   max-width: 1180px;
   padding: 28px 18px;
@@ -247,12 +247,12 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 
 .summary-delta {
   display: inline-block;
-  font-size: 0.68em;
-  font-weight: 850;
+  flex: 0 0 auto;
+  font-size: 0.6em;
+  font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1;
-  margin-left: 8px;
-  text-shadow: 0 0 10px currentColor;
+  margin-left: 0;
   vertical-align: baseline;
 }
 
@@ -456,6 +456,14 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   min-width: 0;
 }
 
+.summary-grid > .metric strong,
+.summary-metric strong {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 0.34em;
+  min-width: 0;
+}
+
 
 .repo-metric-activity {
   align-items: center;
@@ -467,28 +475,28 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .activity-delta {
-  border: 1px solid color-mix(in srgb, currentColor 68%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 88%, transparent);
   border-radius: 6px;
   display: inline-flex;
-  font-size: 0.7rem;
-  font-weight: 900;
+  font-size: 0.68rem;
+  font-weight: 700;
   line-height: 1.05;
   max-width: 100%;
   overflow: hidden;
-  padding: 4px 7px;
+  padding: 3px 7px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .activity-delta-positive {
   background: var(--dashboard-activity-green-bg);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-activity-green) 18%, transparent), 0 0 15px color-mix(in srgb, var(--dashboard-activity-green) 30%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-activity-green) 28%, transparent), 0 0 12px color-mix(in srgb, var(--dashboard-activity-green) 26%, transparent);
   color: var(--dashboard-activity-green);
 }
 
 .activity-delta-negative {
   background: var(--dashboard-activity-red-bg);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-activity-red) 18%, transparent), 0 0 15px color-mix(in srgb, var(--dashboard-activity-red) 30%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-activity-red) 28%, transparent), 0 0 12px color-mix(in srgb, var(--dashboard-activity-red) 26%, transparent);
   color: var(--dashboard-activity-red);
 }
 
