@@ -55,7 +55,7 @@ const svgIconPaths = {
 
 function createIcon(name, className = 'metric-icon', size = 20) {
   const icon = document.createElement('span');
-  icon.className = className;
+  icon.className = name === 'stars' ? `${className} metric-icon--stars` : className;
   icon.setAttribute('aria-hidden', 'true');
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

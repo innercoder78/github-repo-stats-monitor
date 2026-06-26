@@ -177,7 +177,7 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   display: grid;
   gap: 10px;
   grid-template-columns: auto minmax(0, 1fr);
-  padding: 14px 16px;
+  padding: 14px 14px;
 }
 
 .metric-icon,
@@ -207,7 +207,7 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 .repo-metric-label {
   color: var(--muted);
   display: block;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   line-height: 1.25;
   margin: 0 0 4px;
   overflow: hidden;
@@ -218,11 +218,13 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 .metric strong {
   color: var(--text);
   display: block;
-  font-size: clamp(1.25rem, 2.4vw, 1.62rem);
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
-  overflow-wrap: anywhere;
+  font-size: clamp(1.08rem, 1.9vw, 1.38rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-grid {
@@ -383,6 +385,7 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .repo-metric-icon { background: transparent; border: 0; height: auto; width: auto; }
+.metric-icon--stars { color: #fbbf24; }
 .repo-metric-icon svg { display: block; }
 
 .repo-metric-activity {
