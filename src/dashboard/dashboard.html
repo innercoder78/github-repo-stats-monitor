@@ -17,20 +17,20 @@
             </svg>
           </span>
           <div>
-            <h1>Repository Dashboard</h1>
+            <h1>Monitored Repositories</h1>
             <p id="status-line" class="muted status-line" role="status" aria-live="polite">Status: Open Settings, then refresh manually to fetch repository metadata, traffic, clones, and referrers.</p>
           </div>
         </div>
         <div class="topbar-actions">
-          <button id="refresh-now" type="button">Refresh Now</button>
-          <button id="open-quick-summary" class="secondary" type="button">Open Quick Summary</button>
-          <button id="open-settings" class="secondary" type="button">Settings</button>
+          <button id="refresh-now" type="button"><span class="button-label">Refresh</span></button>
+          <button id="open-quick-summary" class="secondary compact-action" type="button">Quick Summary</button>
+          <button id="open-settings" class="secondary compact-action" type="button">Settings</button>
           <p id="quick-summary-message" class="quick-summary-message" role="status" aria-live="polite"></p>
         </div>
       </header>
 
       <section id="summary-card" class="card summary-card" aria-labelledby="summary-title">
-        <h2 id="summary-title">Monitoring Overview</h2>
+        <h2 id="summary-title">Totals</h2>
         <div class="metric-grid summary-grid">
           <div class="metric">
             <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M16 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><circle cx="9.5" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"></circle><path d="M17 11a3 3 0 0 0 0-6M21 20v-2a4 4 0 0 0-3-3.87" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></span>
@@ -50,11 +50,11 @@
           </div>
           <div class="metric">
             <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle></svg></span>
-            <span class="metric-body"><span>Views, last 14 days</span><strong id="total-views">—</strong></span>
+            <span class="metric-body"><span>Views</span><strong id="total-views">—</strong></span>
           </div>
           <div class="metric">
             <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></span>
-            <span class="metric-body"><span>Clones, last 14 days</span><strong id="total-clones">—</strong></span>
+            <span class="metric-body"><span>Clones</span><strong id="total-clones">—</strong></span>
           </div>
         </div>
       </section>
