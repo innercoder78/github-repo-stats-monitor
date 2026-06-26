@@ -1,12 +1,12 @@
 # GitHub Repo Stats Monitor
 
-GitHub Repo Stats Monitor is a personal Chrome extension for checking configured GitHub repositories from one local popup, dashboard, and settings experience.
+GitHub Repo Stats Monitor is a personal Chrome extension for checking saved GitHub repository stats from a compact Quick Summary, a larger Dashboard, and Settings.
 
-It is designed for manual review plus optional background checks on an interval, not real-time monitoring. GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes.
+It is designed for manual review, optional background checks, and a simple new-version reminder. It is not real-time monitoring. GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes.
 
 ## Current Version
 
-2.2.2
+2.3
 
 ## What It Shows
 
@@ -35,21 +35,21 @@ Additional Dashboard and Quick Summary details:
 
 ### Quick Summary
 
-The Chrome toolbar popup provides a compact Quick Summary of saved repository and account values. It reads saved values when opened, shows background-check status, can start a manual refresh for saved repositories, and displays green/red activity pills for tracked gains and losses until reviewed.
+The Chrome toolbar popup provides a compact Quick Summary of saved repository and account values. It reads saved values when opened, shows background-check status, can start a manual refresh for saved repositories, shows tracked activity until reviewed, and can show a new-version reminder when a newer version is available.
 
 ### Dashboard
 
-The Dashboard provides a larger review surface with summary totals, account followers, repository cards, traffic charts, referring sites, GitHub repository links, saved-value fallback notices, and per-repository refresh actions. It reads saved values when opened and no longer refreshes automatically on open. Repository order follows the order saved in Settings.
+The Dashboard provides a larger review page with summary totals, account followers, repository cards, traffic charts, referring sites, GitHub repository links, saved-value fallback notices, and per-repository refresh actions. It reads saved values when opened and does not refresh automatically on open. Repository order follows the order saved in Settings.
 
 ### Settings
 
-Settings manages the GitHub token, repositories, notifications, display preferences, appearance, connection tests, and reset. Date and time display preferences are available with system-default, date-format, and 12-hour/24-hour choices.
+Settings manages the GitHub token, repositories, notifications, display preferences, appearance, connection test, extension version reminder, and reset. Date and time display preferences are available with system-default, date-format, and 12-hour/24-hour choices.
 
 ## Main Features
 
 * Quick Summary popup from the Chrome toolbar that reads saved values and can run a manual refresh
 * Dashboard with summary totals, account followers, repository cards, traffic charts, referring sites, and activity pills
-* Settings page for your GitHub token, repositories, notifications, display preferences, appearance, connection test, and reset
+* Settings page for your GitHub token, repositories, notifications, display preferences, appearance, connection test, version reminder, and reset
 * Monitoring multiple repositories, up to the current maximum of 20 configured repositories
 * Manual repository entry as `owner/repo` or a GitHub repository URL
 * Import from GitHub for repositories the token can access
@@ -58,13 +58,14 @@ Settings manages the GitHub token, repositories, notifications, display preferen
 * Manual full refresh from the Dashboard with progress as repositories complete
 * Manual refresh from the popup with progress while saved repositories refresh
 * Per-repository Dashboard refresh buttons that update only one repository
-* Controlled refresh concurrency for multi-repository refreshes so multiple repositories can refresh efficiently without starting every repository request at once
+* Full refresh can use very recently refreshed repository data instead of fetching the same repository again
 * Full-refresh coordination so full refreshes and per-repository refreshes do not run at the same time
 * Optional background checks on a selected interval
 * Optional system notifications for tracked changes
 * Optional badge count on the extension icon for places with unreviewed tracked activity
 * Notification-tracked stats for Stars, Forks, Repo Watchers, and Account Followers
 * Green/red activity pills for tracked gains and losses
+* New-version reminder that opens the latest GitHub release when a newer version is available
 * Repository links that open on GitHub
 * Connection test for repo data, traffic views, traffic clones, and referrers
 * Helpful error messages when part of a refresh fails
@@ -87,11 +88,13 @@ This extension is meant to be loaded manually in Chrome.
 
 After that, the extension icon should appear in Chrome.
 
+This extension is not published in the Chrome Web Store. Chrome will not auto-update it like a Web Store extension.
+
 ## Repository Configuration
 
 Open **Settings** from the extension popup or Dashboard.
 
-A GitHub token is required before repositories can be added, saved, imported, or monitored. The **+ Add repository** button is disabled until token text is entered, and saving repositories without a token is blocked.
+A GitHub token is required before repositories can be added, saved, imported, or checked. The **+ Add repository** button is disabled until token text is entered, and saving repositories without a token is blocked.
 
 Repositories can be added manually using either format:
 
@@ -115,9 +118,9 @@ Use the **Display Preferences** settings to choose date and time formatting. Use
 
 ## GitHub Token
 
-To use the extension, create a GitHub personal access token for the repositories you want to monitor. The token is used to import repositories, refresh repository stats, fetch account followers, and run optional background checks.
+To use the extension, create a GitHub personal access token for the repositories you want to check. The token is used to import repositories, refresh repository stats, fetch account followers, and run optional background checks.
 
-A fine-grained token can be limited to selected repositories. A token limited to selected repositories can only import and monitor those repositories.
+A fine-grained token can be limited to selected repositories. A token limited to selected repositories can only import and check those repositories.
 
 For traffic views, traffic clones, and referring sites, GitHub requires repository access and this fine-grained token permission for those repositories:
 
@@ -137,7 +140,7 @@ The Dashboard reads saved values when opened and does not refresh automatically 
 
 The Quick Summary popup reads saved values when opened. It can also refresh saved repository stats, and the popup shows progress while repositories refresh.
 
-Full refresh and per-repository refresh do not run at the same time. Multi-repository refreshes use controlled request concurrency so refreshes can make progress across multiple repositories without launching every repository request at once.
+Full refresh and per-repository refresh do not run at the same time. If a repository was refreshed very recently, a full refresh may use that fresh saved data instead of fetching that same repository again.
 
 If some data cannot be refreshed, the extension shows last saved values where available.
 
@@ -153,13 +156,19 @@ Background checks compare saved baselines against newly fetched values. The Quic
 
 These are periodic checks on an interval, not real-time updates.
 
+## New-Version Reminder
+
+The extension can show a new-version reminder when a newer version is available. The reminder appears in Quick Summary and Settings and opens the latest GitHub release page.
+
+The new-version reminder is manual. It does not install updates and does not update the extension. It only opens the latest GitHub release so you can update manually.
+
 ## Privacy and Security Notes
 
 Everything stays local in your browser except requests made directly to GitHub's API.
 
 The GitHub token is stored locally in Chrome extension storage and is not sent anywhere except GitHub API requests made by the extension. The extension does not send data to outside servers, tracking, analytics, telemetry, CDNs, package managers, or a build system.
 
-Use a read-only fine-grained token limited to the repositories you want to monitor whenever possible.
+Use a read-only fine-grained token limited to the repositories you want to check whenever possible.
 
 ## Resetting Saved Data
 
@@ -170,3 +179,5 @@ Reset removes the saved token, configured repositories, notification settings an
 ## Notes
 
 This extension is not published in the Chrome Web Store. Chrome will not auto-update it like a Web Store extension.
+
+The new-version reminder does not install updates. It only opens the latest GitHub release so you can update manually.
