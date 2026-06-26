@@ -393,7 +393,16 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .repo-metric-icon { background: transparent; border: 0; height: auto; width: auto; }
-.metric-icon--stars { color: #fbbf24; }
+
+.dashboard-shell .metric-icon.metric-icon--stars {
+  color: #fbbf24;
+}
+
+.dashboard-shell .metric-icon.metric-icon--stars svg,
+.dashboard-shell .metric-icon.metric-icon--stars svg * {
+  stroke: currentColor;
+}
+
 .repo-metric-icon svg { display: block; }
 .repo-metric-top strong {
   font-size: clamp(1rem, 1.45vw, 1.18rem);
