@@ -1,3 +1,7 @@
+[hidden] {
+  display: none !important;
+}
+
 body { min-width: 340px; }
 
 .popup-shell {
