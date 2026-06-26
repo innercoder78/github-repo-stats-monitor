@@ -86,6 +86,35 @@ function isFreshTimestamp(value, freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
   return Number.isFinite(timestamp) && Date.now() - timestamp < freshnessMs;
 }
 
+function getRecentCompletedRepositoryRefreshes(coordination, freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const completedRepositoryRefreshes = coordination?.completedRepositoryRefreshes && typeof coordination.completedRepositoryRefreshes === 'object'
+    ? coordination.completedRepositoryRefreshes
+    : {};
+  const recentRefreshes = {};
+
+  Object.entries(completedRepositoryRefreshes).forEach(([repository, refresh]) => {
+    const normalizedRepository = normalizeRepositoryName(repository || refresh?.repository);
+    if (normalizedRepository && isFreshTimestamp(refresh?.completedAt, freshnessMs)) {
+      recentRefreshes[normalizedRepository] = {
+        repository: normalizedRepository,
+        completedAt: refresh.completedAt,
+        source: refresh.source || 'dashboard-repository',
+      };
+    }
+  });
+
+  const legacyRepository = normalizeRepositoryName(coordination?.lastRepositoryRequestCompletedRepository);
+  if (legacyRepository && isFreshTimestamp(coordination?.lastRepositoryRequestCompletedAt, freshnessMs)) {
+    recentRefreshes[legacyRepository] = {
+      repository: legacyRepository,
+      completedAt: coordination.lastRepositoryRequestCompletedAt,
+      source: coordination.lastRepositoryRequestCompletedBy || 'dashboard-repository',
+    };
+  }
+
+  return recentRefreshes;
+}
+
 function wait(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -248,6 +277,14 @@ export async function runExclusiveRepositoryRefresh(repository, requestTask) {
       await saveRefreshCoordination({
         ...latestCoordination,
         repositoryRefreshes: latestRepositoryRefreshes,
+        completedRepositoryRefreshes: {
+          ...getRecentCompletedRepositoryRefreshes(latestCoordination),
+          [normalizedRepository]: {
+            repository: normalizedRepository,
+            source,
+            completedAt,
+          },
+        },
         lastRepositoryRequestCompletedAt: completedAt,
         lastRepositoryRequestCompletedBy: source,
         lastRepositoryRequestCompletedRepository: normalizedRepository,
@@ -540,9 +577,20 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
 
   const fetchedAt = new Date().toISOString();
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
-  const accountResult = await refreshAccountStats(githubToken, previousAccountStats, fetchedAt);
-  let completed = 0;
-  const results = await mapWithConcurrency(repositories, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
+  const recentRepositoryRefreshes = isManualRefreshSource(source)
+    ? getRecentCompletedRepositoryRefreshes(await getRefreshCoordination())
+    : {};
+  const skippedRepositories = repositories.filter((repository) => {
+    const normalizedRepository = normalizeRepositoryName(repository);
+    return Boolean(normalizedRepository && recentRepositoryRefreshes[normalizedRepository] && latestStats[repository]);
+  });
+  const skippedRepositorySet = new Set(skippedRepositories);
+  const repositoriesToRefresh = repositories.filter((repository) => !skippedRepositorySet.has(repository));
+  const accountResult = repositoriesToRefresh.length > 0
+    ? await refreshAccountStats(githubToken, previousAccountStats, fetchedAt)
+    : { accountStats: normalizeAccountStats(previousAccountStats), error: '' };
+  let completed = skippedRepositories.length;
+  const results = await mapWithConcurrency(repositoriesToRefresh, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
     const previousStats = latestStats[repository] || { repository };
     const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
 
@@ -552,6 +600,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
       completed,
       total: repositories.length,
       result,
+      skipped: skippedRepositories.length,
     });
 
     return result;
@@ -570,7 +619,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
       previousAccountStats,
       accountResult.accountStats,
       fetchedAt,
-      repositories,
+      repositoriesToRefresh,
       options,
     )
     : null;
@@ -589,6 +638,8 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   return {
     fetchedAt,
     results,
+    skippedRepositories,
+    refreshedRepositoryCount: results.length,
     latestStats: savedLatestStats,
     accountStats: accountResult.accountStats,
     accountError: accountResult.error,
