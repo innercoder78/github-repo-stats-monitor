@@ -157,6 +157,7 @@ assert.equal(status.lastFinishedSource, 'version-check');
 
 const {
   runExclusiveFullRefresh,
+  refreshStatsCache,
   runExclusiveRepositoryRefresh,
   wasManualGitHubRequestRecentlyCompleted,
 } = await import('../src/shared/refresh-stats.js');
@@ -177,6 +178,55 @@ const repoBRefresh = await runExclusiveRepositoryRefresh('owner/repo-b', async (
 assert.equal(repoBRefresh.skipped, false);
 assert.equal(storageData.fullRefreshCoordination.lastRepositoryRequestCompletedRepository, 'owner/repo-b');
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt || '', '');
+
+storageData.fullRefreshCoordination.completedRepositoryRefreshes = {
+  'owner/repo-a': { repository: 'owner/repo-a', source: 'dashboard-repository', completedAt: new Date().toISOString() },
+  'owner/repo-b': { repository: 'owner/repo-b', source: 'dashboard-repository', completedAt: new Date().toISOString() },
+};
+let fetchedUrls = [];
+globalThis.fetch = async (url) => {
+  fetchedUrls.push(String(url));
+  if (String(url).includes('/traffic/views')) {
+    return { ok: true, json: async () => ({ count: 10, uniques: 5, views: [] }) };
+  }
+  if (String(url).includes('/traffic/clones')) {
+    return { ok: true, json: async () => ({ count: 4, clones: [] }) };
+  }
+  if (String(url).includes('/traffic/popular/referrers')) {
+    return { ok: true, json: async () => ([]) };
+  }
+  if (String(url).endsWith('/user')) {
+    return { ok: true, json: async () => ({ login: 'owner', followers: 12 }) };
+  }
+  return { ok: true, json: async () => ({ stargazers_count: 7, forks_count: 3, subscribers_count: 2 }) };
+};
+const skippedRepositoryRefresh = await refreshStatsCache(
+  { githubToken: 'token', repositories: ['owner/repo-a', 'owner/repo-b', 'owner/repo-c'] },
+  {
+    'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' },
+    'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached' },
+  },
+  { source: 'dashboard', skipFullRefreshCoordination: true },
+);
+assert.deepEqual(skippedRepositoryRefresh.skippedRepositories, ['owner/repo-a', 'owner/repo-b']);
+assert.equal(skippedRepositoryRefresh.results.length, 1);
+assert.equal(skippedRepositoryRefresh.results[0].repository, 'owner/repo-c');
+assert.equal(fetchedUrls.some((url) => url.includes('/repos/owner/repo-a')), false);
+assert.equal(fetchedUrls.some((url) => url.includes('/repos/owner/repo-b')), false);
+assert.equal(fetchedUrls.some((url) => url.includes('/repos/owner/repo-c')), true);
+
+fetchedUrls = [];
+const allSkippedRepositoryRefresh = await refreshStatsCache(
+  { githubToken: 'token', repositories: ['owner/repo-a', 'owner/repo-b'] },
+  {
+    'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' },
+    'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached' },
+  },
+  { source: 'dashboard', skipFullRefreshCoordination: true },
+);
+assert.deepEqual(allSkippedRepositoryRefresh.skippedRepositories, ['owner/repo-a', 'owner/repo-b']);
+assert.equal(allSkippedRepositoryRefresh.results.length, 0);
+assert.deepEqual(fetchedUrls, []);
 
 let releaseRepoA;
 const runningRepoA = runExclusiveRepositoryRefresh('owner/repo-a', () => new Promise((resolve) => {

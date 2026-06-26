@@ -696,6 +696,23 @@ function renderRepositories() {
 }
 
 
+function formatRepositoryRefreshSummary(refreshResult) {
+  const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
+  const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
+    ? Number(refreshResult.refreshedRepositoryCount)
+    : Array.isArray(refreshResult?.results) ? refreshResult.results.length : 0;
+
+  if (skippedCount === 0) {
+    return '';
+  }
+
+  if (refreshedCount === 0) {
+    return 'All repositories skipped due to recent data found.';
+  }
+
+  return `Refreshed ${refreshedCount} ${refreshedCount === 1 ? 'repository' : 'repositories'}. ${skippedCount} skipped due to recent data found.`;
+}
+
 async function reloadSavedRefreshData() {
   [currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([
     getLatestStats(),
@@ -744,12 +761,13 @@ async function refreshRepositoryStats() {
       const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
       const successCount = refreshResult.results.length - failureCount;
 
+      const refreshSummary = formatRepositoryRefreshSummary(refreshResult);
       if (failureCount === 0) {
-        setStatus(`Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
+        setStatus(refreshSummary || `Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
       } else if (successCount > 0) {
-        setStatus(`Refresh finished with partial errors: ${successCount} repositories fully refreshed, and ${failureCount} had repository, traffic, clone, or referrer errors. Last saved values are shown where available.`, 'warning');
+        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with partial errors: ${successCount} repositories fully refreshed, and ${failureCount} had repository, traffic, clone, or referrer errors. Last saved values are shown where available.`, 'warning');
       } else {
-        setStatus('Refresh finished with errors for all repositories. Last saved values are shown where available.', 'error');
+        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with errors for all refreshed repositories. Last saved values are shown where available.`, 'error');
       }
     }
   } catch (error) {

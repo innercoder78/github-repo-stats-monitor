@@ -478,6 +478,23 @@ async function reloadSavedRefreshData() {
   }
 }
 
+function formatRepositoryRefreshSummary(refreshResult) {
+  const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
+  const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
+    ? Number(refreshResult.refreshedRepositoryCount)
+    : Array.isArray(refreshResult?.results) ? refreshResult.results.length : 0;
+
+  if (skippedCount === 0) {
+    return '';
+  }
+
+  if (refreshedCount === 0) {
+    return 'All repositories skipped due to recent data found.';
+  }
+
+  return `Refreshed ${refreshedCount} ${refreshedCount === 1 ? 'repository' : 'repositories'}. ${skippedCount} skipped due to recent data found.`;
+}
+
 async function refreshStats() {
   if (isRefreshing) return;
 
@@ -519,10 +536,15 @@ async function refreshStats() {
 
       const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
 
+      const refreshSummary = formatRepositoryRefreshSummary(refreshResult);
       if (failureCount === 0) {
-        renderLastCheckedStatus();
+        if (refreshSummary) {
+          renderPopupStatusLines([refreshSummary]);
+        } else {
+          renderLastCheckedStatus();
+        }
       } else {
-        renderPopupStatusLines(['Refresh finished with GitHub request errors. Last saved values are shown where available.']);
+        renderPopupStatusLines([`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with GitHub request errors. Last saved values are shown where available.`]);
       }
     }
   } catch (error) {
