@@ -15,6 +15,10 @@ html[data-appearance="dark"] body {
 }
 
 .dashboard-shell {
+  --dashboard-activity-green: #22ff7a;
+  --dashboard-activity-green-bg: rgba(6, 84, 39, 0.46);
+  --dashboard-activity-red: #ff3b4f;
+  --dashboard-activity-red-bg: rgba(100, 12, 24, 0.48);
   margin: 0 auto;
   max-width: 1180px;
   padding: 28px 18px;
@@ -253,11 +257,11 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .summary-delta-positive {
-  color: #38f28b;
+  color: var(--dashboard-activity-green);
 }
 
 .summary-delta-negative {
-  color: #ff6b78;
+  color: var(--dashboard-activity-red);
 }
 
 .metric strong {
@@ -414,11 +418,12 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   border: 0;
   border-left: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
   border-radius: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  display: grid;
+  grid-template-rows: auto auto 18px;
+  justify-content: stretch;
+  align-content: center;
   min-height: 82px;
-  padding: 12px 14px;
+  padding: 10px 14px 8px;
   text-align: left;
 }
 
@@ -456,36 +461,35 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   align-items: center;
   display: flex;
   justify-content: flex-start;
-  margin-top: 10px;
+  margin-top: 6px;
+  min-height: 18px;
   width: 100%;
 }
 
-.repo-metric-activity:empty { display: none; }
-
 .activity-delta {
-  border: 1px solid color-mix(in srgb, currentColor 44%, transparent);
-  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, currentColor 68%, transparent);
+  border-radius: 6px;
   display: inline-flex;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 900;
-  line-height: 1.15;
+  line-height: 1.05;
   max-width: 100%;
   overflow: hidden;
-  padding: 6px 9px;
+  padding: 4px 7px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .activity-delta-positive {
-  background: rgba(12, 90, 48, 0.58);
-  box-shadow: 0 0 0 1px rgba(56, 242, 139, 0.08), 0 0 16px rgba(56, 242, 139, 0.16);
-  color: #38f28b;
+  background: var(--dashboard-activity-green-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-activity-green) 18%, transparent), 0 0 15px color-mix(in srgb, var(--dashboard-activity-green) 30%, transparent);
+  color: var(--dashboard-activity-green);
 }
 
 .activity-delta-negative {
-  background: rgba(118, 20, 34, 0.56);
-  box-shadow: 0 0 0 1px rgba(255, 107, 120, 0.08), 0 0 16px rgba(255, 107, 120, 0.14);
-  color: #ff6b78;
+  background: var(--dashboard-activity-red-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-activity-red) 18%, transparent), 0 0 15px color-mix(in srgb, var(--dashboard-activity-red) 30%, transparent);
+  color: var(--dashboard-activity-red);
 }
 
 .activity-highlight {
