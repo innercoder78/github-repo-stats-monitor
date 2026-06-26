@@ -145,7 +145,11 @@ function renderUpdateCard() {
   const showUpdateCard = shouldShowUpdateAvailable(status);
   updateCard.hidden = !showUpdateCard;
   if (!showUpdateCard) return;
-  updateBody.textContent = `You are using version ${status.localVersion.trim()}. Version ${status.latestVersion.trim()} is available.`;
+  updateBody.replaceChildren(
+    `You are using version ${status.localVersion.trim()}.`,
+    document.createElement('br'),
+    `Version ${status.latestVersion.trim()} is available.`,
+  );
 }
 
 function renderLastCheckedStatus() {

@@ -70,7 +70,7 @@ function renderExtensionVersion(status) {
   const localVersion = String(currentVersionCheckStatus.localVersion || chrome.runtime.getManifest()?.version || 'unknown').trim();
   const latestVersion = String(currentVersionCheckStatus.latestVersion || '').trim();
   extensionVersionCard.classList.toggle('update-available', showUpdateAvailable);
-  extensionVersionTitle.textContent = showUpdateAvailable ? 'Update available' : 'Extension Version';
+  extensionVersionTitle.textContent = showUpdateAvailable ? 'Update Available' : 'Extension Version';
   extensionVersionCurrent.textContent = `You are using version ${localVersion}.`;
   extensionVersionStatus.textContent = showUpdateAvailable
     ? `Version ${latestVersion} is available.`
