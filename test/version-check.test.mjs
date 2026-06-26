@@ -154,3 +154,42 @@ status = await getGitHubActivityStatus();
 assert.equal(status.active, false);
 assert.ok(Date.parse(status.lastFinishedAt));
 assert.equal(status.lastFinishedSource, 'version-check');
+
+const {
+  runExclusiveFullRefresh,
+  runExclusiveRepositoryRefresh,
+  wasManualGitHubRequestRecentlyCompleted,
+} = await import('../src/shared/refresh-stats.js');
+
+storageData.fullRefreshCoordination = {};
+storageData[GITHUB_ACTIVITY_KEY] = {};
+storageSetCount = 0;
+const repoARefresh = await runExclusiveRepositoryRefresh('Owner/Repo-A', async () => ({ fetchedAt: '2026-06-25T13:00:00.000Z', repository: 'owner/repo-a' }));
+assert.equal(repoARefresh.skipped, false);
+assert.equal(await wasManualGitHubRequestRecentlyCompleted(), false);
+assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt || '', '');
+assert.equal(storageData.fullRefreshCoordination.lastRepositoryRequestCompletedRepository, 'owner/repo-a');
+status = await getGitHubActivityStatus();
+assert.equal(status.active, false);
+assert.equal(status.lastFinishedSource, 'dashboard-repository');
+
+const repoBRefresh = await runExclusiveRepositoryRefresh('owner/repo-b', async () => ({ fetchedAt: '2026-06-25T13:00:01.000Z', repository: 'owner/repo-b' }));
+assert.equal(repoBRefresh.skipped, false);
+assert.equal(storageData.fullRefreshCoordination.lastRepositoryRequestCompletedRepository, 'owner/repo-b');
+assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt || '', '');
+
+let releaseRepoA;
+const runningRepoA = runExclusiveRepositoryRefresh('owner/repo-a', () => new Promise((resolve) => {
+  releaseRepoA = () => resolve({ fetchedAt: '2026-06-25T13:00:02.000Z', repository: 'owner/repo-a' });
+}));
+await new Promise((resolve) => setTimeout(resolve, 0));
+const duplicateRepoA = await runExclusiveRepositoryRefresh('owner/repo-a', async () => ({ fetchedAt: '2026-06-25T13:00:03.000Z' }));
+assert.equal(duplicateRepoA.skipped, true);
+assert.equal(duplicateRepoA.reason, 'running');
+releaseRepoA();
+assert.equal((await runningRepoA).skipped, false);
+
+const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', async () => ({ fetchedAt: '2026-06-25T13:00:04.000Z' }));
+assert.equal(fullRefreshAfterRepository.skipped, false);
+assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt, '2026-06-25T13:00:04.000Z');
+assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedBy, 'dashboard');

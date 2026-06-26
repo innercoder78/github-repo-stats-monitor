@@ -1,10 +1,11 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, saveAccountStats, saveLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
+import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, normalizeRepositoryName, saveAccountStats, saveLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
 import { runTrackedGitHubActivity } from './github-activity.js';
 
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
 const FULL_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
+const REPOSITORY_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
 const FULL_REFRESH_COORDINATION_KEY = 'fullRefreshCoordination';
 const MANUAL_REFRESH_SOURCES = new Set(['quick-summary', 'dashboard', 'dashboard-repository', 'manual']);
 
@@ -183,6 +184,87 @@ export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) 
       await saveRefreshCoordination({
         ...latestCoordination,
         running: null,
+      });
+    }
+  }
+}
+
+
+function getActiveRepositoryRefreshes(coordination) {
+  const repositoryRefreshes = coordination?.repositoryRefreshes && typeof coordination.repositoryRefreshes === 'object'
+    ? coordination.repositoryRefreshes
+    : {};
+  const now = Date.now();
+
+  return Object.fromEntries(Object.entries(repositoryRefreshes).filter(([, refresh]) => {
+    const startedAt = Date.parse(refresh?.startedAt || '');
+    return Boolean(refresh?.token) && Number.isFinite(startedAt) && now - startedAt < REPOSITORY_REFRESH_LOCK_STALE_MS;
+  }));
+}
+
+export async function runExclusiveRepositoryRefresh(repository, requestTask) {
+  const normalizedRepository = normalizeRepositoryName(repository);
+
+  if (!normalizedRepository) {
+    return { skipped: true, reason: 'invalid-repository', source: 'dashboard-repository' };
+  }
+
+  const source = 'dashboard-repository';
+  const token = createRefreshToken(`${source}-${normalizedRepository}`);
+  const coordination = await getRefreshCoordination();
+  const repositoryRefreshes = getActiveRepositoryRefreshes(coordination);
+
+  if (repositoryRefreshes[normalizedRepository]) {
+    return { skipped: true, reason: 'running', source, repository: normalizedRepository };
+  }
+
+  await saveRefreshCoordination({
+    ...coordination,
+    repositoryRefreshes: {
+      ...repositoryRefreshes,
+      [normalizedRepository]: {
+        token,
+        source,
+        repository: normalizedRepository,
+        startedAt: new Date().toISOString(),
+      },
+    },
+  });
+
+  const savedCoordination = await getRefreshCoordination();
+  const savedRepositoryRefreshes = getActiveRepositoryRefreshes(savedCoordination);
+  if (savedRepositoryRefreshes[normalizedRepository]?.token !== token) {
+    return { skipped: true, reason: 'running', source, repository: normalizedRepository };
+  }
+
+  try {
+    const result = await runTrackedGitHubActivity(source, requestTask);
+    const completedAt = result?.fetchedAt || new Date().toISOString();
+    const latestCoordination = await getRefreshCoordination();
+    const latestRepositoryRefreshes = getActiveRepositoryRefreshes(latestCoordination);
+
+    if (latestRepositoryRefreshes[normalizedRepository]?.token === token) {
+      delete latestRepositoryRefreshes[normalizedRepository];
+      await saveRefreshCoordination({
+        ...latestCoordination,
+        repositoryRefreshes: latestRepositoryRefreshes,
+        lastRepositoryRequestCompletedAt: completedAt,
+        lastRepositoryRequestCompletedBy: source,
+        lastRepositoryRequestCompletedRepository: normalizedRepository,
+      });
+      await saveQuickSummaryStatus({ manualRefreshAt: completedAt });
+    }
+
+    return { skipped: false, result };
+  } finally {
+    const latestCoordination = await getRefreshCoordination();
+    const latestRepositoryRefreshes = getActiveRepositoryRefreshes(latestCoordination);
+
+    if (latestRepositoryRefreshes[normalizedRepository]?.token === token) {
+      delete latestRepositoryRefreshes[normalizedRepository];
+      await saveRefreshCoordination({
+        ...latestCoordination,
+        repositoryRefreshes: latestRepositoryRefreshes,
       });
     }
   }

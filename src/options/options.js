@@ -764,6 +764,7 @@ async function resetSettings() {
   try {
     const resetData = await resetExtensionData();
     renderSettings(resetData.settings);
+    renderExtensionVersion(await getVersionCheckStatus());
     setMessage(statusMessage, 'Settings reset.', 'success');
   } catch (error) {
     setMessage(statusMessage, 'Unable to reset settings. Please try again.', 'error');
