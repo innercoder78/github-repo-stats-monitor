@@ -1,6 +1,6 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
 import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
-import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveUserVisibleGitHubRequest, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
+import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveRepositoryRefresh, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { createSvgLineChart } from '../shared/svg-line-chart.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
@@ -783,7 +783,7 @@ async function refreshSingleRepository(repository) {
       await reloadSavedRefreshData();
       setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
     } else {
-      const coordinatedRefresh = await runExclusiveUserVisibleGitHubRequest('dashboard-repository', () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
+      const coordinatedRefresh = await runExclusiveRepositoryRefresh(repository, () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
         detectActivity: true,
         skipBadgeActivity: true,
       }));
