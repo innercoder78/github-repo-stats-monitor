@@ -145,27 +145,19 @@ function formatFetchedSummary(stats) {
   const trafficFetchedAt = getValidDate(stats?.trafficFetchedAt);
   const clonesFetchedAt = getValidDate(stats?.clonesFetchedAt);
   const referrersFetchedAt = getValidDate(stats?.referrersFetchedAt);
+  const fetchedDates = [metadataFetchedAt, trafficFetchedAt, clonesFetchedAt, referrersFetchedAt].filter(Boolean);
+  const latestFetchedAt = fetchedDates.length > 0
+    ? fetchedDates.reduce((latest, date) => (date > latest ? date : latest), fetchedDates[0])
+    : null;
 
   const metadataTime = metadataFetchedAt ? formatRefreshTime(metadataFetchedAt) : '—';
   const trafficTime = trafficFetchedAt ? formatRefreshTime(trafficFetchedAt) : '—';
   const clonesTime = clonesFetchedAt ? formatRefreshTime(clonesFetchedAt) : '—';
   const referrersTime = referrersFetchedAt ? formatRefreshTime(referrersFetchedAt) : '—';
-  const detailedSummary = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Clones fetched: ${clonesTime} · Referrers fetched: ${referrersTime}`;
+  const detailed = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Clones fetched: ${clonesTime} · Referrers fetched: ${referrersTime}`;
+  const visible = latestFetchedAt ? `Data from ${formatCompactRefreshTime(latestFetchedAt)}` : 'Data from —';
 
-  if (!metadataFetchedAt || !trafficFetchedAt || !clonesFetchedAt || !referrersFetchedAt) {
-    return detailedSummary;
-  }
-
-  const metadataMinute = getLocalMinuteKey(metadataFetchedAt);
-  const trafficMinute = getLocalMinuteKey(trafficFetchedAt);
-  const clonesMinute = getLocalMinuteKey(clonesFetchedAt);
-  const referrersMinute = getLocalMinuteKey(referrersFetchedAt);
-
-  if (metadataMinute === trafficMinute && metadataMinute === clonesMinute && metadataMinute === referrersMinute) {
-    return `Data from ${formatCompactRefreshTime(metadataFetchedAt)}`;
-  }
-
-  return detailedSummary;
+  return { visible, detailed };
 }
 
 function setStatus(message, type = '') {
@@ -338,23 +330,21 @@ function createReferrersSection(stats) {
   const list = document.createElement('div');
   list.className = 'referrers-list';
 
-  const header = document.createElement('div');
-  header.className = 'referrer-row referrer-row-header';
-  header.append(
-    Object.assign(document.createElement('span'), { textContent: 'Referrer' }),
-    Object.assign(document.createElement('span'), { textContent: 'Views' }),
-    Object.assign(document.createElement('span'), { textContent: 'Unique visitors' }),
-  );
-  list.append(header);
-
   cachedReferrers.forEach((entry) => {
-    const row = document.createElement('div');
+    const row = document.createElement('p');
     row.className = 'referrer-row';
-    row.append(
-      Object.assign(document.createElement('span'), { textContent: entry.referrer }),
-      Object.assign(document.createElement('span'), { textContent: formatNumber(entry.count) }),
-      Object.assign(document.createElement('span'), { textContent: formatNumber(entry.uniques) }),
-    );
+
+    const referrer = document.createElement('span');
+    referrer.className = 'referrer-name';
+    referrer.textContent = entry.referrer;
+
+    const summary = document.createElement('span');
+    summary.className = 'referrer-summary';
+    const viewLabel = entry.count === 1 ? 'view' : 'views';
+    const uniqueLabel = entry.uniques === 1 ? 'unique visitor' : 'unique visitors';
+    summary.textContent = ` — ${formatNumber(entry.count)} ${viewLabel}, ${formatNumber(entry.uniques)} ${uniqueLabel}`;
+
+    row.append(referrer, summary);
     list.append(row);
   });
 
@@ -538,10 +528,13 @@ function createRepositoryIdentity(repository, stats) {
 
   const fetched = document.createElement('p');
   fetched.className = 'repo-fetched-line';
+  const fetchedSummary = formatFetchedSummary(stats);
+  fetched.title = fetchedSummary.detailed;
+  fetched.setAttribute('aria-label', fetchedSummary.detailed);
   const dot = document.createElement('span');
   dot.className = 'repo-fetched-dot';
   dot.setAttribute('aria-hidden', 'true');
-  fetched.append(dot, document.createTextNode(formatFetchedSummary(stats)));
+  fetched.append(dot, document.createTextNode(fetchedSummary.visible));
 
   text.append(title, fullName, fetched);
   identity.append(iconBlock, text);

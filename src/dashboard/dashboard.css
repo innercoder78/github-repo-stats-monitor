@@ -398,8 +398,8 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 126px;
-  padding: 18px 16px;
+  min-height: 82px;
+  padding: 12px 14px;
   text-align: left;
 }
 
@@ -437,10 +437,11 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   align-items: center;
   display: flex;
   justify-content: flex-start;
-  margin-top: 14px;
-  min-height: 27px;
+  margin-top: 10px;
   width: 100%;
 }
+
+.repo-metric-activity:empty { display: none; }
 
 .activity-delta {
   border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
@@ -483,44 +484,26 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 .section-icon { color: var(--accent); }
 
 .referrers-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
   min-width: 0;
 }
-
-.referrer-row-header { display: none; }
 
 .referrer-row {
-  align-items: center;
-  background: color-mix(in srgb, var(--surface) 64%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
-  border-radius: 999px;
-  display: inline-grid;
-  gap: 7px;
-  grid-template-columns: minmax(0, auto) auto auto;
-  max-width: 100%;
-  min-width: 0;
-  padding: 6px 9px;
-}
-
-.referrer-row span {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin: 0;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.referrer-row span:first-child {
+.referrer-name {
   color: var(--text);
   font-weight: 800;
-  max-width: 230px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.referrer-row span:nth-child(2)::after { content: ' views'; color: var(--muted); font-weight: 500; }
-.referrer-row span:nth-child(3)::after { content: ' unique'; color: var(--muted); font-weight: 500; }
+.referrer-summary { color: var(--muted); }
 
 .referrers-message,
 .repo-cache-note,
@@ -565,8 +548,7 @@ html[data-appearance="dark"] .repo-card {
   border-color: rgba(139, 148, 158, 0.18);
 }
 
-html[data-appearance="dark"] .summary-grid > .metric,
-html[data-appearance="dark"] .referrer-row {
+html[data-appearance="dark"] .summary-grid > .metric {
   background: rgba(13, 19, 31, 0.88);
   border-color: rgba(139, 148, 158, 0.15);
 }
@@ -584,7 +566,7 @@ html[data-appearance="dark"] .referrer-row {
   .quick-summary-message { text-align: left; }
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .repo-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .repo-metric { border-top: 1px solid color-mix(in srgb, var(--border) 64%, transparent); min-height: 108px; }
+  .repo-metric { border-top: 1px solid color-mix(in srgb, var(--border) 64%, transparent); min-height: 76px; }
   .repo-metric:nth-child(odd) { border-left: 0; }
   .repo-metric:nth-child(-n + 2) { border-top: 0; }
 }
