@@ -48,6 +48,7 @@ const {
 const {
   GITHUB_ACTIVITY_KEY,
   GITHUB_ACTIVITY_STALE_MS,
+  GITHUB_ACTIVITY_QUIET_WINDOW_MS,
   getGitHubActivityStatus,
   markGitHubActivityFinished,
   markGitHubActivityStarted,
@@ -93,26 +94,46 @@ assert.equal(failedCaughtUp.updateAvailable, false);
 
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
-const activity = await markGitHubActivityStarted('manual-refresh');
+const operationA = await markGitHubActivityStarted('manual-refresh');
+const operationB = await markGitHubActivityStarted('connection-test');
 let status = await getGitHubActivityStatus();
 assert.equal(status.active, true);
+assert.equal(Object.keys(status.activeOperations).length, 2);
 assert.equal(hasQuietWindowPassed(status), false);
-await markGitHubActivityFinished(activity, 'manual-refresh');
+await markGitHubActivityFinished(operationB, 'connection-test');
+status = await getGitHubActivityStatus();
+assert.equal(status.active, true);
+assert.equal(Object.keys(status.activeOperations).length, 1);
+assert.ok(status.activeOperations[operationA.token]);
+assert.equal(hasQuietWindowPassed(status), false);
+await markGitHubActivityFinished(operationA, 'manual-refresh');
 status = await getGitHubActivityStatus();
 assert.equal(status.active, false);
+assert.equal(Object.keys(status.activeOperations).length, 0);
 assert.equal(hasQuietWindowPassed(status), false);
-assert.equal(storageSetCount, 2);
+assert.equal(storageSetCount, 4);
 
 storageData[GITHUB_ACTIVITY_KEY] = {
-  activeToken: 'stale-token',
-  activeSource: 'manual-refresh',
-  activeStartedAt: new Date(Date.now() - GITHUB_ACTIVITY_STALE_MS - 1000).toISOString(),
-  activeUntil: new Date(Date.now() - 1000).toISOString(),
+  activeOperations: {
+    stale: {
+      source: 'manual-refresh',
+      startedAt: new Date(Date.now() - GITHUB_ACTIVITY_STALE_MS - 1000).toISOString(),
+      activeUntil: new Date(Date.now() - 1000).toISOString(),
+    },
+  },
   quietUntil: new Date(Date.now() - 1000).toISOString(),
 };
 status = await getGitHubActivityStatus();
 assert.equal(status.active, false);
+assert.equal(Object.keys(status.activeOperations).length, 0);
 assert.equal(hasQuietWindowPassed(status), true);
+
+status = {
+  active: false,
+  activeOperations: {},
+  quietUntil: new Date(Date.now() + GITHUB_ACTIVITY_QUIET_WINDOW_MS).toISOString(),
+};
+assert.equal(hasQuietWindowPassed(status), false);
 
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
