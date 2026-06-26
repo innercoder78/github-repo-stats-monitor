@@ -378,7 +378,7 @@ function renderQuickSummaryActivity() {
   }
 
   if (repositoryDeltas.repoWatchersDelta !== 0) {
-    addQuickSummaryActivity(totalWatchers, repositoryDeltas.repoWatchersDelta, 'Repo Watcher');
+    addQuickSummaryActivity(totalWatchers, repositoryDeltas.repoWatchersDelta, 'Watcher');
   }
 
   if (showAccountFollowerPill) {
