@@ -397,7 +397,7 @@ function getRepositoryViewedDeltas(repository, stats) {
   return [
     { delta: getBaselineDelta(baseline, 'stars', stats.stars), label: ACTIVITY_DELTA_LABELS.starsDelta },
     { delta: getBaselineDelta(baseline, 'forks', stats.forks), label: ACTIVITY_DELTA_LABELS.forksDelta },
-    { delta: getBaselineDelta(baseline, 'repoWatchers', stats.subscribers), label: ACTIVITY_DELTA_LABELS.repoWatchersDelta },
+    { delta: getBaselineDelta(baseline, 'repoWatchers', stats.subscribers), label: 'Watcher' },
   ].filter(({ delta }) => delta !== 0);
 }
 
@@ -566,10 +566,10 @@ function createRepositoryCard(repository, stats) {
   const metricGrid = document.createElement('div');
   metricGrid.className = 'metric-grid';
   metricGrid.append(
-    createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—', 'views'),
+    createMetric('Watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—', 'watchers'),
     createMetric('Stars', cachedStats ? formatNumber(cachedStats.stars) : '—', 'stars'),
     createMetric('Forks', cachedStats ? formatNumber(cachedStats.forks) : '—', 'forks'),
-    createMetric('Watchers', cachedStats ? formatNumber(cachedStats.subscribers) : '—', 'watchers'),
+    createMetric('Views, last 14 days', cachedTraffic ? formatNumber(cachedTraffic.views) : '—', 'views'),
     createMetric('Clones, last 14 days', cachedClones ? formatNumber(cachedClones.clones) : '—', 'clones'),
   );
 
