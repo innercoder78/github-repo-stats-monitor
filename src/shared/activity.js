@@ -1,7 +1,7 @@
 export const ACTIVITY_DELTA_LABELS = Object.freeze({
   starsDelta: 'Star',
   forksDelta: 'Fork',
-  repoWatchersDelta: 'Repo Watcher',
+  repoWatchersDelta: 'Watcher',
   followersDelta: 'Account Follower',
 });
 

@@ -55,7 +55,13 @@ h1 { margin-bottom: 8px; }
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+  max-width: 100%;
   min-width: 220px;
+}
+
+.topbar-actions button {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 button:disabled {
@@ -98,7 +104,7 @@ button:disabled {
   max-width: 620px;
 }
 
-.summary-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.summary-grid { grid-template-columns: repeat(6, minmax(132px, 1fr)); }
 
 .metric {
   align-items: center;
@@ -106,6 +112,7 @@ button:disabled {
   gap: 10px;
   grid-template-columns: auto minmax(0, 1fr);
   min-width: 0;
+  overflow: hidden;
 }
 
 .metric-icon {
@@ -129,6 +136,12 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.metric strong {
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
 .repo-grid {
   display: grid;
   gap: 18px;
@@ -149,12 +162,16 @@ button:disabled {
   gap: 12px;
   justify-content: space-between;
   margin-bottom: 12px;
+  min-width: 0;
   padding-bottom: 12px;
 }
 
 .repo-refresh-button {
   flex: 0 0 auto;
   font-size: 0.82rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 7px 12px;
 }
 
@@ -195,6 +212,7 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 12px;
   min-width: 0;
+  overflow: hidden;
   padding: 14px;
 }
 
@@ -206,6 +224,8 @@ button:disabled {
   font-size: 0.88rem;
   gap: 8px;
   margin: 0 0 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .svg-line-chart {
@@ -270,6 +290,7 @@ button:disabled {
   border-radius: 10px;
   line-height: 1.45;
   margin: 14px 0 0;
+  overflow-wrap: anywhere;
   padding: 10px 12px;
 }
 
@@ -323,7 +344,8 @@ button:disabled {
   border-top: 1px solid var(--border);
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) minmax(70px, auto) minmax(110px, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(64px, auto) minmax(96px, auto);
+  min-width: 0;
   padding-top: 6px;
 }
 
@@ -348,6 +370,7 @@ button:disabled {
   color: var(--muted);
   line-height: 1.45;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .referrers-message.warning {
@@ -374,6 +397,7 @@ button:disabled {
   font-weight: 700;
   margin: 8px 0 0;
   min-height: 1.2em;
+  overflow-wrap: anywhere;
   width: 100%;
 }
 

@@ -4,6 +4,7 @@
 
 body {
   min-width: 340px;
+  max-width: 360px;
   background:
     radial-gradient(circle at 12% 0%, rgba(47, 129, 247, 0.14), transparent 34%),
     radial-gradient(circle at 100% 18%, rgba(88, 166, 255, 0.12), transparent 30%),
@@ -18,6 +19,7 @@ body {
   --popup-inset: inset 0 1px 0 rgba(255, 255, 255, 0.58);
   padding: 12px;
   width: 340px;
+  max-width: 100vw;
 }
 
 html[data-appearance="dark"] body {
@@ -48,6 +50,7 @@ html[data-appearance="dark"] .popup-shell {
   grid-template-columns: minmax(0, 1fr) auto;
   margin-bottom: 9px;
   padding: 13px;
+  min-width: 0;
 }
 
 .eyebrow {
@@ -69,6 +72,7 @@ h1 {
   font-size: 0.76rem;
   line-height: 1.35;
   margin-bottom: 0;
+  overflow-wrap: anywhere;
 }
 
 .status-panel {
@@ -80,6 +84,7 @@ h1 {
   gap: 8px;
   margin-bottom: 9px;
   padding: 10px;
+  min-width: 0;
 }
 
 .status-copy {
@@ -94,6 +99,7 @@ h1 {
   font-weight: 900;
   margin-bottom: 0;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .popup-status {
@@ -146,6 +152,7 @@ h1 {
   grid-template-columns: 34px minmax(0, 1fr);
   min-height: 86px;
   min-width: 0;
+  overflow: hidden;
   padding: 10px;
 }
 
@@ -192,6 +199,7 @@ html[data-appearance="dark"] .metric {
   font-weight: 800;
   letter-spacing: 0.01em;
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
 }
 
 .metric .metric-body .metric-label {
@@ -207,7 +215,7 @@ html[data-appearance="dark"] .metric {
 .metric strong {
   color: var(--text);
   display: block;
-  font-size: 1.45rem;
+  font-size: clamp(1.18rem, 9vw, 1.45rem);
   font-weight: 900;
   letter-spacing: -0.03em;
   line-height: 1.05;
@@ -217,11 +225,14 @@ html[data-appearance="dark"] .metric {
 .actions {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .actions > button:not(.popup-close) {
   border-radius: 12px;
   box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 22%, transparent);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .popup-refresh {
@@ -233,6 +244,7 @@ html[data-appearance="dark"] .metric {
   justify-self: end;
   padding: 8px 10px;
   white-space: nowrap;
+  max-width: 100%;
 }
 
 .utility-actions {
@@ -317,6 +329,7 @@ button:disabled {
   box-shadow: var(--popup-soft-shadow), var(--popup-inset);
   margin-bottom: 9px;
   padding: 12px;
+  overflow-wrap: anywhere;
 }
 
 .update-card h2 {
