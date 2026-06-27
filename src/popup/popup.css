@@ -28,15 +28,15 @@ body {
 
 html[data-appearance="dark"] body {
   background:
-    radial-gradient(circle at -12% 28%, rgba(56, 139, 253, 0.22), transparent 38%),
-    radial-gradient(circle at 112% 0%, rgba(31, 111, 235, 0.2), transparent 32%),
-    linear-gradient(180deg, #0b111a 0%, var(--bg) 100%);
+    radial-gradient(circle at -12% 28%, rgba(255, 255, 255, 0.035), transparent 38%),
+    radial-gradient(circle at 112% 0%, rgba(255, 255, 255, 0.03), transparent 32%),
+    linear-gradient(180deg, #101113 0%, #090a0b 100%);
 }
 
 html[data-appearance="dark"] .popup-shell {
-  --popup-glow: rgba(47, 129, 247, 0.24);
-  --popup-card-bg: linear-gradient(145deg, rgba(22, 27, 34, 0.9), rgba(13, 17, 23, 0.88));
-  --popup-card-border: color-mix(in srgb, var(--accent) 28%, var(--border));
+  --popup-glow: rgba(255, 255, 255, 0.035);
+  --popup-card-bg: linear-gradient(145deg, rgba(28, 29, 32, 0.92), rgba(18, 19, 21, 0.9));
+  --popup-card-border: rgba(139, 148, 158, 0.2);
   --popup-soft-shadow: 0 16px 40px rgba(1, 4, 9, 0.52);
   --popup-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
@@ -162,6 +162,15 @@ h1 {
 
 html[data-appearance="dark"] .metric {
   box-shadow: 0 12px 30px rgba(1, 4, 9, 0.35), var(--popup-inset);
+}
+
+html[data-appearance="dark"] .popup-shell .metric .metric-icon {
+  background: rgba(33, 34, 37, 0.86);
+  border-color: rgba(139, 148, 158, 0.24);
+}
+
+html[data-appearance="dark"] .actions > button:not(.popup-close) {
+  box-shadow: 0 8px 18px rgba(1, 4, 9, 0.26);
 }
 
 .popup-shell .metric .metric-icon {
