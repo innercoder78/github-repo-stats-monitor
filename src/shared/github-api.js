@@ -8,21 +8,160 @@ function sanitizeRepository(repository) {
   return String(repository || '').trim().toLowerCase();
 }
 
-function getErrorMessage(status) {
-  if (status === 401) {
-    return 'GitHub rejected the saved token. Check that the token is valid.';
+function getHeaderValue(headers, name) {
+  if (!headers || typeof headers.get !== 'function') {
+    return '';
   }
 
-  if (status === 403) {
-    return 'GitHub denied the request, or the API rate limit was reached.';
+  return String(headers.get(name) || '').trim();
+}
+
+function getGitHubRateLimitHeaders(headers) {
+  return {
+    limit: getHeaderValue(headers, 'x-ratelimit-limit'),
+    remaining: getHeaderValue(headers, 'x-ratelimit-remaining'),
+    used: getHeaderValue(headers, 'x-ratelimit-used'),
+    reset: getHeaderValue(headers, 'x-ratelimit-reset'),
+    resource: getHeaderValue(headers, 'x-ratelimit-resource'),
+    retryAfter: getHeaderValue(headers, 'retry-after'),
+  };
+}
+
+async function readGitHubErrorBody(response) {
+  if (!response) {
+    return { message: '' };
+  }
+
+  try {
+    const data = await response.json();
+    return { message: String(data?.message || '') };
+  } catch (error) {
+    try {
+      if (typeof response.text === 'function') {
+        return { message: String(await response.text() || '') };
+      }
+    } catch (textError) {
+      return { message: '' };
+    }
+  }
+
+  return { message: '' };
+}
+
+function formatRateLimitReset(reset) {
+  const resetSeconds = Number(reset);
+  if (!Number.isFinite(resetSeconds) || resetSeconds <= 0) {
+    return '';
+  }
+
+  return new Date(resetSeconds * 1000).toLocaleString();
+}
+
+function formatRetryAfter(retryAfter) {
+  const retryAfterSeconds = Number(retryAfter);
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    const minutes = Math.floor(retryAfterSeconds / 60);
+    const seconds = retryAfterSeconds % 60;
+
+    if (minutes > 0 && seconds > 0) {
+      return `${minutes} minute${minutes === 1 ? '' : 's'} and ${seconds} second${seconds === 1 ? '' : 's'}`;
+    }
+
+    if (minutes > 0) {
+      return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    }
+
+    return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  }
+
+  const retryAfterDate = Date.parse(retryAfter || '');
+  if (Number.isFinite(retryAfterDate)) {
+    return `until ${new Date(retryAfterDate).toLocaleString()}`;
+  }
+
+  return '';
+}
+
+function isTrafficEndpointContext(context) {
+  return ['traffic-views', 'traffic-clones', 'traffic-referrers'].includes(context);
+}
+
+function isRepositoryMetadataContext(context) {
+  return context === 'repository-metadata';
+}
+
+function isSecondaryRateLimitMessage(message) {
+  const normalizedMessage = String(message || '').toLowerCase();
+  return normalizedMessage.includes('secondary rate limit')
+    || normalizedMessage.includes('abuse detection')
+    || normalizedMessage.includes('abuse rate limits')
+    || normalizedMessage.includes('too many requests') && normalizedMessage.includes('retry');
+}
+
+function isPrimaryRateLimitMessage(message) {
+  const normalizedMessage = String(message || '').toLowerCase();
+  return normalizedMessage.includes('api rate limit exceeded')
+    || normalizedMessage.includes('rate limit exceeded');
+}
+
+export function buildGitHubRequestErrorMessage({ status, context = 'general', headers = {}, bodyMessage = '' } = {}) {
+  const rateLimit = getGitHubRateLimitHeaders(headers);
+  const remaining = Number(rateLimit.remaining);
+  const primaryRateLimitExhausted = (status === 403 || status === 429) && Number.isFinite(remaining) && remaining === 0;
+  const hasRetryAfter = Boolean(rateLimit.retryAfter);
+
+  if (status === 401) {
+    return 'GitHub rejected the saved token. Check that the token is valid and still active.';
+  }
+
+  if (primaryRateLimitExhausted || ((status === 403 || status === 429) && isPrimaryRateLimitMessage(bodyMessage))) {
+    const resetTime = formatRateLimitReset(rateLimit.reset);
+    return resetTime
+      ? `GitHub API rate limit reached. Last saved values are shown where available. Try again after ${resetTime}.`
+      : 'GitHub API rate limit reached. Last saved values are shown where available. Try again later.';
+  }
+
+  if ((status === 403 || status === 429) && (isSecondaryRateLimitMessage(bodyMessage) || (hasRetryAfter && remaining !== 0))) {
+    const waitTime = formatRetryAfter(rateLimit.retryAfter);
+    return waitTime
+      ? `GitHub’s secondary rate limit was triggered. Wait ${waitTime} before refreshing again. Last saved values are shown where available.`
+      : 'GitHub’s secondary rate limit was triggered. Wait before refreshing again. Last saved values are shown where available.';
+  }
+
+  if (status === 429) {
+    return 'GitHub is rate limiting requests. Try again later. Last saved values are shown where available.';
+  }
+
+  if (status === 403 && isTrafficEndpointContext(context)) {
+    return 'Traffic data unavailable. Check that your token has Administration: Read-only permission for this repository.';
+  }
+
+  if (status === 404 && isRepositoryMetadataContext(context)) {
+    return 'Repository data unavailable. The repository was not found, or the token does not have access to it.';
   }
 
   if (status === 404) {
-    return 'Repository was not found, or the token does not have access.';
+    return 'Repository data unavailable. The repository was not found, or the token does not have access to it.';
+  }
+
+  if (status === 403) {
+    return 'GitHub denied the request. Last saved values are shown where available.';
   }
 
   return `GitHub request failed with status ${status}.`;
 }
+
+async function getGitHubRequestErrorMessage(response, context) {
+  const body = await readGitHubErrorBody(response);
+  return buildGitHubRequestErrorMessage({
+    status: response?.status,
+    context,
+    headers: response?.headers,
+    bodyMessage: body.message,
+  });
+}
+
+const GITHUB_NETWORK_ERROR_MESSAGE = 'GitHub could not be reached. Check your connection and try again.';
 
 function getGitHubHeaders(token) {
   return {
@@ -32,18 +171,6 @@ function getGitHubHeaders(token) {
   };
 }
 
-
-function getAuthenticatedRepositoriesErrorMessage(status) {
-  if (status === 401) {
-    return 'GitHub rejected the token. Check that the token is valid before importing repositories.';
-  }
-
-  if (status === 403) {
-    return 'GitHub denied the repository import request. The token may not have access to list repositories, or the API rate limit may have been reached.';
-  }
-
-  return getErrorMessage(status);
-}
 
 function mapAuthenticatedRepository(repository) {
   return {
@@ -71,11 +198,11 @@ export async function fetchAuthenticatedAccount(token) {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
-    throw new Error('Network failure while contacting GitHub account API. Check your connection and try again.');
+    throw new Error(GITHUB_NETWORK_ERROR_MESSAGE);
   }
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(response.status));
+    throw new Error(await getGitHubRequestErrorMessage(response, 'account'));
   }
 
   const data = await response.json();
@@ -113,11 +240,11 @@ export async function fetchAuthenticatedRepositories(token) {
         headers: getGitHubHeaders(safeToken),
       });
     } catch (error) {
-      throw new Error('Network failure while contacting GitHub repositories API. Check your connection and try again.');
+      throw new Error(GITHUB_NETWORK_ERROR_MESSAGE);
     }
 
     if (!response.ok) {
-      throw new Error(getAuthenticatedRepositoriesErrorMessage(response.status));
+      throw new Error(await getGitHubRequestErrorMessage(response, 'authenticated-repositories'));
     }
 
     const data = await response.json();
@@ -137,44 +264,6 @@ export async function fetchAuthenticatedRepositories(token) {
   return repositories;
 }
 
-
-function getReferrersErrorMessage(status, data) {
-  if (status === 401) {
-    return 'GitHub rejected the saved token. Check that the token is valid and still active.';
-  }
-
-  if (status === 404) {
-    return 'Referring sites unavailable. The repository was not found, or the token does not have access to it.';
-  }
-
-  if (status === 403) {
-    const message = String(data?.message || '').toLowerCase();
-
-    if (message.includes('secondary rate limit') || message.includes('abuse')) {
-      return 'GitHub’s secondary rate limit was triggered. Wait before refreshing again.';
-    }
-
-    if (message.includes('api rate limit') || message.includes('rate limit exceeded')) {
-      return 'GitHub API rate limit reached. Try again later.';
-    }
-
-    return 'Referring sites unavailable. Check that your token has Administration: Read-only permission for this repository.';
-  }
-
-  if (status === 429) {
-    return 'GitHub API rate limit reached. Try again later.';
-  }
-
-  return getErrorMessage(status);
-}
-
-function getTrafficErrorMessage(status) {
-  if (status === 403) {
-    return 'GitHub denied traffic access. Traffic, clones, and referrers require repository access and Administration: Read-only permission for fine-grained tokens, or the API rate limit may have been reached.';
-  }
-
-  return getErrorMessage(status);
-}
 
 function assertRepositoryAndToken(repository, token, requestDescription) {
   const normalizedRepository = sanitizeRepository(repository);
@@ -205,11 +294,11 @@ export async function fetchRepositoryMetadata(repository, token) {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
-    throw new Error('Network failure while contacting GitHub. Check your connection and try again.');
+    throw new Error(GITHUB_NETWORK_ERROR_MESSAGE);
   }
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(response.status));
+    throw new Error(await getGitHubRequestErrorMessage(response, 'repository-metadata'));
   }
 
   const data = await response.json();
@@ -232,11 +321,11 @@ export async function fetchRepositoryTrafficViews(repository, token) {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
-    throw new Error('Network failure while contacting GitHub traffic API. Check your connection and try again.');
+    throw new Error(GITHUB_NETWORK_ERROR_MESSAGE);
   }
 
   if (!response.ok) {
-    throw new Error(getTrafficErrorMessage(response.status));
+    throw new Error(await getGitHubRequestErrorMessage(response, 'traffic-views'));
   }
 
   const data = await response.json();
@@ -266,11 +355,11 @@ export async function fetchRepositoryTrafficClones(repository, token) {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
-    throw new Error('Network failure while contacting GitHub traffic clones API. Check your connection and try again.');
+    throw new Error(GITHUB_NETWORK_ERROR_MESSAGE);
   }
 
   if (!response.ok) {
-    throw new Error(getTrafficErrorMessage(response.status));
+    throw new Error(await getGitHubRequestErrorMessage(response, 'traffic-clones'));
   }
 
   const data = await response.json();
@@ -299,19 +388,11 @@ export async function fetchRepositoryTrafficReferrers(repository, token) {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
-    throw new Error('Referring sites could not be loaded. Check your connection and try again.');
+    throw new Error(GITHUB_NETWORK_ERROR_MESSAGE);
   }
 
   if (!response.ok) {
-    let data = null;
-
-    try {
-      data = await response.json();
-    } catch (error) {
-      data = null;
-    }
-
-    throw new Error(getReferrersErrorMessage(response.status, data));
+    throw new Error(await getGitHubRequestErrorMessage(response, 'traffic-referrers'));
   }
 
   const data = await response.json();

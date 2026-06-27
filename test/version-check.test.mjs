@@ -243,3 +243,74 @@ const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', as
 assert.equal(fullRefreshAfterRepository.skipped, false);
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt, '2026-06-25T13:00:04.000Z');
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedBy, 'dashboard');
+
+const { buildGitHubRequestErrorMessage, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } = await import('../src/shared/github-api.js');
+
+function createHeaders(values = {}) {
+  const normalized = Object.fromEntries(Object.entries(values).map(([key, value]) => [key.toLowerCase(), String(value)]));
+  return {
+    get(name) {
+      return normalized[String(name).toLowerCase()] || null;
+    },
+  };
+}
+
+assert.equal(
+  buildGitHubRequestErrorMessage({ status: 401 }),
+  'GitHub rejected the saved token. Check that the token is valid and still active.',
+);
+assert.equal(
+  buildGitHubRequestErrorMessage({ status: 404, context: 'repository-metadata' }),
+  'Repository data unavailable. The repository was not found, or the token does not have access to it.',
+);
+assert.equal(
+  buildGitHubRequestErrorMessage({ status: 403, context: 'traffic-views', headers: createHeaders({ 'x-ratelimit-remaining': '42' }) }),
+  'Traffic data unavailable. Check that your token has Administration: Read-only permission for this repository.',
+);
+assert.match(
+  buildGitHubRequestErrorMessage({ status: 403, headers: createHeaders({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1782561600' }) }),
+  /^GitHub API rate limit reached\. Last saved values are shown where available\. Try again after .+\.$/,
+);
+assert.equal(
+  buildGitHubRequestErrorMessage({ status: 403, headers: createHeaders({ 'x-ratelimit-remaining': '12', 'retry-after': '90' }) }),
+  'GitHub’s secondary rate limit was triggered. Wait 1 minute and 30 seconds before refreshing again. Last saved values are shown where available.',
+);
+assert.equal(
+  buildGitHubRequestErrorMessage({ status: 429, headers: createHeaders({ 'x-ratelimit-remaining': '12' }) }),
+  'GitHub is rate limiting requests. Try again later. Last saved values are shown where available.',
+);
+
+globalThis.fetch = async (url) => {
+  if (String(url).includes('/traffic/views')) {
+    return {
+      ok: false,
+      status: 403,
+      headers: createHeaders({ 'x-ratelimit-remaining': '8' }),
+      json: async () => ({ message: 'Resource not accessible by personal access token' }),
+    };
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    headers: createHeaders({ 'x-ratelimit-remaining': '8' }),
+    json: async () => ({ message: 'Resource not accessible by personal access token' }),
+  };
+};
+
+await assert.rejects(
+  fetchRepositoryTrafficViews('owner/repo-a', 'token'),
+  /Traffic data unavailable\. Check that your token has Administration: Read-only permission for this repository\./,
+);
+await assert.rejects(
+  fetchRepositoryTrafficReferrers('owner/repo-a', 'token'),
+  /Traffic data unavailable\. Check that your token has Administration: Read-only permission for this repository\./,
+);
+
+globalThis.fetch = async () => {
+  throw new TypeError('Failed to fetch');
+};
+await assert.rejects(
+  fetchRepositoryTrafficViews('owner/repo-a', 'token'),
+  /GitHub could not be reached\. Check your connection and try again\./,
+);
