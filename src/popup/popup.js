@@ -247,6 +247,11 @@ function getBaselineDelta(baseline, key, currentValue) {
 function getQuickSummaryPendingDeltas() {
   return currentSettings.repositories.reduce((totals, repository) => {
     const activity = currentPendingActivity.repositories?.[repository];
+
+    if (activity?.quickSummaryShown) {
+      return totals;
+    }
+
     totals.starsDelta += Number(activity?.starsDelta) || 0;
     totals.forksDelta += Number(activity?.forksDelta) || 0;
     totals.repoWatchersDelta += Number(activity?.repoWatchersDelta) || 0;
@@ -271,6 +276,10 @@ function getQuickSummaryViewedDeltas() {
 }
 
 function getQuickSummaryPendingAccountDelta() {
+  if (currentPendingActivity.account?.quickSummaryShown) {
+    return 0;
+  }
+
   return Number(currentPendingActivity.account?.followersDelta) || 0;
 }
 
