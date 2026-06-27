@@ -137,6 +137,37 @@ export async function fetchAuthenticatedRepositories(token) {
   return repositories;
 }
 
+
+function getReferrersErrorMessage(status, data) {
+  if (status === 401) {
+    return 'GitHub rejected the saved token. Check that the token is valid and still active.';
+  }
+
+  if (status === 404) {
+    return 'Referring sites unavailable. The repository was not found, or the token does not have access to it.';
+  }
+
+  if (status === 403) {
+    const message = String(data?.message || '').toLowerCase();
+
+    if (message.includes('secondary rate limit') || message.includes('abuse')) {
+      return 'GitHub’s secondary rate limit was triggered. Wait before refreshing again.';
+    }
+
+    if (message.includes('api rate limit') || message.includes('rate limit exceeded')) {
+      return 'GitHub API rate limit reached. Try again later.';
+    }
+
+    return 'Referring sites unavailable. Check that your token has Administration: Read-only permission for this repository.';
+  }
+
+  if (status === 429) {
+    return 'GitHub API rate limit reached. Try again later.';
+  }
+
+  return getErrorMessage(status);
+}
+
 function getTrafficErrorMessage(status) {
   if (status === 403) {
     return 'GitHub denied traffic access. Traffic, clones, and referrers require repository access and Administration: Read-only permission for fine-grained tokens, or the API rate limit may have been reached.';
@@ -268,11 +299,19 @@ export async function fetchRepositoryTrafficReferrers(repository, token) {
       headers: getGitHubHeaders(safeToken),
     });
   } catch (error) {
-    throw new Error('Network failure while contacting GitHub traffic referrers API. Check your connection and try again.');
+    throw new Error('Referring sites could not be loaded. Check your connection and try again.');
   }
 
   if (!response.ok) {
-    throw new Error(getTrafficErrorMessage(response.status));
+    let data = null;
+
+    try {
+      data = await response.json();
+    } catch (error) {
+      data = null;
+    }
+
+    throw new Error(getReferrersErrorMessage(response.status, data));
   }
 
   const data = await response.json();

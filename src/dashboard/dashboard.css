@@ -531,6 +531,8 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   margin: 0 0 10px;
 }
 
+.referrers-panel h3.referrers-empty-heading { margin-bottom: 0; }
+
 .section-icon { color: var(--accent); }
 
 .referrers-list {
