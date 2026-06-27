@@ -1,22 +1,22 @@
 # GitHub Repo Stats Monitor
 
-GitHub Repo Stats Monitor is a personal Chrome extension for checking saved GitHub repository stats from a compact Quick Summary, a larger Dashboard, and Settings.
+GitHub Repo Stats Monitor is a personal Chrome extension for checking saved GitHub repository stats from a redesigned compact Quick Summary, a redesigned larger Dashboard, and Settings.
 
-It is designed for manual review, optional background checks, and a simple new-version reminder. It is not real-time monitoring. GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes.
+It is designed for manual review, optional background checks, a cleaner card-based layout, neutral Light Mode, true charcoal Dark Mode, and a simple new-version reminder. It is not real-time monitoring. GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes.
 
 ## Current Version
 
-2.3
+3.0
 
 ## What It Shows
 
 Supported repository stats, where available:
 
-* Views
+* Views totals based on GitHub traffic data
 * Stars
 * Forks
-* Repo Watchers
-* Clones
+* Watchers
+* Clones totals based on GitHub traffic data
 * Referring Sites / referrers
 
 Supported account stats, where available:
@@ -25,21 +25,27 @@ Supported account stats, where available:
 
 Additional Dashboard and Quick Summary details:
 
-* Repository cards in the same order configured in Settings
-* Views and Clones line charts based on GitHub traffic data
+* Compact Quick Summary cards with saved totals
+* Dashboard summary totals and repository cards in the same order configured in Settings
+* Per-repository stat rows/cards for saved repository values
+* Per-repository referring sites under each repository, limited by what GitHub returns
 * Last refreshed information for saved data
 * Last saved values where available when part of a refresh cannot complete
-* Green and red activity pills for tracked gains and losses
+* Green and red activity pills for tracked gains and losses on tracked stats
 
 ## Main Views
 
 ### Quick Summary
 
-The Chrome toolbar popup provides a compact Quick Summary of saved repository and account values. It reads saved values when opened, shows background-check status, can start a manual refresh for saved repositories, shows tracked activity until reviewed, and can show a new-version reminder when a newer version is available.
+The Chrome toolbar popup provides a compact card layout for saved repository and account values. It reads saved totals when opened, shows background-check status, can start a manual refresh for saved repositories, shows an update reminder when a newer version is available, and displays tracked activity pills for accumulated pending gains and losses.
+
+Views and Clones are shown as saved totals based on GitHub traffic data. They do not have activity pills.
 
 ### Dashboard
 
-The Dashboard provides a larger review page with summary totals, account followers, repository cards, traffic charts, referring sites, GitHub repository links, saved-value fallback notices, and per-repository refresh actions. It reads saved values when opened and does not refresh automatically on open. Repository order follows the order saved in Settings.
+The Dashboard provides a larger review page with summary cards, account followers, repository cards, per-repository stat rows/cards, referring sites under each repository, GitHub repository links, saved-value fallback notices, and per-repository refresh actions. It reads saved values when opened and does not refresh automatically on open. Repository order follows the order saved in Settings.
+
+The Dashboard does not include traffic charts. Views, Clones, and Referring Sites are limited by what GitHub returns for repository traffic.
 
 ### Settings
 
@@ -47,14 +53,14 @@ Settings manages the GitHub token, repositories, notifications, display preferen
 
 ## Main Features
 
-* Quick Summary popup from the Chrome toolbar that reads saved values and can run a manual refresh
-* Dashboard with summary totals, account followers, repository cards, traffic charts, referring sites, and activity pills
+* Redesigned Quick Summary popup from the Chrome toolbar with compact cards, saved totals, background-check status, manual refresh, an update reminder, and tracked activity pills
+* Redesigned Dashboard with summary totals, account followers, repository cards, per-repository stat rows/cards, referring sites, saved-value fallback notices, per-repository refresh, and activity pills
+* Cleaner card-based layout with neutral Light Mode and true charcoal Dark Mode
 * Settings page for your GitHub token, repositories, notifications, display preferences, appearance, connection test, version reminder, and reset
 * Monitoring multiple repositories, up to the current maximum of 20 configured repositories
 * Manual repository entry as `owner/repo` or a GitHub repository URL
 * Import from GitHub for repositories the token can access
 * Repository reordering in Settings; Settings order controls Dashboard order
-* Light Mode and Dark Mode
 * Manual full refresh from the Dashboard with progress as repositories complete
 * Manual refresh from the popup with progress while saved repositories refresh
 * Per-repository Dashboard refresh buttons that update only one repository
@@ -64,7 +70,7 @@ Settings manages the GitHub token, repositories, notifications, display preferen
 * Optional system notifications for tracked changes
 * Optional badge count on the extension icon for places with unreviewed tracked activity
 * Notification-tracked stats for Stars, Forks, Repo Watchers, and Account Followers
-* Green/red activity pills for tracked gains and losses
+* Green/red activity pills for tracked gains and losses on tracked stats
 * New-version reminder that opens the latest GitHub release when a newer version is available
 * Repository links that open on GitHub
 * Connection test for repo data, traffic views, traffic clones, and referrers
@@ -144,15 +150,17 @@ Full refresh and per-repository refresh do not run at the same time. If a reposi
 
 If some data cannot be refreshed, the extension shows last saved values where available.
 
-GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes. Views, Clones, Referring Sites, and Views/Clones charts are limited by what GitHub returns for repository traffic.
+GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes. Views, Clones, and Referring Sites are limited by what GitHub returns for repository traffic.
 
 ## Background Checks and Notifications
 
 Background checks are optional and run periodically only when enabled in Settings. You can choose the check interval and the tracked stats: Stars, Forks, Repo Watchers, and Account Followers.
 
-Alerts can be sent by system notification, badge count on the extension icon, or both. Badge counts represent places with unreviewed tracked activity, including account follower activity and repositories with tracked repository-stat activity.
+Alerts can be sent by system notification, badge count on the extension icon, or both. Background checks can set badge counts and system notifications for tracked changes. Badge counts represent places with unreviewed tracked activity, including account follower activity and repositories with tracked repository-stat activity.
 
-Background checks compare saved baselines against newly fetched values. The Quick Summary and Dashboard show tracked gains and losses as green/red activity pills. Reviewing activity in the popup or Dashboard clears the corresponding badge activity.
+Background checks compare saved baselines against newly fetched values. The Quick Summary and Dashboard show net accumulated pending tracked gains and losses from badge and notification checks as green/red activity pills. Views and Clones do not have activity pills.
+
+Opening Quick Summary first does not prevent the Dashboard from showing the same pending activity later, and opening the Dashboard first does not prevent the Quick Summary from showing the same pending activity later. Pending activity is cleared only after the relevant activity has been shown in both places. Badge activity is still cleared or reduced when reviewed.
 
 These are periodic checks on an interval, not real-time updates.
 
