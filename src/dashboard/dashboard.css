@@ -440,7 +440,11 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   width: 100%;
 }
 
-.repo-metric-icon { background: transparent; border: 0; color: var(--accent); height: auto; width: auto; }
+.repo-metric-icon { background: transparent; border: 0; height: auto; width: auto; }
+
+.dashboard-shell .repo-metric .repo-metric-icon {
+  color: var(--accent);
+}
 
 .dashboard-shell .metric-icon.metric-icon--stars {
   color: #fbbf24;
