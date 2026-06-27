@@ -13,10 +13,10 @@ html[data-appearance="dark"] body {
 }
 
 .dashboard-shell {
-  --dashboard-activity-positive-bg: #11231d;
-  --dashboard-activity-positive-text: #9acf96;
-  --dashboard-activity-negative-bg: #fe0000;
-  --dashboard-activity-negative-text: #a80000;
+  --dashboard-activity-positive-bg: #31f527;
+  --dashboard-activity-positive-text: #88f283;
+  --dashboard-activity-negative-bg: #f57064;
+  --dashboard-activity-negative-text: #f5bdb8;
   margin: 0 auto;
   max-width: 1180px;
   padding: 28px 18px;
