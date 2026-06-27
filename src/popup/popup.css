@@ -154,7 +154,7 @@ h1 {
   display: grid;
   gap: 8px;
   grid-template-columns: 34px minmax(0, 1fr);
-  min-height: 86px;
+  min-height: 74px;
   min-width: 0;
   overflow: hidden;
   padding: 10px;
@@ -306,10 +306,10 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: auto;
+  margin-top: 5px;
   max-width: 100%;
   min-width: 0;
-  padding-top: 7px;
+  padding-top: 0;
 }
 
 .activity-note:empty {
