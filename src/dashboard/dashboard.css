@@ -13,20 +13,13 @@ html[data-appearance="dark"] body {
 }
 
 .dashboard-shell {
-  --dashboard-activity-green: #0a7f28;
-  --dashboard-activity-green-bg: #e5f9ea;
-  --dashboard-activity-red: #c21d1d;
-  --dashboard-activity-red-bg: #ffebe9;
+  --dashboard-activity-positive-bg: #11231d;
+  --dashboard-activity-positive-text: #9acf96;
+  --dashboard-activity-negative-bg: #fe0000;
+  --dashboard-activity-negative-text: #a80000;
   margin: 0 auto;
   max-width: 1180px;
   padding: 28px 18px;
-}
-
-html[data-appearance="dark"] .dashboard-shell {
-  --dashboard-activity-green: #38f76b;
-  --dashboard-activity-green-bg: #0b3f1c;
-  --dashboard-activity-red: #ff5f5f;
-  --dashboard-activity-red-bg: #4a1518;
 }
 
 .topbar,
@@ -260,11 +253,11 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .summary-delta-positive {
-  color: var(--dashboard-activity-green);
+  color: var(--dashboard-activity-positive-text);
 }
 
 .summary-delta-negative {
-  color: var(--dashboard-activity-red);
+  color: var(--dashboard-activity-negative-text);
 }
 
 .metric strong {
@@ -475,9 +468,10 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .activity-delta {
-  border: 1px solid color-mix(in srgb, currentColor 88%, transparent);
+  border: 1px solid currentColor;
   border-radius: 6px;
   display: inline-flex;
+  font-family: inherit;
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.05;
@@ -489,18 +483,18 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .activity-delta-positive {
-  background: var(--dashboard-activity-green-bg);
-  color: var(--dashboard-activity-green);
+  background: var(--dashboard-activity-positive-bg);
+  color: var(--dashboard-activity-positive-text);
 }
 
 .activity-delta-negative {
-  background: var(--dashboard-activity-red-bg);
-  color: var(--dashboard-activity-red);
+  background: var(--dashboard-activity-negative-bg);
+  color: var(--dashboard-activity-negative-text);
 }
 
 .activity-highlight {
-  border-color: color-mix(in srgb, var(--success) 48%, var(--border));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent), 0 0 0 2px color-mix(in srgb, var(--success) 13%, transparent), 0 14px 38px color-mix(in srgb, #010409 20%, transparent);
+  border-color: var(--dashboard-activity-positive-text);
+  box-shadow: 0 0 0 2px var(--dashboard-activity-positive-bg);
 }
 
 .referrers-panel {
