@@ -391,6 +391,33 @@ function setSummaryValue(valueElement, value, delta = 0) {
   }
 }
 
+function getRepositoryPendingDeltaMap(repository) {
+  const activity = currentPendingActivity.repositories?.[repository];
+  const deltas = {
+    stars: { delta: Number(activity?.starsDelta) || 0, label: ACTIVITY_DELTA_LABELS.starsDelta },
+    forks: { delta: Number(activity?.forksDelta) || 0, label: ACTIVITY_DELTA_LABELS.forksDelta },
+    watchers: { delta: Number(activity?.repoWatchersDelta) || 0, label: 'Watcher' },
+  };
+
+  return Object.fromEntries(Object.entries(deltas).filter(([, value]) => value.delta !== 0));
+}
+
+function preferPendingDeltaMap(pendingMap, viewedMap) {
+  return ['stars', 'forks', 'watchers'].reduce((deltaMap, key) => {
+    const preferredDelta = pendingMap[key] || viewedMap[key];
+
+    if (preferredDelta) {
+      deltaMap[key] = preferredDelta;
+    }
+
+    return deltaMap;
+  }, {});
+}
+
+function getRepositoryVisibleDeltaMap(repository, stats) {
+  return preferPendingDeltaMap(getRepositoryPendingDeltaMap(repository), getRepositoryViewedDeltaMap(repository, stats));
+}
+
 function getRepositoryViewedDeltaMap(repository, stats) {
   if (!hasCachedMetadata(stats)) {
     return {};
@@ -408,7 +435,7 @@ function getRepositoryViewedDeltaMap(repository, stats) {
 
 function getVisibleRepositorySummaryDeltas() {
   return currentSettings.repositories.reduce((accumulator, repository) => {
-    const deltaMap = getRepositoryViewedDeltaMap(repository, currentLatestStats[repository]);
+    const deltaMap = getRepositoryVisibleDeltaMap(repository, currentLatestStats[repository]);
     accumulator.stars += Number(deltaMap.stars?.delta) || 0;
     accumulator.forks += Number(deltaMap.forks?.delta) || 0;
     accumulator.watchers += Number(deltaMap.watchers?.delta) || 0;
@@ -422,6 +449,11 @@ function getAccountFollowersDelta() {
   }
 
   return getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
+}
+
+function getVisibleAccountFollowersDelta() {
+  const pendingDelta = Number(currentPendingActivity.account?.followersDelta) || 0;
+  return pendingDelta !== 0 ? pendingDelta : getAccountFollowersDelta();
 }
 
 async function markDashboardActivityShown(renderedRepositories, displayedAccountActivity) {
@@ -560,7 +592,7 @@ function createRepositoryIdentity(repository, stats) {
 function createRepositoryCard(repository, stats) {
   const card = document.createElement('article');
   card.className = 'card repo-card';
-  const deltaMap = getRepositoryViewedDeltaMap(repository, stats);
+  const deltaMap = getRepositoryVisibleDeltaMap(repository, stats);
 
   if (Object.keys(deltaMap).length > 0) {
     card.classList.add('activity-highlight');
@@ -658,7 +690,7 @@ function renderSummary() {
   }, { metadataCount: 0, trafficCount: 0, clonesCount: 0, stars: 0, forks: 0, watchers: 0, views: 0, clones: 0 });
 
   const summaryDeltas = getVisibleRepositorySummaryDeltas();
-  const followersDelta = getAccountFollowersDelta();
+  const followersDelta = getVisibleAccountFollowersDelta();
 
   setSummaryValue(summaryValues.stars, totals.metadataCount > 0 ? formatNumber(totals.stars) : '—', summaryDeltas.stars);
   setSummaryValue(summaryValues.forks, totals.metadataCount > 0 ? formatNumber(totals.forks) : '—', summaryDeltas.forks);
