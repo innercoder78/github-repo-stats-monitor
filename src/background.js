@@ -305,6 +305,7 @@ function recordAccountDelta(pendingActivity, delta, detectedChanges) {
       ...pendingActivity.account,
       followersDelta,
       quickSummaryShown: false,
+      dashboardShown: false,
     };
   }
 
