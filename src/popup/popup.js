@@ -244,6 +244,16 @@ function getBaselineDelta(baseline, key, currentValue) {
   return Number.isFinite(baselineValue) ? currentValue - baselineValue : 0;
 }
 
+function getQuickSummaryPendingDeltas() {
+  return currentSettings.repositories.reduce((totals, repository) => {
+    const activity = currentPendingActivity.repositories?.[repository];
+    totals.starsDelta += Number(activity?.starsDelta) || 0;
+    totals.forksDelta += Number(activity?.forksDelta) || 0;
+    totals.repoWatchersDelta += Number(activity?.repoWatchersDelta) || 0;
+    return totals;
+  }, { starsDelta: 0, forksDelta: 0, repoWatchersDelta: 0 });
+}
+
 function getQuickSummaryViewedDeltas() {
   return currentSettings.repositories.reduce((totals, repository) => {
     const stats = currentLatestStats[repository];
@@ -258,6 +268,14 @@ function getQuickSummaryViewedDeltas() {
     totals.repoWatchersDelta += getBaselineDelta(baseline, 'repoWatchers', stats.subscribers);
     return totals;
   }, { starsDelta: 0, forksDelta: 0, repoWatchersDelta: 0 });
+}
+
+function getQuickSummaryPendingAccountDelta() {
+  return Number(currentPendingActivity.account?.followersDelta) || 0;
+}
+
+function getPreferredQuickSummaryDelta(pendingDelta, viewedDelta) {
+  return pendingDelta !== 0 ? pendingDelta : viewedDelta;
 }
 
 function getQuickSummaryAccountDelta() {
@@ -363,11 +381,18 @@ async function saveQuickSummaryViewedBaselines(consideredRepositories, displayed
 function renderQuickSummaryActivity() {
   clearActivityHighlights();
 
-  const repositoryDeltas = getQuickSummaryViewedDeltas();
+  const pendingRepositoryDeltas = getQuickSummaryPendingDeltas();
+  const viewedRepositoryDeltas = getQuickSummaryViewedDeltas();
+  const repositoryDeltas = {
+    starsDelta: getPreferredQuickSummaryDelta(pendingRepositoryDeltas.starsDelta, viewedRepositoryDeltas.starsDelta),
+    forksDelta: getPreferredQuickSummaryDelta(pendingRepositoryDeltas.forksDelta, viewedRepositoryDeltas.forksDelta),
+    repoWatchersDelta: getPreferredQuickSummaryDelta(pendingRepositoryDeltas.repoWatchersDelta, viewedRepositoryDeltas.repoWatchersDelta),
+  };
   const consideredRepositories = new Set(currentSettings.repositories.filter((repository) => hasCachedMetadata(currentLatestStats[repository])));
-  const pendingAccountDelta = getQuickSummaryAccountDelta();
+  const pendingAccountDelta = getQuickSummaryPendingAccountDelta();
+  const accountDelta = getPreferredQuickSummaryDelta(pendingAccountDelta, getQuickSummaryAccountDelta());
   const accountFollowersDisplayed = hasFetchedAccountStats(currentAccountStats);
-  const showAccountFollowerPill = accountFollowersDisplayed && pendingAccountDelta !== 0;
+  const showAccountFollowerPill = accountFollowersDisplayed && accountDelta !== 0;
 
   if (repositoryDeltas.starsDelta !== 0) {
     addQuickSummaryActivity(totalStars, repositoryDeltas.starsDelta, 'Star');
@@ -382,7 +407,7 @@ function renderQuickSummaryActivity() {
   }
 
   if (showAccountFollowerPill) {
-    addQuickSummaryActivity(accountFollowers, pendingAccountDelta, 'Account Follower');
+    addQuickSummaryActivity(accountFollowers, accountDelta, 'Account Follower');
   }
 
   markQuickSummaryActivityShown(consideredRepositories, accountFollowersDisplayed);
