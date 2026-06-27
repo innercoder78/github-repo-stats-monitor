@@ -298,11 +298,22 @@ function createReferrersSection(stats) {
   const section = document.createElement('section');
   section.className = 'referrers-panel';
 
-  const heading = document.createElement('h3');
-  heading.append(createIcon('referrers', 'section-icon', 16), document.createTextNode('Referring Sites, last 14 days'));
-  section.append(heading);
-
   const cachedReferrers = hasCachedReferrers(stats) ? stats.referrers.slice(0, 10) : null;
+  const hasSuccessfulEmptyReferrers = cachedReferrers && cachedReferrers.length === 0 && !stats?.referrersError;
+
+  const heading = document.createElement('h3');
+  heading.append(
+    createIcon('referrers', 'section-icon', 16),
+    document.createTextNode(hasSuccessfulEmptyReferrers
+      ? 'No referring sites reported for the last 14 days.'
+      : 'Referring Sites, last 14 days'),
+  );
+
+  if (hasSuccessfulEmptyReferrers) {
+    heading.classList.add('referrers-empty-heading');
+  }
+
+  section.append(heading);
 
   if (stats?.referrersError && !cachedReferrers) {
     const error = document.createElement('p');
@@ -320,10 +331,6 @@ function createReferrersSection(stats) {
   }
 
   if (!cachedReferrers || cachedReferrers.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'referrers-message';
-    empty.textContent = 'No referring sites reported for the last 14 days.';
-    section.append(empty);
     return section;
   }
 
