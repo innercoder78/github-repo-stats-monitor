@@ -13,10 +13,10 @@ html[data-appearance="dark"] body {
 }
 
 .dashboard-shell {
-  --dashboard-activity-positive-bg: #11231d;
-  --dashboard-activity-positive-text: #05ffbc;
-  --dashboard-activity-negative-bg: #fe0000;
-  --dashboard-activity-negative-text: #ab0547;
+  --dashboard-activity-positive-bg: #6df77f;
+  --dashboard-activity-positive-text: #13870b;
+  --dashboard-activity-negative-bg: #ffabab;
+  --dashboard-activity-negative-text: #fa6437;
   margin: 0 auto;
   max-width: 1180px;
   padding: 28px 18px;
@@ -146,7 +146,7 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   border-top: 0;
   border-radius: 0;
   box-shadow: 0 24px 70px color-mix(in srgb, #010409 28%, transparent);
-  padding: 0 26px 18px;
+  padding: 12px 26px 12px;
 }
 
 .summary-card h2 {
@@ -260,6 +260,14 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   color: var(--dashboard-activity-negative-text);
 }
 
+.summary-card .summary-delta.summary-delta-positive {
+  color: var(--dashboard-activity-positive-text);
+}
+
+.summary-card .summary-delta.summary-delta-negative {
+  color: var(--dashboard-activity-negative-text);
+}
+
 .metric strong {
   color: var(--text);
   display: block;
@@ -282,7 +290,7 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
   display: grid;
   gap: 16px;
   grid-template-columns: 1fr;
-  padding: 0 26px 24px;
+  padding: 12px 26px 24px;
 }
 
 .repo-card {
@@ -488,6 +496,16 @@ button:disabled { cursor: not-allowed; opacity: 0.56; }
 }
 
 .activity-delta-negative {
+  background: var(--dashboard-activity-negative-bg);
+  color: var(--dashboard-activity-negative-text);
+}
+
+.dashboard-shell .activity-delta.activity-delta-positive {
+  background: var(--dashboard-activity-positive-bg);
+  color: var(--dashboard-activity-positive-text);
+}
+
+.dashboard-shell .activity-delta.activity-delta-negative {
   background: var(--dashboard-activity-negative-bg);
   color: var(--dashboard-activity-negative-text);
 }
