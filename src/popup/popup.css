@@ -17,6 +17,10 @@ body {
   --popup-card-border: color-mix(in srgb, var(--accent) 18%, var(--border));
   --popup-soft-shadow: 0 14px 34px rgba(140, 149, 159, 0.18);
   --popup-inset: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  --quick-summary-activity-positive-bg: #6df77f;
+  --quick-summary-activity-positive-text: #13870b;
+  --quick-summary-activity-negative-bg: #ffabab;
+  --quick-summary-activity-negative-text: #fa6437;
   padding: 12px;
   width: 340px;
   max-width: 100vw;
@@ -186,6 +190,15 @@ html[data-appearance="dark"] .metric {
   width: 19px;
 }
 
+.popup-shell .metric .metric-icon.metric-icon--stars {
+  color: #fbbf24;
+}
+
+.popup-shell .metric .metric-icon.metric-icon--stars svg,
+.popup-shell .metric .metric-icon.metric-icon--stars svg * {
+  stroke: currentColor;
+}
+
 .metric .metric-body {
   display: flex;
   flex-direction: column;
@@ -196,7 +209,7 @@ html[data-appearance="dark"] .metric {
   color: var(--muted);
   display: block;
   font-size: 0.71rem;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0.01em;
   margin-bottom: 4px;
   overflow-wrap: anywhere;
@@ -208,7 +221,7 @@ html[data-appearance="dark"] .metric {
 
 .metric .metric-body .metric-period {
   font-size: 0.62rem;
-  font-weight: 750;
+  font-weight: 500;
   margin-bottom: 4px;
 }
 
@@ -216,8 +229,8 @@ html[data-appearance="dark"] .metric {
   color: var(--text);
   display: block;
   font-size: clamp(1.18rem, 9vw, 1.45rem);
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  font-weight: 650;
+  letter-spacing: -0.018em;
   line-height: 1.05;
   overflow-wrap: anywhere;
 }
@@ -297,27 +310,29 @@ button:disabled {
   padding: 0;
 }
 
-.activity-delta {
+.popup-shell .metric .metric-body .activity-delta {
   border: 1px solid currentColor;
-  border-radius: 999px;
+  border-radius: 6px;
   display: inline-flex;
-  font-size: 0.69rem;
-  font-weight: 900;
-  line-height: 1.15;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.05;
   max-width: 100%;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   padding: 3px 7px;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.activity-note .activity-delta.activity-delta-positive {
-  background: color-mix(in srgb, var(--success) 15%, transparent);
-  color: var(--success);
+.popup-shell .activity-delta.activity-delta-positive {
+  background: var(--quick-summary-activity-positive-bg);
+  color: var(--quick-summary-activity-positive-text);
 }
 
-.activity-note .activity-delta.activity-delta-negative {
-  background: color-mix(in srgb, var(--error) 15%, transparent);
-  color: var(--error);
+.popup-shell .activity-delta.activity-delta-negative {
+  background: var(--quick-summary-activity-negative-bg);
+  color: var(--quick-summary-activity-negative-text);
 }
 
 .update-card {
