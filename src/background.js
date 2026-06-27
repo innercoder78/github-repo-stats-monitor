@@ -743,15 +743,39 @@ async function resetBaselinesForNextAutomaticCheck() {
   }
 }
 
-async function resetAccountBaselineForTokenChange() {
+async function resetAccountStateForTokenChange() {
   try {
-    const baselines = await getNotificationBaselines();
-    await saveNotificationBaselines({
-      ...baselines,
+    const [settings, pendingActivity, viewedBaselines, notificationBaselines] = await Promise.all([
+      getSettings(),
+      getPendingActivity(),
+      getViewedBaselines(),
+      getNotificationBaselines(),
+    ]);
+    const nextPendingActivity = {
+      ...pendingActivity,
       account: {},
-    });
+      badgeActivity: {
+        ...(pendingActivity.badgeActivity || {}),
+        account: false,
+        repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
+      },
+    };
+
+    await Promise.all([
+      saveAccountStats({}),
+      savePendingActivity(nextPendingActivity),
+      saveViewedBaselines({
+        ...viewedBaselines,
+        account: {},
+      }),
+      saveNotificationBaselines({
+        ...notificationBaselines,
+        account: {},
+      }),
+    ]);
+    await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
   } catch (error) {
-    console.warn('Unable to reset account notification baseline after token changed.', error);
+    console.warn('Unable to reset account state after token changed.', error);
   }
 }
 
@@ -859,7 +883,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     }
 
     if (changes.githubToken) {
-      await resetAccountBaselineForTokenChange();
+      await resetAccountStateForTokenChange();
     }
 
     if (changes.repositories) {

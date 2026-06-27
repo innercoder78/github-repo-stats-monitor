@@ -89,6 +89,8 @@ export function getGitHubActivityStatus() {
   });
 }
 
+let activityStatusUpdateQueue = Promise.resolve();
+
 function saveGitHubActivityStatus(status) {
   return new Promise((resolve, reject) => {
     getStorageArea().set({ [GITHUB_ACTIVITY_KEY]: status }, () => {
@@ -102,39 +104,52 @@ function saveGitHubActivityStatus(status) {
   });
 }
 
+async function updateGitHubActivityStatus(updater) {
+  const updateTask = activityStatusUpdateQueue.then(async () => {
+    const existingStatus = await getGitHubActivityStatus();
+    const updatedStatus = updater(existingStatus);
+    return saveGitHubActivityStatus(normalizeActivityStatus(updatedStatus));
+  });
+
+  activityStatusUpdateQueue = updateTask.catch(() => {});
+  return updateTask;
+}
+
 export async function markGitHubActivityStarted(source = 'github') {
   const startedAt = new Date().toISOString();
   const token = createActivityToken(source);
-  const existingStatus = await getGitHubActivityStatus();
   const activeUntil = toIsoTime(Date.now() + GITHUB_ACTIVITY_STALE_MS);
-  const activeOperations = {
-    ...existingStatus.activeOperations,
-    [token]: { source, startedAt, activeUntil },
-  };
-  const status = await saveGitHubActivityStatus({
-    ...existingStatus,
-    active: true,
-    activeOperations,
-    quietUntil: activeUntil,
+  const status = await updateGitHubActivityStatus((existingStatus) => {
+    const activeOperations = {
+      ...existingStatus.activeOperations,
+      [token]: { source, startedAt, activeUntil },
+    };
+
+    return {
+      ...existingStatus,
+      active: true,
+      activeOperations,
+      quietUntil: activeUntil,
+    };
   });
   return { token, status };
 }
 
 export async function markGitHubActivityFinished(activity = {}, source = 'github') {
   const finishedAt = new Date().toISOString();
-  const existingStatus = await getGitHubActivityStatus();
-  const activeOperations = { ...existingStatus.activeOperations };
-  delete activeOperations[activity.token];
+  return updateGitHubActivityStatus((existingStatus) => {
+    const activeOperations = { ...existingStatus.activeOperations };
+    delete activeOperations[activity.token];
 
-  const status = await saveGitHubActivityStatus({
-    ...existingStatus,
-    active: Object.keys(activeOperations).length > 0,
-    activeOperations,
-    lastFinishedAt: finishedAt,
-    lastFinishedSource: source,
-    quietUntil: toIsoTime(Date.now() + GITHUB_ACTIVITY_QUIET_WINDOW_MS),
+    return {
+      ...existingStatus,
+      active: Object.keys(activeOperations).length > 0,
+      activeOperations,
+      lastFinishedAt: finishedAt,
+      lastFinishedSource: source,
+      quietUntil: toIsoTime(Date.now() + GITHUB_ACTIVITY_QUIET_WINDOW_MS),
+    };
   });
-  return status;
 }
 
 export async function runTrackedGitHubActivity(source, task) {
