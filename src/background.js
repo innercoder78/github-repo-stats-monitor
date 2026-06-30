@@ -229,6 +229,35 @@ function canRunBackgroundChecks(settings) {
   );
 }
 
+function isManualQuietWindowSkip(result) {
+  return Boolean(result?.skipped && result.reason === 'manual-quiet-window' && Number(result.retryAfterMs) > 0);
+}
+
+async function scheduleManualQuietWindowRetry(result) {
+  let settings;
+
+  try {
+    settings = await getSettings();
+  } catch (error) {
+    console.warn('Unable to read settings for background quiet-window retry.', error);
+    return;
+  }
+
+  if (!canRunBackgroundChecks(settings)) {
+    await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
+    return;
+  }
+
+  const interval = getSafeInterval(settings.notifications.checkIntervalMinutes);
+  const retryAfterMs = Number(result?.retryAfterMs) || 0;
+  const delayInMinutes = Math.max(retryAfterMs / 60000, 0.5);
+
+  await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
+    delayInMinutes,
+    periodInMinutes: interval,
+  });
+}
+
 async function scheduleVersionCheckAlarm() {
   await chrome.alarms.create(VERSION_CHECK_ALARM_NAME, {
     delayInMinutes: VERSION_CHECK_ALARM_PERIOD_MINUTES,
@@ -292,13 +321,14 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
   if (elapsedMinutes >= interval) {
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
     const checkResult = await runBackgroundCheck();
-    const retryAfterMs = Number(checkResult?.retryAfterMs) || 0;
-    const delayInMinutes = checkResult?.skipped && checkResult.reason === 'manual-quiet-window' && retryAfterMs > 0
-      ? Math.max(retryAfterMs / 60000, 0.5)
-      : interval;
+
+    if (isManualQuietWindowSkip(checkResult)) {
+      await scheduleManualQuietWindowRetry(checkResult);
+      return;
+    }
 
     await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-      delayInMinutes,
+      delayInMinutes: interval,
       periodInMinutes: interval,
     });
     return;
@@ -951,7 +981,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BACKGROUND_CHECK_ALARM_NAME) {
-    runBackgroundCheck();
+    (async () => {
+      const checkResult = await runBackgroundCheck();
+
+      if (isManualQuietWindowSkip(checkResult)) {
+        await scheduleManualQuietWindowRetry(checkResult);
+      }
+    })().catch((error) => {
+      console.warn('Unable to run background check alarm.', error);
+    });
     return;
   }
 
