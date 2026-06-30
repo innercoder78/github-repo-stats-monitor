@@ -333,6 +333,10 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   const manual = isManualRefreshSource(source);
   const coordination = await getRefreshCoordination();
 
+  if (manual && isFreshTimestamp(coordination.lastCompletedAt)) {
+    return { skipped: true, reason: 'completed-recently', source: coordination.lastCompletedBy || '' };
+  }
+
   if (manual && isFreshTimestamp(coordination.lastManualRequestCompletedAt)) {
     return { skipped: true, reason: 'completed-recently', source: coordination.lastManualRequestCompletedBy || '' };
   }

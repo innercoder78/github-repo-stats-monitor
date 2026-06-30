@@ -166,6 +166,45 @@ const {
 storageData.fullRefreshCoordination = {};
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
+let fullRefreshRunCount = 0;
+storageData.fullRefreshCoordination = {
+  lastCompletedAt: new Date(Date.now() - 20 * 1000).toISOString(),
+  lastCompletedBy: 'background',
+};
+const manualAfterBackgroundFresh = await runExclusiveFullRefresh('dashboard', async () => {
+  fullRefreshRunCount += 1;
+  return { fetchedAt: new Date().toISOString() };
+});
+assert.equal(manualAfterBackgroundFresh.skipped, true);
+assert.equal(manualAfterBackgroundFresh.reason, 'completed-recently');
+assert.equal(manualAfterBackgroundFresh.source, 'background');
+assert.equal(fullRefreshRunCount, 0);
+
+storageData.fullRefreshCoordination = {
+  lastCompletedAt: new Date(Date.now() - 61 * 1000).toISOString(),
+  lastCompletedBy: 'background',
+};
+const manualAfterBackgroundExpired = await runExclusiveFullRefresh('dashboard', async () => {
+  fullRefreshRunCount += 1;
+  return { fetchedAt: new Date().toISOString() };
+});
+assert.equal(manualAfterBackgroundExpired.skipped, false);
+assert.equal(fullRefreshRunCount, 1);
+assert.equal(storageData.fullRefreshCoordination.lastCompletedBy, 'dashboard');
+assert.ok(await getManualRefreshQuietWindowRemainingMs() > 45 * 1000);
+
+const manualAfterManualFresh = await runExclusiveFullRefresh('quick-summary', async () => {
+  fullRefreshRunCount += 1;
+  return { fetchedAt: new Date().toISOString() };
+});
+assert.equal(manualAfterManualFresh.skipped, true);
+assert.equal(manualAfterManualFresh.reason, 'completed-recently');
+assert.equal(manualAfterManualFresh.source, 'dashboard');
+assert.equal(fullRefreshRunCount, 1);
+
+storageData.fullRefreshCoordination = {};
+storageData[GITHUB_ACTIVITY_KEY] = {};
+storageSetCount = 0;
 const repoARefresh = await runExclusiveRepositoryRefresh('Owner/Repo-A', async () => ({ fetchedAt: '2026-06-25T13:00:00.000Z', repository: 'owner/repo-a' }));
 assert.equal(repoARefresh.skipped, false);
 assert.equal(await wasManualGitHubRequestRecentlyCompleted(), false);
