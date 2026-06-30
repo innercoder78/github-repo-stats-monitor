@@ -294,7 +294,7 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
     const checkResult = await runBackgroundCheck();
     const retryAfterMs = Number(checkResult?.retryAfterMs) || 0;
     const delayInMinutes = checkResult?.skipped && checkResult.reason === 'manual-quiet-window' && retryAfterMs > 0
-      ? Math.max(retryAfterMs / 60000, 1 / 60)
+      ? Math.max(retryAfterMs / 60000, 0.5)
       : interval;
 
     await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
