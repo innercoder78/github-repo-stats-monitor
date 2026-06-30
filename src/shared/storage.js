@@ -64,6 +64,7 @@ export const DEFAULT_VERSION_CHECK_STATUS = Object.freeze({
 const DEFAULT_QUICK_SUMMARY_STATUS = Object.freeze({
   manualRefreshAt: '',
 });
+const DEFAULT_LAST_BACKGROUND_CHECK_AT = '';
 
 
 function getChromeStorage() {
@@ -625,6 +626,47 @@ function normalizeQuickSummaryStatus(status) {
   return {
     manualRefreshAt: typeof status?.manualRefreshAt === 'string' ? status.manualRefreshAt : '',
   };
+}
+
+
+function normalizeTimestamp(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return Number.isFinite(Date.parse(value)) ? value : '';
+}
+
+export function getLastBackgroundCheckAt() {
+  return new Promise((resolve, reject) => {
+    getChromeStorage().get({ lastBackgroundCheckAt: DEFAULT_LAST_BACKGROUND_CHECK_AT }, (storedData) => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(normalizeTimestamp(storedData.lastBackgroundCheckAt));
+    });
+  });
+}
+
+export function saveLastBackgroundCheckAt(timestamp) {
+  const lastBackgroundCheckAt = normalizeTimestamp(timestamp);
+
+  return new Promise((resolve, reject) => {
+    getChromeStorage().set({ lastBackgroundCheckAt }, () => {
+      const error = chrome.runtime.lastError;
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(lastBackgroundCheckAt);
+    });
+  });
 }
 
 export function getQuickSummaryStatus() {

@@ -2,6 +2,7 @@ import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/git
 import { runExclusiveFullRefresh, wasManualFullRefreshRecentlyCompleted, wasManualGitHubRequestRecentlyCompleted } from './shared/refresh-stats.js';
 import {
   getAccountStats,
+  getLastBackgroundCheckAt,
   getLatestStats,
   getNotificationBaselines,
   getPendingActivity,
@@ -9,6 +10,7 @@ import {
   getViewedBaselines,
   normalizeNotificationSettings,
   saveAccountStats,
+  saveLastBackgroundCheckAt,
   saveLatestStats,
   saveNotificationBaselines,
   savePendingActivity,
@@ -242,7 +244,7 @@ async function attemptVersionCheck() {
   }
 }
 
-async function scheduleBackgroundCheckAlarm() {
+async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
   let settings;
 
   try {
@@ -258,8 +260,47 @@ async function scheduleBackgroundCheckAlarm() {
   }
 
   const interval = getSafeInterval(settings.notifications.checkIntervalMinutes);
+
+  if (!catchUpIfDue) {
+    await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
+      delayInMinutes: interval,
+      periodInMinutes: interval,
+    });
+    return;
+  }
+
+  let lastBackgroundCheckAt = '';
+
+  try {
+    lastBackgroundCheckAt = await getLastBackgroundCheckAt();
+  } catch (error) {
+    console.warn('Unable to read the last successful background check timestamp.', error);
+  }
+
+  const lastCheckTime = Date.parse(lastBackgroundCheckAt);
+
+  if (!Number.isFinite(lastCheckTime)) {
+    await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
+      delayInMinutes: interval,
+      periodInMinutes: interval,
+    });
+    return;
+  }
+
+  const elapsedMinutes = Math.max(0, (Date.now() - lastCheckTime) / 60000);
+
+  if (elapsedMinutes >= interval) {
+    await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
+    await runBackgroundCheck();
+    await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
+      delayInMinutes: interval,
+      periodInMinutes: interval,
+    });
+    return;
+  }
+
   await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-    delayInMinutes: interval,
+    delayInMinutes: interval - elapsedMinutes,
     periodInMinutes: interval,
   });
 }
@@ -636,6 +677,10 @@ async function runBackgroundCheckNow() {
   }
   await showActivityNotification(settings, detectedChanges, shouldCompare);
 
+  if (hadSuccessfulCheck) {
+    await saveLastBackgroundCheckAt(checkedAt);
+  }
+
   return { fetchedAt: checkedAt };
 }
 
@@ -859,7 +904,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  scheduleBackgroundCheckAlarm();
+  scheduleBackgroundCheckAlarm({ catchUpIfDue: true });
   scheduleVersionCheckAlarm();
   attemptVersionCheck();
 });
