@@ -160,6 +160,7 @@ const {
   refreshStatsCache,
   runExclusiveRepositoryRefresh,
   wasManualGitHubRequestRecentlyCompleted,
+  getManualRefreshQuietWindowRemainingMs,
 } = await import('../src/shared/refresh-stats.js');
 
 storageData.fullRefreshCoordination = {};
@@ -243,6 +244,20 @@ const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', as
 assert.equal(fullRefreshAfterRepository.skipped, false);
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt, '2026-06-25T13:00:04.000Z');
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedBy, 'dashboard');
+
+storageData.fullRefreshCoordination = {
+  lastCompletedAt: new Date(Date.now() - 20 * 1000).toISOString(),
+  lastCompletedBy: 'dashboard',
+  lastManualRequestCompletedAt: new Date(Date.now() - 10 * 1000).toISOString(),
+  lastManualRequestCompletedBy: 'quick-summary',
+};
+let quietWindowRemainingMs = await getManualRefreshQuietWindowRemainingMs();
+assert.ok(quietWindowRemainingMs > 45 * 1000);
+assert.ok(quietWindowRemainingMs <= 60 * 1000);
+storageData.fullRefreshCoordination.lastManualRequestCompletedAt = new Date(Date.now() - 61 * 1000).toISOString();
+storageData.fullRefreshCoordination.lastCompletedAt = new Date(Date.now() - 61 * 1000).toISOString();
+quietWindowRemainingMs = await getManualRefreshQuietWindowRemainingMs();
+assert.equal(quietWindowRemainingMs, 0);
 
 const { buildGitHubRequestErrorMessage, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } = await import('../src/shared/github-api.js');
 
