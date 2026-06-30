@@ -86,6 +86,15 @@ function isFreshTimestamp(value, freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
   return Number.isFinite(timestamp) && Date.now() - timestamp < freshnessMs;
 }
 
+function getFreshTimestampRemainingMs(value, freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const timestamp = Date.parse(value || '');
+  if (!Number.isFinite(timestamp)) {
+    return 0;
+  }
+
+  return Math.max(0, freshnessMs - (Date.now() - timestamp));
+}
+
 function getRecentCompletedRepositoryRefreshes(coordination, freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
   const completedRepositoryRefreshes = coordination?.completedRepositoryRefreshes && typeof coordination.completedRepositoryRefreshes === 'object'
     ? coordination.completedRepositoryRefreshes
@@ -161,6 +170,18 @@ export async function wasManualGitHubRequestRecentlyCompleted(freshnessMs = FULL
   const coordination = await getRefreshCoordination();
   return isManualRefreshSource(coordination.lastManualRequestCompletedBy)
     && isFreshTimestamp(coordination.lastManualRequestCompletedAt, freshnessMs);
+}
+
+export async function getManualRefreshQuietWindowRemainingMs(freshnessMs = FULL_REFRESH_FRESHNESS_MS) {
+  const coordination = await getRefreshCoordination();
+  const completedRemainingMs = isManualRefreshSource(coordination.lastCompletedBy)
+    ? getFreshTimestampRemainingMs(coordination.lastCompletedAt, freshnessMs)
+    : 0;
+  const manualRequestRemainingMs = isManualRefreshSource(coordination.lastManualRequestCompletedBy)
+    ? getFreshTimestampRemainingMs(coordination.lastManualRequestCompletedAt, freshnessMs)
+    : 0;
+
+  return Math.max(completedRemainingMs, manualRequestRemainingMs);
 }
 
 export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) {

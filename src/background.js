@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
-import { runExclusiveFullRefresh, wasManualFullRefreshRecentlyCompleted, wasManualGitHubRequestRecentlyCompleted } from './shared/refresh-stats.js';
+import { getManualRefreshQuietWindowRemainingMs, runExclusiveFullRefresh } from './shared/refresh-stats.js';
 import {
   getAccountStats,
   getLastBackgroundCheckAt,
@@ -291,9 +291,14 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
 
   if (elapsedMinutes >= interval) {
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
-    await runBackgroundCheck();
+    const checkResult = await runBackgroundCheck();
+    const retryAfterMs = Number(checkResult?.retryAfterMs) || 0;
+    const delayInMinutes = checkResult?.skipped && checkResult.reason === 'manual-quiet-window' && retryAfterMs > 0
+      ? Math.max(retryAfterMs / 60000, 1 / 60)
+      : interval;
+
     await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-      delayInMinutes: interval,
+      delayInMinutes,
       periodInMinutes: interval,
     });
     return;
@@ -580,14 +585,17 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
 }
 
 async function runBackgroundCheck() {
-  if (await wasManualFullRefreshRecentlyCompleted() || await wasManualGitHubRequestRecentlyCompleted()) {
-    return;
+  const manualQuietWindowRemainingMs = await getManualRefreshQuietWindowRemainingMs();
+  if (manualQuietWindowRemainingMs > 0) {
+    return { skipped: true, reason: 'manual-quiet-window', retryAfterMs: manualQuietWindowRemainingMs };
   }
 
   const coordinatedCheck = await runExclusiveFullRefresh('background', runBackgroundCheckNow);
   if (coordinatedCheck.skipped) {
-    return;
+    return { skipped: true, reason: coordinatedCheck.reason || 'running' };
   }
+
+  return { skipped: false };
 }
 
 async function runBackgroundCheckNow() {
