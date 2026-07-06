@@ -6,7 +6,7 @@ It is designed for manual review, optional background checks, a cleaner card-bas
 
 ## Current Version
 
-3.0
+3.1
 
 ## What It Shows
 
@@ -146,7 +146,7 @@ The Dashboard reads saved values when opened and does not refresh automatically 
 
 The Quick Summary popup reads saved values when opened. It can also refresh saved repository stats, and the popup shows progress while repositories refresh.
 
-Full refresh and per-repository refresh do not run at the same time. If a repository was refreshed very recently, a full refresh may use that fresh saved data instead of fetching that same repository again.
+Full refresh and per-repository refresh do not run at the same time. Manual and automatic full refreshes avoid running less than about 60 seconds apart. If a repository was refreshed very recently, a full refresh may use that fresh saved data instead of fetching that same repository again.
 
 If some data cannot be refreshed, the extension shows last saved values where available.
 
@@ -154,7 +154,7 @@ GitHub traffic-related data follows GitHub's traffic window, currently the recen
 
 ## Background Checks and Notifications
 
-Background checks are optional and run periodically only when enabled in Settings. You can choose the check interval and the tracked stats: Stars, Forks, Repo Watchers, and Account Followers.
+Background checks are optional periodic checks and run only when enabled in Settings while Chrome is running. You can choose the check interval and the tracked stats: Stars, Forks, Repo Watchers, and Account Followers. If a background check became due while Chrome was closed, the extension catches up on the next browser startup.
 
 Alerts can be sent by system notification, badge count on the extension icon, or both. Background checks can set badge counts and system notifications for tracked changes. Badge counts represent places with unreviewed tracked activity, including account follower activity and repositories with tracked repository-stat activity.
 
@@ -162,7 +162,7 @@ Background checks compare saved baselines against newly fetched values. The Quic
 
 Opening Quick Summary first does not prevent the Dashboard from showing the same pending activity later, and opening the Dashboard first does not prevent the Quick Summary from showing the same pending activity later. Pending activity is cleared only after the relevant activity has been shown in both places. Badge activity is still cleared or reduced when reviewed.
 
-These are periodic checks on an interval, not real-time updates.
+These are periodic checks on an interval, not real-time updates. If a background check is due during the manual-refresh quiet window, it retries shortly after that quiet window instead of skipping a full interval.
 
 ## New-Version Reminder
 
