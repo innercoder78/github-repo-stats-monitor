@@ -6,7 +6,7 @@ It is designed for manual review, optional background checks, a cleaner card-bas
 
 ## Current Version
 
-3.1
+3.1.1
 
 ## What It Shows
 
@@ -166,7 +166,7 @@ These are periodic checks on an interval, not real-time updates. If a background
 
 ## New-Version Reminder
 
-The extension can show a new-version reminder when a newer version is available. The reminder appears in Quick Summary and Settings and opens the latest GitHub release page.
+The extension can show a new-version reminder when a newer version is available. The reminder appears in Quick Summary and Settings and opens the latest GitHub release page. Version 3.1.1 fixes a stale update-reminder display after upgrading.
 
 The new-version reminder is manual. It does not install updates and does not update the extension. It only opens the latest GitHub release so you can update manually.
 
