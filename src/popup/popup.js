@@ -15,7 +15,7 @@ import { closeExtensionPage } from '../shared/close-page.js';
 import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
-import { openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
+import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -141,7 +141,7 @@ function renderPopupStatusLines(lines) {
 }
 
 function renderUpdateCard() {
-  const status = currentVersionCheckStatus || {};
+  const status = getEffectiveVersionCheckStatus(currentVersionCheckStatus || {});
   const showUpdateCard = shouldShowUpdateAvailable(status);
   updateCard.hidden = !showUpdateCard;
   if (!showUpdateCard) return;

@@ -6,7 +6,7 @@ import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { normalizeDisplayPreferences } from '../shared/display-format.js';
 import { mapWithConcurrency } from '../shared/refresh-stats.js';
-import { openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
+import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
 import { runTrackedGitHubActivity } from '../shared/github-activity.js';
 
 const MAX_REPOSITORIES = 20;
@@ -65,7 +65,7 @@ applySavedAppearance();
 viewLatestVersionButton.addEventListener('click', () => openLatestReleasePage(currentVersionCheckStatus || {}));
 
 function renderExtensionVersion(status) {
-  currentVersionCheckStatus = status || {};
+  currentVersionCheckStatus = getEffectiveVersionCheckStatus(status || {});
   const showUpdateAvailable = shouldShowUpdateAvailable(currentVersionCheckStatus);
   const localVersion = String(currentVersionCheckStatus.localVersion || chrome.runtime.getManifest()?.version || 'unknown').trim();
   const latestVersion = String(currentVersionCheckStatus.latestVersion || '').trim();

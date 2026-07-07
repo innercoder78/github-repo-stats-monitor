@@ -44,6 +44,27 @@ export function getLocalManifestVersion() {
   return String(chrome.runtime.getManifest()?.version || '').trim();
 }
 
+export function getEffectiveVersionCheckStatus(status) {
+  const versionStatus = status && typeof status === 'object' ? status : {};
+  const localVersion = getLocalManifestVersion();
+  const latestVersion = typeof versionStatus.latestVersion === 'string' ? versionStatus.latestVersion.trim() : '';
+
+  return {
+    checkedAt: typeof versionStatus.checkedAt === 'string' ? versionStatus.checkedAt : '',
+    localVersion,
+    latestVersion,
+    updateAvailable: Boolean(latestVersion) && compareVersions(latestVersion, localVersion) > 0,
+    latestReleaseUrl: typeof versionStatus.latestReleaseUrl === 'string' && versionStatus.latestReleaseUrl
+      ? versionStatus.latestReleaseUrl
+      : LATEST_RELEASE_URL,
+    error: typeof versionStatus.error === 'string' ? versionStatus.error : '',
+  };
+}
+
+function hasLocalVersionMismatch(status) {
+  return String(status?.localVersion || '').trim() !== getLocalManifestVersion();
+}
+
 export function isVersionCheckStatusStale(status, now = Date.now()) {
   const checkedAt = Date.parse(status?.checkedAt || '');
   return !Number.isFinite(checkedAt) || now - checkedAt >= VERSION_CHECK_CACHE_DURATION_MS;
@@ -107,14 +128,20 @@ export function buildFailedVersionCheckStatus(previousStatus, localVersion, erro
 
 export async function shouldRunVersionCheck() {
   const [status, activity] = await Promise.all([getVersionCheckStatus(), getGitHubActivityStatus()]);
-  return isVersionCheckStatusStale(status) && hasQuietWindowPassed(activity);
+  return (isVersionCheckStatusStale(status) || hasLocalVersionMismatch(status)) && hasQuietWindowPassed(activity);
 }
 
 export async function runVersionCheck() {
   const previousStatus = await getVersionCheckStatus();
   const localVersion = getLocalManifestVersion();
 
-  if (!isVersionCheckStatusStale(previousStatus)) return { checked: false, reason: 'cache-fresh' };
+  if (!isVersionCheckStatusStale(previousStatus)) {
+    if (hasLocalVersionMismatch(previousStatus)) {
+      const status = await saveVersionCheckStatus(getEffectiveVersionCheckStatus(previousStatus));
+      return { checked: false, reason: 'reconciled-local-version', status };
+    }
+    return { checked: false, reason: 'cache-fresh' };
+  }
   if (!hasQuietWindowPassed(await getGitHubActivityStatus())) return { checked: false, reason: 'not-quiet' };
 
   try {
