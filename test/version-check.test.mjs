@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 const storageData = {};
 let manifestVersion = '2.3';
 let storageSetCount = 0;
+let fetchCallCount = 0;
 
 globalThis.chrome = {
   runtime: {
@@ -30,10 +31,13 @@ globalThis.chrome = {
   tabs: { create: () => {} },
 };
 
-globalThis.fetch = async () => ({
-  ok: true,
-  json: async () => ({ content: btoa(JSON.stringify({ version: '2.3.1' })) }),
-});
+globalThis.fetch = async () => {
+  fetchCallCount += 1;
+  return {
+    ok: true,
+    json: async () => ({ content: btoa(JSON.stringify({ version: '2.3.1' })) }),
+  };
+};
 
 const {
   compareVersions,
@@ -41,7 +45,10 @@ const {
   buildVersionCheckStatus,
   fetchRemoteManifestVersion,
   isVersionCheckStatusStale,
+  getEffectiveVersionCheckStatus,
   hasQuietWindowPassed,
+  runVersionCheck,
+  shouldRunVersionCheck,
   shouldShowUpdateAvailable,
   VERSION_CHECK_CACHE_DURATION_MS,
   VERSION_CHECK_QUIET_WINDOW_MS,
@@ -98,6 +105,47 @@ const failedCaughtUp = buildFailedVersionCheckStatus(
 assert.equal(failedCaughtUp.localVersion, '2.3');
 assert.equal(failedCaughtUp.latestVersion, '2.3');
 assert.equal(failedCaughtUp.updateAvailable, false);
+
+manifestVersion = '3.1';
+const staleStoredLocalVersion = {
+  checkedAt: new Date().toISOString(),
+  localVersion: '3.0',
+  latestVersion: '3.1',
+  updateAvailable: true,
+  latestReleaseUrl: 'https://example.test/release',
+  error: '',
+};
+const effectiveCaughtUp = getEffectiveVersionCheckStatus(staleStoredLocalVersion);
+assert.equal(effectiveCaughtUp.localVersion, '3.1');
+assert.equal(effectiveCaughtUp.latestVersion, '3.1');
+assert.equal(effectiveCaughtUp.updateAvailable, false);
+assert.equal(shouldShowUpdateAvailable(effectiveCaughtUp), false);
+
+const effectiveStillBehind = getEffectiveVersionCheckStatus({
+  ...staleStoredLocalVersion,
+  latestVersion: '3.2',
+});
+assert.equal(effectiveStillBehind.localVersion, '3.1');
+assert.equal(effectiveStillBehind.latestVersion, '3.2');
+assert.equal(effectiveStillBehind.updateAvailable, true);
+assert.equal(shouldShowUpdateAvailable(effectiveStillBehind), true);
+
+storageData.versionCheckStatus = staleStoredLocalVersion;
+storageData[GITHUB_ACTIVITY_KEY] = {};
+storageSetCount = 0;
+fetchCallCount = 0;
+assert.equal(await shouldRunVersionCheck(), true);
+const reconciledVersionCheck = await runVersionCheck();
+assert.equal(reconciledVersionCheck.checked, false);
+assert.equal(reconciledVersionCheck.reason, 'reconciled-local-version');
+assert.equal(reconciledVersionCheck.status.localVersion, '3.1');
+assert.equal(reconciledVersionCheck.status.updateAvailable, false);
+assert.equal(storageData.versionCheckStatus.localVersion, '3.1');
+assert.equal(storageData.versionCheckStatus.updateAvailable, false);
+assert.equal(storageSetCount, 1);
+assert.equal(fetchCallCount, 0);
+assert.equal(await shouldRunVersionCheck(), false);
+manifestVersion = '2.3';
 
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
