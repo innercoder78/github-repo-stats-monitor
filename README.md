@@ -189,3 +189,18 @@ Reset removes the saved token, configured repositories, notification settings an
 This extension is not published in the Chrome Web Store. Chrome will not auto-update it like a Web Store extension.
 
 The new-version reminder does not install updates. It only opens the latest GitHub release so you can update manually.
+
+## Screenshots
+
+I'm not going to post a whole bunch of screenshots but just a few so you can get an idea of what it looks like.
+
+Here is the Dashboard, in both Dark Mode and Light Mode (you can toggle Dark or Light Mode in Settings):
+
+<img width="1181" height="1034" alt="Dashboard - dark" src="https://github.com/user-attachments/assets/8f63a76a-3f49-43d4-8f41-967d8fed8641" />
+
+<img width="1184" height="1040" alt="Dashboard - light" src="https://github.com/user-attachments/assets/087f7116-cf9c-4a96-9bcf-678337efa588" />
+
+And here is the Quick Summary that lets you see the combined stats of all repos at a glance:
+
+<img width="372" height="630" alt="Quick Summary" src="https://github.com/user-attachments/assets/99c3dacb-4c7f-48cb-89ad-6edca0c35a86" />
+
