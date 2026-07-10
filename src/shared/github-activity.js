@@ -60,7 +60,7 @@ function getStoredActiveOperations(activity) {
   return {};
 }
 
-function normalizeActivityStatus(status, now = Date.now()) {
+function normalizeActivityStatus(status, now = Date.now(), { overlayLiveOperations = true } = {}) {
   const activity = status && typeof status === 'object' ? status : {};
   const activeOperations = {};
 
@@ -71,11 +71,13 @@ function normalizeActivityStatus(status, now = Date.now()) {
     }
   });
 
-  liveActivityOperations.forEach((operation, token) => {
-    if (token && !activeOperations[token]) {
-      activeOperations[token] = { ...operation };
-    }
-  });
+  if (overlayLiveOperations) {
+    liveActivityOperations.forEach((operation, token) => {
+      if (token && !activeOperations[token]) {
+        activeOperations[token] = { ...operation };
+      }
+    });
+  }
 
   return {
     active: Object.keys(activeOperations).length > 0,
@@ -84,6 +86,19 @@ function normalizeActivityStatus(status, now = Date.now()) {
     lastFinishedSource: typeof activity.lastFinishedSource === 'string' ? activity.lastFinishedSource : '',
     quietUntil: typeof activity.quietUntil === 'string' ? activity.quietUntil : '',
   };
+}
+
+function getPersistedGitHubActivityStatus() {
+  return new Promise((resolve, reject) => {
+    getStorageArea().get({ [GITHUB_ACTIVITY_KEY]: {} }, (stored) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(normalizeActivityStatus(stored[GITHUB_ACTIVITY_KEY], Date.now(), { overlayLiveOperations: false }));
+    });
+  });
 }
 
 export function getGitHubActivityStatus() {
@@ -116,9 +131,9 @@ function saveGitHubActivityStatus(status) {
 
 async function updateGitHubActivityStatus(updater) {
   const updateTask = activityStatusUpdateQueue.then(async () => {
-    const existingStatus = await getGitHubActivityStatus();
+    const existingStatus = await getPersistedGitHubActivityStatus();
     const updatedStatus = updater(existingStatus);
-    return saveGitHubActivityStatus(normalizeActivityStatus(updatedStatus));
+    return saveGitHubActivityStatus(normalizeActivityStatus(updatedStatus, Date.now(), { overlayLiveOperations: false }));
   });
 
   activityStatusUpdateQueue = updateTask.catch(() => {});

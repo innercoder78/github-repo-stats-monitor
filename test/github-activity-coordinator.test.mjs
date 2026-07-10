@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 const storageData = {};
 let getError = null;
 let setError = null;
+let setCallCount = 0;
+let failSetCallNumber = 0;
 let now = Date.parse('2026-07-10T00:00:00.000Z');
 const realDateNow = Date.now;
 Date.now = () => now;
@@ -29,8 +31,9 @@ globalThis.chrome = {
         callback(result);
       },
       set(values, callback) {
-        if (setError) {
-          chrome.runtime.lastError = setError;
+        setCallCount += 1;
+        if (setError || (failSetCallNumber && setCallCount === failSetCallNumber)) {
+          chrome.runtime.lastError = setError || new Error(`write ${setCallCount} failed`);
           callback?.();
           chrome.runtime.lastError = null;
           return;
@@ -57,6 +60,8 @@ function reset() {
   Object.keys(storageData).forEach((key) => delete storageData[key]);
   getError = null;
   setError = null;
+  setCallCount = 0;
+  failSetCallNumber = 0;
   now = Date.parse('2026-07-10T00:00:00.000Z');
   __resetGitHubActivityLiveOperationsForTest();
 }
@@ -122,6 +127,26 @@ await assert.rejects(runTrackedGitHubActivity('connection-test', async () => {
 }), /task failed/, 'cleanup failure does not replace original task error');
 assert.equal(__getGitHubActivityLiveOperationCountForTest(), 0);
 setError = null;
+
+
+reset();
+failSetCallNumber = 2;
+const overlappingA = markGitHubActivityStarted('refresh');
+const overlappingB = markGitHubActivityStarted('repository-import');
+assert.equal(__getGitHubActivityLiveOperationCountForTest(), 2, 'overlapping starts reserve both operations before storage completes');
+const admittedA = await overlappingA;
+await assert.rejects(overlappingB, /write 2 failed/);
+assert.equal(__getGitHubActivityLiveOperationCountForTest(), 1, 'failed overlapping start releases only its own live reservation');
+status = await getGitHubActivityStatus();
+assert.equal(status.active, true);
+assert.ok(status.activeOperations[admittedA.token], 'successful overlapping start remains active');
+assert.equal(Object.keys(status.activeOperations).length, 1, 'failed overlapping start is absent from effective activity');
+assert.equal(Object.keys(storageData[GITHUB_ACTIVITY_KEY].activeOperations).length, 1, 'failed overlapping start is absent from persisted activity');
+assert.ok(storageData[GITHUB_ACTIVITY_KEY].activeOperations[admittedA.token]);
+await markGitHubActivityFinished(admittedA, 'refresh');
+status = await getGitHubActivityStatus();
+assert.equal(status.active, false, 'no false activity remains after the successful operation finishes');
+assert.deepEqual(storageData[GITHUB_ACTIVITY_KEY].activeOperations, {});
 
 reset();
 setError = new Error('first update failed');
