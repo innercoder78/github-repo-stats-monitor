@@ -85,6 +85,7 @@ globalThis.fetch = async (url) => {
 
 const {
   BACKGROUND_CHECK_ALARM_NAME,
+  BACKGROUND_CHECK_RETRY_ALARM_NAME,
   __refreshCoordinationTest,
 } = await import('../src/background.js');
 const { runExclusiveFullRefresh } = await import('../src/shared/refresh-stats.js');
@@ -390,4 +391,44 @@ storageData.notifications = {
 storageData.lastBackgroundCheckAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 __refreshCoordinationTest.setBackgroundCheckForTest(async () => ({ skipped: true, reason: 'manual-quiet-window', retryAfterMs: 45000 }));
 await __refreshCoordinationTest.scheduleBackgroundCheckAlarm({ catchUpIfDue: true });
-assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 0.75, periodInMinutes: 30 });
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 30, periodInMinutes: 30 });
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_RETRY_ALARM_NAME), { delayInMinutes: 0.75 });
+assert.equal(Array.from(alarms.keys()).filter((name) => name === BACKGROUND_CHECK_RETRY_ALARM_NAME).length, 1);
+
+resetState();
+let versionFetchCalls = 0;
+globalThis.fetch = async () => {
+  versionFetchCalls += 1;
+  return { ok: false, status: 500, headers: { get: () => null }, json: async () => ({}) };
+};
+storageData.versionCheckStatus = { checkedAt: '', localVersion: '3.1.1', latestVersion: '3.1.2', updateAvailable: true, latestReleaseUrl: '', error: '' };
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(versionFetchCalls, 3);
+assert.deepEqual(alarms.get('githubRepoStatsMonitorVersionCheck.retry'), { delayInMinutes: 5 });
+assert.equal(storageData.versionCheckRetryState.attempts, 1);
+
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(storageData.versionCheckRetryState.attempts, 2);
+assert.deepEqual(alarms.get('githubRepoStatsMonitorVersionCheck.retry'), { delayInMinutes: 5 }, 'failed version check retry alarm is replaced, not duplicated');
+assert.equal(Array.from(alarms.keys()).filter((name) => name === 'githubRepoStatsMonitorVersionCheck.retry').length, 1);
+
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(storageData.versionCheckRetryState.attempts, 0, 'retry state clears after exhaustion');
+assert.equal(alarms.has('githubRepoStatsMonitorVersionCheck.retry'), false, 'retry alarm clears after exhaustion');
+
+resetState();
+versionFetchCalls = 0;
+globalThis.fetch = async () => {
+  versionFetchCalls += 1;
+  return { ok: true, json: async () => ({ content: btoa(JSON.stringify({ version: '3.1.2' })) }) };
+};
+storageData.versionCheckStatus = { checkedAt: '', localVersion: '3.1.1', latestVersion: '', updateAvailable: false, latestReleaseUrl: '', error: '' };
+storageData.versionCheckRetryState = { attempts: 2 };
+alarms.set('githubRepoStatsMonitorVersionCheck.retry', { delayInMinutes: 5 });
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(storageData.versionCheckRetryState.attempts, 0, 'successful version check resets retry state');
+assert.equal(alarms.has('githubRepoStatsMonitorVersionCheck.retry'), false, 'successful version check clears retry alarm');

@@ -73,6 +73,9 @@ export async function fetchGitHub(url, options = {}) {
   for (let attempt = 1; attempt <= GITHUB_REQUEST_MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await runLimitedGitHubFetch(url, options);
+      if (!response.ok) {
+        await recordRateLimitQuietWindow(response, await readClonedGitHubErrorMessage(response));
+      }
       if (!retryable || attempt >= GITHUB_REQUEST_MAX_ATTEMPTS || !isRetryableResponse(response)) {
         return response;
       }
@@ -139,6 +142,16 @@ async function readGitHubErrorBody(response) {
   return { message: '' };
 }
 
+function isRateLimitResponse(response, bodyMessage = '') {
+  const status = Number(response?.status);
+  const rateLimit = getGitHubRateLimitHeaders(response?.headers);
+  const remaining = Number(rateLimit.remaining);
+  return status === 429
+    || Boolean(rateLimit.retryAfter)
+    || (status === 403 && Number.isFinite(remaining) && remaining === 0)
+    || ((status === 403 || status === 429) && (isPrimaryRateLimitMessage(bodyMessage) || isSecondaryRateLimitMessage(bodyMessage)));
+}
+
 function getRateLimitQuietUntil(headers) {
   const rateLimit = getGitHubRateLimitHeaders(headers);
   const retryAfterSeconds = Number(rateLimit.retryAfter);
@@ -156,8 +169,17 @@ function getRateLimitQuietUntil(headers) {
   return '';
 }
 
-async function recordRateLimitQuietWindow(response) {
-  if (![403, 429].includes(Number(response?.status))) return;
+async function readClonedGitHubErrorMessage(response) {
+  if (!response || typeof response.clone !== 'function') return '';
+  try {
+    return (await readGitHubErrorBody(response.clone())).message;
+  } catch (error) {
+    return '';
+  }
+}
+
+async function recordRateLimitQuietWindow(response, bodyMessage = '') {
+  if (!isRateLimitResponse(response, bodyMessage)) return;
   const quietUntil = getRateLimitQuietUntil(response?.headers);
   if (!quietUntil) return;
   try {
@@ -272,7 +294,7 @@ export function buildGitHubRequestErrorMessage({ status, context = 'general', he
 
 async function getGitHubRequestErrorMessage(response, context) {
   const body = await readGitHubErrorBody(response);
-  await recordRateLimitQuietWindow(response);
+  await recordRateLimitQuietWindow(response, body.message);
   return buildGitHubRequestErrorMessage({
     status: response?.status,
     context,

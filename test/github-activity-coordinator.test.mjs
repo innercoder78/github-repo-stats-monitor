@@ -48,9 +48,11 @@ globalThis.chrome = {
 const {
   GITHUB_ACTIVITY_KEY,
   GITHUB_ACTIVITY_STALE_MS,
+  GITHUB_ACTIVITY_QUIET_WINDOW_MS,
   __getGitHubActivityLiveOperationCountForTest,
   __resetGitHubActivityLiveOperationsForTest,
   getGitHubActivityStatus,
+  getGitHubQuietWindowRemainingMs,
   markGitHubActivityFinished,
   markGitHubActivityStarted,
   runTrackedGitHubActivity,
@@ -155,5 +157,33 @@ setError = null;
 const recovered = await markGitHubActivityStarted('version-check');
 assert.ok(recovered.token, 'mutation queue recovers after rejected update');
 await markGitHubActivityFinished(recovered, 'version-check');
+
+
+reset();
+const shortOperation = await markGitHubActivityStarted('quick-summary');
+now += 1000;
+await markGitHubActivityFinished(shortOperation, 'quick-summary');
+status = await getGitHubActivityStatus();
+let remainingMs = getGitHubQuietWindowRemainingMs(status, now);
+assert.ok(remainingMs <= GITHUB_ACTIVITY_QUIET_WINDOW_MS && remainingMs > GITHUB_ACTIVITY_QUIET_WINDOW_MS - 1000, 'short operation leaves a two-minute quiet window');
+assert.ok(remainingMs < 3 * 60 * 1000, 'short operation does not leave a thirty-minute quiet window');
+
+reset();
+storageData[GITHUB_ACTIVITY_KEY] = { quietUntil: new Date(now + 15 * 60 * 1000).toISOString() };
+const rateLimitedOperation = await markGitHubActivityStarted('dashboard');
+assert.equal(storageData[GITHUB_ACTIVITY_KEY].quietUntil, new Date(now + 15 * 60 * 1000).toISOString(), 'start preserves but does not extend a longer quiet window');
+now += 1000;
+await markGitHubActivityFinished(rateLimitedOperation, 'dashboard');
+status = await getGitHubActivityStatus();
+assert.equal(status.quietUntil, new Date(Date.parse('2026-07-10T00:15:00.000Z')).toISOString(), 'normal finish does not shorten a longer rate-limit quiet window');
+
+reset();
+const activeOperation = await markGitHubActivityStarted('background');
+remainingMs = getGitHubQuietWindowRemainingMs(await getGitHubActivityStatus(), now);
+now += 5 * 60 * 1000;
+const laterRemainingMs = getGitHubQuietWindowRemainingMs(await getGitHubActivityStatus(), now);
+assert.ok(laterRemainingMs < remainingMs, 'active-operation remaining time decreases instead of resetting on read');
+assert.ok(laterRemainingMs <= GITHUB_ACTIVITY_STALE_MS - 5 * 60 * 1000);
+await markGitHubActivityFinished(activeOperation, 'background');
 
 Date.now = realDateNow;

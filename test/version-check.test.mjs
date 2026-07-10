@@ -410,6 +410,52 @@ await assert.rejects(
   /Traffic data unavailable\. Check that your token has Administration: Read-only permission for this repository\./,
 );
 
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 403,
+  headers: createHeaders({ 'x-ratelimit-remaining': '8', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 900) }),
+  json: async () => ({ message: 'Resource not accessible by personal access token' }),
+});
+await assert.rejects(fetchRepositoryTrafficViews('owner/repo-a', 'token'), /Traffic data unavailable/);
+status = await getGitHubActivityStatus();
+assert.equal(status.quietUntil || '', '', 'permission 403 does not extend the quiet window');
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 403,
+  headers: createHeaders({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 900) }),
+  json: async () => ({ message: 'API rate limit exceeded' }),
+});
+await assert.rejects(fetchRepositoryTrafficViews('owner/repo-a', 'token'), /GitHub API rate limit reached/);
+status = await getGitHubActivityStatus();
+assert.ok(Date.parse(status.quietUntil) > Date.now(), 'primary rate-limit 403 extends quiet window');
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 429,
+  headers: createHeaders({ 'retry-after': '120', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 900) }),
+  json: async () => ({ message: 'Too many requests' }),
+});
+await assert.rejects(fetchRemoteManifestVersion(), /Remote manifest request failed with status 429/);
+status = await getGitHubActivityStatus();
+const retryAfterQuietMs = Date.parse(status.quietUntil) - Date.now();
+assert.ok(retryAfterQuietMs > 115000 && retryAfterQuietMs <= 120000, 'Retry-After takes precedence over X-RateLimit-Reset');
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 429,
+  headers: createHeaders({ 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 600) }),
+  json: async () => ({ message: 'rate limited' }),
+});
+await assert.rejects(fetchRemoteManifestVersion(), /Remote manifest request failed with status 429/);
+status = await getGitHubActivityStatus();
+assert.ok(Date.parse(status.quietUntil) > Date.now(), 'version-check 429 records a quiet window');
+
 globalThis.fetch = async () => {
   throw new TypeError('Failed to fetch');
 };

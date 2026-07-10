@@ -36,7 +36,10 @@ const SETTINGS_GITHUB_ACTIONS = Object.freeze({
 });
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
 const VERSION_CHECK_RETRY_ALARM_NAME = `${VERSION_CHECK_ALARM_NAME}.retry`;
-const BACKGROUND_CHECK_RETRY_ALARM_NAME = `${BACKGROUND_CHECK_ALARM_NAME}.retry`;
+export const BACKGROUND_CHECK_RETRY_ALARM_NAME = `${BACKGROUND_CHECK_ALARM_NAME}.retry`;
+const VERSION_CHECK_RETRY_STATE_KEY = 'versionCheckRetryState';
+const VERSION_CHECK_MAX_RETRY_ATTEMPTS = 3;
+const VERSION_CHECK_RETRY_DELAY_MINUTES = 5;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const MAX_SETTINGS_REPOSITORIES = 20;
 const REPOSITORY_STATS = Object.freeze([
@@ -369,6 +372,7 @@ export const __refreshCoordinationTest = {
   finishRefreshOperation,
   executeRepositoryRefresh,
   scheduleBackgroundCheckAlarm,
+  attemptVersionCheck,
   getActiveRefreshOperation: () => activeRefreshOperation,
   clearActiveRefreshOperationForTest() {
     activeRefreshOperation = null;
@@ -593,18 +597,49 @@ async function scheduleManualQuietWindowRetry(result) {
   }
 
   if (!canRunBackgroundChecks(settings)) {
+    await chrome.alarms.clear(BACKGROUND_CHECK_RETRY_ALARM_NAME);
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
     return;
   }
 
-  const interval = getSafeInterval(settings.notifications.checkIntervalMinutes);
-  const retryAfterMs = Number(result?.retryAfterMs) || 0;
-  const delayInMinutes = Math.max(retryAfterMs / 60000, 0.5);
+  await scheduleBackgroundCheckRetryAfterMs(Number(result?.retryAfterMs) || 0);
+}
 
-  await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-    delayInMinutes,
-    periodInMinutes: interval,
+
+function getVersionCheckRetryState() {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get({ [VERSION_CHECK_RETRY_STATE_KEY]: {} }, (stored) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      const state = stored[VERSION_CHECK_RETRY_STATE_KEY] && typeof stored[VERSION_CHECK_RETRY_STATE_KEY] === 'object'
+        ? stored[VERSION_CHECK_RETRY_STATE_KEY]
+        : {};
+      resolve({ attempts: Math.max(0, Number(state.attempts) || 0) });
+    });
   });
+}
+
+function saveVersionCheckRetryState(state) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ [VERSION_CHECK_RETRY_STATE_KEY]: state }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(state);
+    });
+  });
+}
+
+async function clearVersionCheckRetryState() {
+  await Promise.all([
+    saveVersionCheckRetryState({ attempts: 0 }),
+    chrome.alarms.clear(VERSION_CHECK_RETRY_ALARM_NAME),
+  ]);
 }
 
 async function scheduleVersionCheckAlarm() {
@@ -622,8 +657,23 @@ async function scheduleVersionCheckRetryAfterMs(retryAfterMs) {
 async function attemptVersionCheck() {
   try {
     const result = await runVersionCheck();
+    if (result?.checked || result?.reason === 'reconciled-local-version' || result?.reason === 'cache-fresh') {
+      await clearVersionCheckRetryState();
+      return;
+    }
     if (result?.reason === 'not-quiet' && Number(result.retryAfterMs) > 0) {
       await scheduleVersionCheckRetryAfterMs(result.retryAfterMs);
+      return;
+    }
+    if (result?.reason === 'failed') {
+      const retryState = await getVersionCheckRetryState();
+      const attempts = retryState.attempts + 1;
+      if (attempts < VERSION_CHECK_MAX_RETRY_ATTEMPTS) {
+        await saveVersionCheckRetryState({ attempts });
+        await scheduleVersionCheckRetryAfterMs(VERSION_CHECK_RETRY_DELAY_MINUTES * 60000);
+      } else {
+        await clearVersionCheckRetryState();
+      }
     }
   } catch (error) {
     console.warn('Unable to check for extension updates.', error);
@@ -641,6 +691,7 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
   }
 
   if (!canRunBackgroundChecks(settings)) {
+    await chrome.alarms.clear(BACKGROUND_CHECK_RETRY_ALARM_NAME);
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
     return;
   }
@@ -694,7 +745,6 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
       }
 
       if (isManualQuietWindowSkip(checkResult)) {
-        shouldScheduleNormalAlarm = false;
         await scheduleManualQuietWindowRetry(checkResult);
       }
     } finally {
