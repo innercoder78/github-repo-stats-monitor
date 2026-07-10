@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, normalizeRepositoryName, saveAccountStats, saveLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
+import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, normalizeRepositoryName, saveAccountStats, mergeLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
 import { runTrackedGitHubActivity } from './github-activity.js';
 
@@ -649,7 +649,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     )
     : null;
 
-  const savedLatestStats = await saveLatestStats(nextLatestStats);
+  const savedLatestStats = await mergeLatestStats(Object.fromEntries(results.map(({ repository, stats }) => [repository, stats])));
 
   if (isManualRefreshSource(source)) {
     await syncNotificationBaselinesFromManualRefresh({
@@ -697,7 +697,7 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
     )
     : null;
 
-  const savedLatestStats = await saveLatestStats(nextLatestStats);
+  const savedLatestStats = await mergeLatestStats({ [repository]: result.stats });
 
   return {
     fetchedAt,

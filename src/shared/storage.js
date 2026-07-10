@@ -275,6 +275,32 @@ export function getLatestStats() {
   });
 }
 
+export async function mergeLatestStats(updates) {
+  const currentLatestStats = await getLatestStats();
+  const nextLatestStats = { ...currentLatestStats };
+  let changed = false;
+  const statsToMerge = updates && typeof updates === 'object' ? updates : {};
+
+  Object.entries(statsToMerge).forEach(([repository, stats]) => {
+    const normalizedEntry = normalizeStatsEntry(repository, stats);
+
+    if (!normalizedEntry) {
+      return;
+    }
+
+    if (JSON.stringify(nextLatestStats[normalizedEntry.repository] || null) !== JSON.stringify(normalizedEntry)) {
+      nextLatestStats[normalizedEntry.repository] = normalizedEntry;
+      changed = true;
+    }
+  });
+
+  if (!changed) {
+    return currentLatestStats;
+  }
+
+  return saveLatestStats(nextLatestStats);
+}
+
 export function resetExtensionData() {
   return new Promise((resolve, reject) => {
     getChromeStorage().clear(() => {

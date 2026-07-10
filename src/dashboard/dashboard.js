@@ -1,6 +1,5 @@
 import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
 import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
-import { getFullRefreshReuseResult, refreshRepositoryStatsCache, runExclusiveRepositoryRefresh, refreshStatsCache, syncNotificationBaselinesFromManualRefresh } from '../shared/refresh-stats.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
@@ -746,6 +745,22 @@ function renderRepositories() {
 }
 
 
+
+function requestRefresh(action, payload = {}) {
+  return chrome.runtime.sendMessage({ action, ...payload }).then((response) => {
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Refresh failed.');
+    }
+    return response.result;
+  });
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.action === 'refreshStats.progress' && message.source === 'dashboard' && isRefreshing) {
+    setStatus(formatRefreshProgressMessage(message.progress), 'loading');
+  }
+});
+
 function formatRepositoryRefreshSummary(refreshResult) {
   const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
   const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
@@ -789,15 +804,7 @@ async function refreshRepositoryStats() {
   setStatus(formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length }), 'loading');
 
   try {
-    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
-      source: 'dashboard',
-      accountStats: currentAccountStats,
-      detectActivity: true,
-      skipBadgeActivity: true,
-      onProgress(progress) {
-        setStatus(formatRefreshProgressMessage(progress), 'loading');
-      },
-    });
+    const refreshResult = await requestRefresh('refreshStats.full', { source: 'dashboard' });
     if (refreshResult.skipped) {
       await reloadSavedRefreshData();
       setStatus('Showing recently refreshed data.', 'success');
@@ -846,35 +853,20 @@ async function refreshSingleRepository(repository) {
   setStatus(`Refreshing ${repository}…`, 'loading');
 
   try {
-    const fullRefreshReuse = await getFullRefreshReuseResult();
-    if (fullRefreshReuse.skipped) {
+    const refreshResult = await requestRefresh('refreshStats.repository', { repository });
+    if (refreshResult.skipped) {
       await reloadSavedRefreshData();
       setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
     } else {
-      const coordinatedRefresh = await runExclusiveRepositoryRefresh(repository, () => refreshRepositoryStatsCache(currentSettings, currentLatestStats, repository, {
-        detectActivity: true,
-        skipBadgeActivity: true,
-      }));
+      currentLatestStats = refreshResult.latestStats;
+      if (refreshResult.pendingActivity) {
+        currentPendingActivity = refreshResult.pendingActivity;
+      }
 
-      if (coordinatedRefresh.skipped) {
-        await reloadSavedRefreshData();
-        setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
+      if (hasRefreshError(refreshResult.result.stats)) {
+        setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
       } else {
-        const refreshResult = coordinatedRefresh.result;
-        currentLatestStats = refreshResult.latestStats;
-        await syncNotificationBaselinesFromManualRefresh({
-          results: [refreshResult.result],
-          fetchedAt: refreshResult.fetchedAt,
-        });
-        if (refreshResult.pendingActivity) {
-          currentPendingActivity = refreshResult.pendingActivity;
-        }
-
-        if (hasRefreshError(refreshResult.result.stats)) {
-          setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
-        } else {
-          setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
-        }
+        setStatus(`${repository} refreshed: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
       }
     }
   } catch (error) {

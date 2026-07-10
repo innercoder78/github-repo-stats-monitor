@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
-import { getManualRefreshQuietWindowRemainingMs, runExclusiveFullRefresh } from './shared/refresh-stats.js';
+import { getManualRefreshQuietWindowRemainingMs, refreshRepositoryStatsCache, refreshStatsCache, runExclusiveFullRefresh, runExclusiveRepositoryRefresh, syncNotificationBaselinesFromManualRefresh } from './shared/refresh-stats.js';
 import {
   getAccountStats,
   getLastBackgroundCheckAt,
@@ -9,6 +9,7 @@ import {
   getSettings,
   getViewedBaselines,
   normalizeNotificationSettings,
+  normalizeRepositoryName,
   saveAccountStats,
   saveLastBackgroundCheckAt,
   saveLatestStats,
@@ -19,6 +20,12 @@ import {
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
 
 const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
+const REFRESH_OPERATION_KEY = 'refreshOperationState';
+const REFRESH_OPERATION_STALE_MS = 2 * 60 * 1000;
+const REFRESH_ACTIONS = Object.freeze({
+  FULL: 'refreshStats.full',
+  REPOSITORY: 'refreshStats.repository',
+});
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const REPOSITORY_STATS = Object.freeze([
@@ -34,6 +41,177 @@ const REPOSITORY_DELTA_LABELS = Object.freeze({
 const ACCOUNT_FOLLOWERS_LABEL = 'Account Follower';
 const NOTIFICATION_TITLE = 'Changes Detected';
 const BADGE_BACKGROUND_COLOR = '#2f81f7';
+
+let activeRefreshOperation = null;
+
+function createOperationId(type, source) {
+  return `${type}-${source}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isOperationFresh(operation) {
+  const startedAt = Date.parse(operation?.startedAt || '');
+  return Boolean(operation?.id) && Number.isFinite(startedAt) && Date.now() - startedAt < REFRESH_OPERATION_STALE_MS;
+}
+
+function getStoredRefreshOperation() {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get({ [REFRESH_OPERATION_KEY]: null }, (stored) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(stored[REFRESH_OPERATION_KEY]);
+    });
+  });
+}
+
+function saveStoredRefreshOperation(operation) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ [REFRESH_OPERATION_KEY]: operation }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(operation);
+    });
+  });
+}
+
+async function clearStoredRefreshOperation(operation) {
+  const storedOperation = await getStoredRefreshOperation();
+  if (storedOperation?.id !== operation.id) {
+    return;
+  }
+  await saveStoredRefreshOperation(null);
+}
+
+async function beginRefreshOperation({ type, source, repository = '' }) {
+  const normalizedRepository = normalizeRepositoryName(repository);
+  if (type === 'repository' && !normalizedRepository) {
+    return { admitted: false, reason: 'invalid-repository', source, repository: normalizedRepository };
+  }
+
+  if (isOperationFresh(activeRefreshOperation)) {
+    return { admitted: false, reason: 'running', source: activeRefreshOperation.source || '', repository: activeRefreshOperation.repository || '' };
+  }
+
+  // Reserve the in-memory slot before touching storage so two message handlers in
+  // the same service-worker lifetime cannot both pass admission while awaiting I/O.
+  const operation = {
+    id: createOperationId(type, source),
+    type,
+    source,
+    repository: normalizedRepository,
+    startedAt: new Date().toISOString(),
+  };
+  activeRefreshOperation = operation;
+
+  const storedOperation = await getStoredRefreshOperation();
+  if (isOperationFresh(storedOperation)) {
+    activeRefreshOperation = null;
+    return { admitted: false, reason: 'running', source: storedOperation.source || '', repository: storedOperation.repository || '' };
+  }
+
+  await saveStoredRefreshOperation(operation);
+  return { admitted: true, operation };
+}
+
+async function finishRefreshOperation(operation) {
+  if (activeRefreshOperation?.id === operation.id) {
+    activeRefreshOperation = null;
+  }
+  await clearStoredRefreshOperation(operation);
+}
+
+function sendRefreshProgress(operation, progress) {
+  chrome.runtime.sendMessage({
+    action: 'refreshStats.progress',
+    operationId: operation.id,
+    source: operation.source,
+    repository: operation.repository || '',
+    progress,
+  }).catch(() => {
+    // The requesting extension page may have closed; the refresh should continue.
+  });
+}
+
+async function executeFullRefresh(source) {
+  const admission = await beginRefreshOperation({ type: 'full', source });
+  if (!admission.admitted) {
+    return { skipped: true, reason: admission.reason, source: admission.source, repository: admission.repository };
+  }
+
+  const { operation } = admission;
+  try {
+    const coordinatedRefresh = await runExclusiveFullRefresh(source, async () => {
+      const [settings, latestStats, accountStats] = await Promise.all([getSettings(), getLatestStats(), getAccountStats()]);
+      return refreshStatsCache(settings, latestStats, {
+        source,
+        accountStats,
+        detectActivity: true,
+        skipBadgeActivity: true,
+        skipFullRefreshCoordination: true,
+        onProgress(progress) {
+          sendRefreshProgress(operation, progress);
+        },
+      });
+    });
+    return coordinatedRefresh.skipped
+      ? { skipped: true, reason: coordinatedRefresh.reason, source: coordinatedRefresh.source }
+      : coordinatedRefresh.result;
+  } finally {
+    await finishRefreshOperation(operation);
+  }
+}
+
+async function executeRepositoryRefresh(repository) {
+  const normalizedRepository = normalizeRepositoryName(repository);
+  const admission = await beginRefreshOperation({ type: 'repository', source: 'dashboard-repository', repository: normalizedRepository });
+  if (!admission.admitted) {
+    return { skipped: true, reason: admission.reason, source: admission.source, repository: admission.repository };
+  }
+
+  const { operation } = admission;
+  try {
+    const coordinatedRefresh = await runExclusiveRepositoryRefresh(normalizedRepository, async () => {
+      const [settings, latestStats] = await Promise.all([getSettings(), getLatestStats()]);
+      const refreshResult = await refreshRepositoryStatsCache(settings, latestStats, normalizedRepository, {
+        detectActivity: true,
+        skipBadgeActivity: true,
+      });
+      await syncNotificationBaselinesFromManualRefresh({
+        results: [refreshResult.result],
+        fetchedAt: refreshResult.fetchedAt,
+      });
+      return refreshResult;
+    });
+    return coordinatedRefresh.skipped
+      ? { skipped: true, reason: coordinatedRefresh.reason, source: coordinatedRefresh.source, repository: coordinatedRefresh.repository }
+      : coordinatedRefresh.result;
+  } finally {
+    await finishRefreshOperation(operation);
+  }
+}
+
+function handleRefreshMessage(message, sendResponse) {
+  const action = message?.action;
+  if (action !== REFRESH_ACTIONS.FULL && action !== REFRESH_ACTIONS.REPOSITORY) {
+    return false;
+  }
+
+  (async () => {
+    const result = action === REFRESH_ACTIONS.FULL
+      ? await executeFullRefresh(message.source === 'quick-summary' ? 'quick-summary' : 'dashboard')
+      : await executeRepositoryRefresh(message.repository);
+    sendResponse({ ok: true, result });
+  })().catch((error) => {
+    sendResponse({ ok: false, error: error.message || 'Refresh failed.' });
+  });
+
+  return true;
+}
 
 function getSafeInterval(minutes) {
   const interval = Number(minutes);
@@ -320,7 +498,16 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
 
   if (elapsedMinutes >= interval) {
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
-    const checkResult = await runBackgroundCheck();
+    const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
+    if (!admission.admitted) {
+      return;
+    }
+    let checkResult;
+    try {
+      checkResult = await runBackgroundCheck();
+    } finally {
+      await finishRefreshOperation(admission.operation);
+    }
 
     if (isManualQuietWindowSkip(checkResult)) {
       await scheduleManualQuietWindowRetry(checkResult);
@@ -935,6 +1122,8 @@ async function handleNotificationSettingsChange(change, { scheduleAlarm = true }
   }
 }
 
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => handleRefreshMessage(message, sendResponse));
+
 chrome.runtime.onInstalled.addListener(() => {
   scheduleBackgroundCheckAlarm();
   scheduleVersionCheckAlarm();
@@ -982,7 +1171,16 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BACKGROUND_CHECK_ALARM_NAME) {
     (async () => {
-      const checkResult = await runBackgroundCheck();
+      const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
+      if (!admission.admitted) {
+        return;
+      }
+      let checkResult;
+      try {
+        checkResult = await runBackgroundCheck();
+      } finally {
+        await finishRefreshOperation(admission.operation);
+      }
 
       if (isManualQuietWindowSkip(checkResult)) {
         await scheduleManualQuietWindowRetry(checkResult);
