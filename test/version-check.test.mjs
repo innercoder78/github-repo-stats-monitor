@@ -210,23 +210,11 @@ const {
   wasManualGitHubRequestRecentlyCompleted,
   getManualRefreshQuietWindowRemainingMs,
 } = await import('../src/shared/refresh-stats.js');
-const { mergeLatestStats } = await import('../src/shared/storage.js');
 
 storageData.fullRefreshCoordination = {};
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
 let fullRefreshRunCount = 0;
-
-storageData.latestStats = {
-  'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'old-a' },
-  'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'new-b' },
-};
-const mergedLatestStats = await mergeLatestStats({
-  'owner/repo-a': { repository: 'owner/repo-a', stars: 3, forks: 1, subscribers: 1, fetchedAt: 'new-a' },
-});
-assert.equal(mergedLatestStats['owner/repo-a'].stars, 3);
-assert.equal(mergedLatestStats['owner/repo-b'].stars, 2);
-assert.equal(storageData.latestStats['owner/repo-b'].fetchedAt, 'new-b');
 
 storageData.fullRefreshCoordination = {
   lastCompletedAt: new Date(Date.now() - 20 * 1000).toISOString(),

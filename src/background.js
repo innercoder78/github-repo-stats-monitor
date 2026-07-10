@@ -1,5 +1,5 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
-import { getManualRefreshQuietWindowRemainingMs, refreshRepositoryStatsCache, refreshStatsCache, runExclusiveFullRefresh, runExclusiveRepositoryRefresh, syncNotificationBaselinesFromManualRefresh } from './shared/refresh-stats.js';
+import { getFullRefreshReuseResult, getManualRefreshQuietWindowRemainingMs, refreshRepositoryStatsCache, refreshStatsCache, runExclusiveFullRefresh, runExclusiveRepositoryRefresh, syncNotificationBaselinesFromManualRefresh } from './shared/refresh-stats.js';
 import {
   getAccountStats,
   getLastBackgroundCheckAt,
@@ -19,7 +19,7 @@ import {
 } from './shared/storage.js';
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
 
-const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
+export const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
 const REFRESH_OPERATION_KEY = 'refreshOperationState';
 const REFRESH_OPERATION_STALE_MS = 2 * 60 * 1000;
 const REFRESH_ACTIONS = Object.freeze({
@@ -48,7 +48,7 @@ function createOperationId(type, source) {
   return `${type}-${source}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function isOperationFresh(operation) {
+function isPersistedOperationFresh(operation) {
   const startedAt = Date.parse(operation?.startedAt || '');
   return Boolean(operation?.id) && Number.isFinite(startedAt) && Date.now() - startedAt < REFRESH_OPERATION_STALE_MS;
 }
@@ -93,7 +93,7 @@ async function beginRefreshOperation({ type, source, repository = '' }) {
     return { admitted: false, reason: 'invalid-repository', source, repository: normalizedRepository };
   }
 
-  if (isOperationFresh(activeRefreshOperation)) {
+  if (activeRefreshOperation) {
     return { admitted: false, reason: 'running', source: activeRefreshOperation.source || '', repository: activeRefreshOperation.repository || '' };
   }
 
@@ -108,13 +108,32 @@ async function beginRefreshOperation({ type, source, repository = '' }) {
   };
   activeRefreshOperation = operation;
 
-  const storedOperation = await getStoredRefreshOperation();
-  if (isOperationFresh(storedOperation)) {
-    activeRefreshOperation = null;
+  let storedOperation;
+  try {
+    storedOperation = await getStoredRefreshOperation();
+  } catch (error) {
+    if (activeRefreshOperation?.id === operation.id) {
+      activeRefreshOperation = null;
+    }
+    throw error;
+  }
+
+  if (isPersistedOperationFresh(storedOperation)) {
+    if (activeRefreshOperation?.id === operation.id) {
+      activeRefreshOperation = null;
+    }
     return { admitted: false, reason: 'running', source: storedOperation.source || '', repository: storedOperation.repository || '' };
   }
 
-  await saveStoredRefreshOperation(operation);
+  try {
+    await saveStoredRefreshOperation(operation);
+  } catch (error) {
+    if (activeRefreshOperation?.id === operation.id) {
+      activeRefreshOperation = null;
+    }
+    throw error;
+  }
+
   return { admitted: true, operation };
 }
 
@@ -122,7 +141,12 @@ async function finishRefreshOperation(operation) {
   if (activeRefreshOperation?.id === operation.id) {
     activeRefreshOperation = null;
   }
-  await clearStoredRefreshOperation(operation);
+
+  try {
+    await clearStoredRefreshOperation(operation);
+  } catch (error) {
+    console.warn('Unable to clear completed refresh operation state.', error);
+  }
 }
 
 function sendRefreshProgress(operation, progress) {
@@ -168,6 +192,15 @@ async function executeFullRefresh(source) {
 
 async function executeRepositoryRefresh(repository) {
   const normalizedRepository = normalizeRepositoryName(repository);
+  if (!normalizedRepository) {
+    return { skipped: true, reason: 'invalid-repository', source: 'dashboard-repository', repository: normalizedRepository };
+  }
+
+  const fullRefreshReuse = await getFullRefreshReuseResult();
+  if (fullRefreshReuse.skipped) {
+    return { skipped: true, reason: fullRefreshReuse.reason, source: fullRefreshReuse.source, repository: normalizedRepository };
+  }
+
   const admission = await beginRefreshOperation({ type: 'repository', source: 'dashboard-repository', repository: normalizedRepository });
   if (!admission.admitted) {
     return { skipped: true, reason: admission.reason, source: admission.source, repository: admission.repository };
@@ -212,6 +245,18 @@ function handleRefreshMessage(message, sendResponse) {
 
   return true;
 }
+
+
+export const __refreshCoordinationTest = {
+  beginRefreshOperation,
+  finishRefreshOperation,
+  executeRepositoryRefresh,
+  scheduleBackgroundCheckAlarm,
+  getActiveRefreshOperation: () => activeRefreshOperation,
+  clearActiveRefreshOperationForTest() {
+    activeRefreshOperation = null;
+  },
+};
 
 function getSafeInterval(minutes) {
   const interval = Number(minutes);
@@ -500,6 +545,10 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
     const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
     if (!admission.admitted) {
+      await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
+        delayInMinutes: interval,
+        periodInMinutes: interval,
+      });
       return;
     }
     let checkResult;
