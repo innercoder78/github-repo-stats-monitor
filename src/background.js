@@ -1,4 +1,4 @@
-import { fetchAuthenticatedAccount, fetchRepositoryMetadata } from './shared/github-api.js';
+import { fetchAuthenticatedAccount, fetchAuthenticatedRepositories, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './shared/github-api.js';
 import { getFullRefreshReuseResult, getManualRefreshQuietWindowRemainingMs, refreshRepositoryStatsCache, refreshStatsCache, runExclusiveFullRefresh, runExclusiveRepositoryRefresh, syncNotificationBaselinesFromManualRefresh } from './shared/refresh-stats.js';
 import {
   getAccountStats,
@@ -8,6 +8,7 @@ import {
   getPendingActivity,
   getSettings,
   getViewedBaselines,
+  isValidRepositoryName,
   normalizeNotificationSettings,
   normalizeRepositoryName,
   patchLatestStats,
@@ -19,6 +20,7 @@ import {
   saveViewedBaselines,
 } from './shared/storage.js';
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
+import { runTrackedGitHubActivity } from './shared/github-activity.js';
 
 export const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
 const REFRESH_OPERATION_KEY = 'refreshOperationState';
@@ -27,8 +29,14 @@ const REFRESH_ACTIONS = Object.freeze({
   FULL: 'refreshStats.full',
   REPOSITORY: 'refreshStats.repository',
 });
+
+const SETTINGS_GITHUB_ACTIONS = Object.freeze({
+  IMPORT_REPOSITORIES: 'settings.github.importRepositories',
+  TEST_CONNECTION: 'settings.github.testConnection',
+});
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
+const MAX_SETTINGS_REPOSITORIES = 20;
 const REPOSITORY_STATS = Object.freeze([
   { setting: 'stars', baselineKey: 'stars', deltaKey: 'starsDelta', currentKey: 'stars', label: 'Star' },
   { setting: 'forks', baselineKey: 'forks', deltaKey: 'forksDelta', currentKey: 'forks', label: 'Fork' },
@@ -230,6 +238,103 @@ async function executeRepositoryRefresh(repository) {
   }
 }
 
+
+function getMessagePayload(message) {
+  return message?.payload && typeof message.payload === 'object' ? message.payload : {};
+}
+
+function sanitizeToken(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function validateTokenPayload(payload, errorMessage) {
+  const token = sanitizeToken(payload.token);
+  if (!token) {
+    throw new Error(errorMessage);
+  }
+  return token;
+}
+
+function validateRepositoryListPayload(payload) {
+  if (!Array.isArray(payload.repositories)) {
+    throw new Error('Repository payload must include an array of repositories.');
+  }
+
+  if (payload.repositories.length === 0) {
+    throw new Error('Enter at least one valid repository before testing the connection.');
+  }
+
+  if (payload.repositories.length > MAX_SETTINGS_REPOSITORIES) {
+    throw new Error(`Test Connection supports up to ${MAX_SETTINGS_REPOSITORIES} repositories.`);
+  }
+
+  const seenRepositories = new Set();
+  return payload.repositories.map((repository) => {
+    const normalizedRepository = normalizeRepositoryName(repository);
+    if (!normalizedRepository || !isValidRepositoryName(normalizedRepository)) {
+      throw new Error('Repository payload contains an invalid repository name.');
+    }
+    if (seenRepositories.has(normalizedRepository)) {
+      throw new Error('Repository payload contains duplicate repositories.');
+    }
+    seenRepositories.add(normalizedRepository);
+    return normalizedRepository;
+  });
+}
+
+async function executeRepositoryImport(payload) {
+  const token = validateTokenPayload(payload, 'Save a GitHub token first so the extension can monitor repositories that the token can access.');
+  return fetchAuthenticatedRepositories(token);
+}
+
+function serializeSettledEndpointResult(result) {
+  return result.status === 'fulfilled'
+    ? { ok: true }
+    : { ok: false, message: result.reason?.message || 'Unable to complete this GitHub request.' };
+}
+
+async function testRepositoryConnection(repository, token) {
+  const [metadataResult, trafficResult, clonesResult, referrersResult] = await Promise.allSettled([
+    fetchRepositoryMetadata(repository, token),
+    fetchRepositoryTrafficViews(repository, token),
+    fetchRepositoryTrafficClones(repository, token),
+    fetchRepositoryTrafficReferrers(repository, token),
+  ]);
+
+  return {
+    repository,
+    metadata: serializeSettledEndpointResult(metadataResult),
+    traffic: serializeSettledEndpointResult(trafficResult),
+    clones: serializeSettledEndpointResult(clonesResult),
+    referrers: serializeSettledEndpointResult(referrersResult),
+  };
+}
+
+async function executeConnectionTest(payload) {
+  const token = validateTokenPayload(payload, 'Enter a GitHub token before testing the connection.');
+  const repositories = validateRepositoryListPayload(payload);
+  return Promise.all(repositories.map((repository) => testRepositoryConnection(repository, token)));
+}
+
+function handleSettingsGitHubMessage(message, sendResponse) {
+  const action = message?.action;
+  if (action !== SETTINGS_GITHUB_ACTIONS.IMPORT_REPOSITORIES && action !== SETTINGS_GITHUB_ACTIONS.TEST_CONNECTION) {
+    return false;
+  }
+
+  (async () => {
+    const payload = getMessagePayload(message);
+    const result = action === SETTINGS_GITHUB_ACTIONS.IMPORT_REPOSITORIES
+      ? await runTrackedGitHubActivity('repository-import', () => executeRepositoryImport(payload))
+      : await runTrackedGitHubActivity('connection-test', () => executeConnectionTest(payload));
+    sendResponse({ ok: true, result });
+  })().catch((error) => {
+    sendResponse({ ok: false, error: error.message || 'Unable to complete this GitHub request.' });
+  });
+
+  return true;
+}
+
 function handleRefreshMessage(message, sendResponse) {
   const action = message?.action;
   if (action !== REFRESH_ACTIONS.FULL && action !== REFRESH_ACTIONS.REPOSITORY) {
@@ -247,6 +352,14 @@ function handleRefreshMessage(message, sendResponse) {
 
   return true;
 }
+
+
+export const __backgroundGitHubMessageTest = {
+  executeRepositoryImport,
+  executeConnectionTest,
+  handleSettingsGitHubMessage,
+  validateRepositoryListPayload,
+};
 
 
 export const __refreshCoordinationTest = {
@@ -1164,7 +1277,7 @@ async function handleNotificationSettingsChange(change, { scheduleAlarm = true }
   }
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => handleRefreshMessage(message, sendResponse));
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => handleRefreshMessage(message, sendResponse) || handleSettingsGitHubMessage(message, sendResponse));
 
 chrome.runtime.onInstalled.addListener(() => {
   scheduleBackgroundCheckAlarm();

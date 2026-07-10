@@ -1,17 +1,17 @@
-import { fetchAuthenticatedRepositories, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from '../shared/github-api.js';
 import { getSettings, getVersionCheckStatus, isValidRepositoryName, normalizeRepositoryName, resetExtensionData, saveSettings } from '../shared/storage.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { normalizeDisplayPreferences } from '../shared/display-format.js';
-import { mapWithConcurrency } from '../shared/refresh-stats.js';
 import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
-import { runTrackedGitHubActivity } from '../shared/github-activity.js';
 
 const MAX_REPOSITORIES = 20;
 const MISSING_TOKEN_MESSAGE = 'Save a GitHub token first so the extension can monitor repositories that the token can access.';
-const CONNECTION_TEST_CONCURRENCY_LIMIT = 4;
+const SETTINGS_GITHUB_ACTIONS = Object.freeze({
+  IMPORT_REPOSITORIES: 'settings.github.importRepositories',
+  TEST_CONNECTION: 'settings.github.testConnection',
+});
 
 const form = document.getElementById('settings-form');
 const tokenInput = document.getElementById('github-token');
@@ -78,6 +78,26 @@ function renderExtensionVersion(status) {
   viewLatestVersionButton.hidden = !showUpdateAvailable;
 }
 
+
+
+function sendBackgroundGitHubRequest(action, payload = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ action, payload }, (response) => {
+      const runtimeError = chrome.runtime.lastError;
+      if (runtimeError) {
+        reject(new Error(runtimeError.message || 'Unable to reach the background service worker.'));
+        return;
+      }
+
+      if (!response?.ok) {
+        reject(new Error(response?.error || 'Unable to complete this GitHub request.'));
+        return;
+      }
+
+      resolve(response.result);
+    });
+  });
+}
 
 function setMessage(element, text, type = '') {
   element.textContent = text;
@@ -579,7 +599,7 @@ async function handleRepositoryImport() {
   setMessage(importMessage, 'Loading repositories from GitHub…', '');
 
   try {
-    const repositories = await runTrackedGitHubActivity('repository-import', () => fetchAuthenticatedRepositories(token));
+    const repositories = await sendBackgroundGitHubRequest(SETTINGS_GITHUB_ACTIONS.IMPORT_REPOSITORIES, { token });
     if (repositories.length === 0) {
       setMessage(importMessage, 'No repositories were returned for this token.', '');
       return;
@@ -643,31 +663,6 @@ function renderTestResult(result) {
   testResults.append(card);
 }
 
-async function testRepositoryConnection(repository, token) {
-  const [metadataResult, trafficResult, clonesResult, referrersResult] = await Promise.allSettled([
-    fetchRepositoryMetadata(repository, token),
-    fetchRepositoryTrafficViews(repository, token),
-    fetchRepositoryTrafficClones(repository, token),
-    fetchRepositoryTrafficReferrers(repository, token),
-  ]);
-
-  return {
-    repository,
-    metadata: metadataResult.status === 'fulfilled'
-      ? { ok: true }
-      : { ok: false, message: getSafeErrorMessage(metadataResult.reason) },
-    traffic: trafficResult.status === 'fulfilled'
-      ? { ok: true }
-      : { ok: false, message: getSafeErrorMessage(trafficResult.reason) },
-    clones: clonesResult.status === 'fulfilled'
-      ? { ok: true }
-      : { ok: false, message: getSafeErrorMessage(clonesResult.reason) },
-    referrers: referrersResult.status === 'fulfilled'
-      ? { ok: true }
-      : { ok: false, message: getSafeErrorMessage(referrersResult.reason) },
-  };
-}
-
 async function handleConnectionTest() {
   if (isTestingConnection) {
     return;
@@ -700,11 +695,7 @@ async function handleConnectionTest() {
   setMessage(testMessage, 'Testing connection…', '');
 
   try {
-    const results = await runTrackedGitHubActivity('connection-test', () => mapWithConcurrency(
-      validation.repositories,
-      CONNECTION_TEST_CONCURRENCY_LIMIT,
-      (repository) => testRepositoryConnection(repository, token),
-    ));
+    const results = await sendBackgroundGitHubRequest(SETTINGS_GITHUB_ACTIONS.TEST_CONNECTION, { token, repositories: validation.repositories });
 
     testResults.textContent = '';
     results.forEach(renderTestResult);
@@ -716,6 +707,8 @@ async function handleConnectionTest() {
         : 'Connection test succeeded for all repositories.',
       hasFailure ? 'error' : 'success',
     );
+  } catch (error) {
+    setMessage(testMessage, getSafeErrorMessage(error), 'error');
   } finally {
     isTestingConnection = false;
     testConnectionButton.disabled = false;
