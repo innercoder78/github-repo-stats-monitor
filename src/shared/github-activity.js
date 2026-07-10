@@ -6,6 +6,8 @@ function getStorageArea() {
   return chrome.storage.local;
 }
 
+const liveActivityOperations = new Map();
+
 function createActivityToken(source) {
   return `${source || 'github'}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -19,7 +21,7 @@ function getActiveUntilFromStartedAt(startedAt) {
   return Number.isFinite(startedTime) ? toIsoTime(startedTime + GITHUB_ACTIVITY_STALE_MS) : '';
 }
 
-function normalizeOperation(operation, now) {
+function normalizeOperation(operation, now, token = '') {
   const normalizedOperation = operation && typeof operation === 'object' ? operation : {};
   const startedAt = typeof normalizedOperation.startedAt === 'string' ? normalizedOperation.startedAt : '';
   const activeUntil = typeof normalizedOperation.activeUntil === 'string'
@@ -27,14 +29,16 @@ function normalizeOperation(operation, now) {
     : getActiveUntilFromStartedAt(startedAt);
   const activeUntilTime = Date.parse(activeUntil || '');
 
-  if (!Number.isFinite(activeUntilTime) || now >= activeUntilTime) {
+  if ((!Number.isFinite(activeUntilTime) || now >= activeUntilTime) && !liveActivityOperations.has(token)) {
     return null;
   }
 
+  const liveOperation = liveActivityOperations.get(token);
+
   return {
-    source: typeof normalizedOperation.source === 'string' ? normalizedOperation.source : '',
-    startedAt,
-    activeUntil,
+    source: typeof liveOperation?.source === 'string' ? liveOperation.source : typeof normalizedOperation.source === 'string' ? normalizedOperation.source : '',
+    startedAt: typeof liveOperation?.startedAt === 'string' ? liveOperation.startedAt : startedAt,
+    activeUntil: typeof liveOperation?.activeUntil === 'string' ? liveOperation.activeUntil : activeUntil,
   };
 }
 
@@ -61,9 +65,15 @@ function normalizeActivityStatus(status, now = Date.now()) {
   const activeOperations = {};
 
   Object.entries(getStoredActiveOperations(activity)).forEach(([token, operation]) => {
-    const normalizedOperation = normalizeOperation(operation, now);
+    const normalizedOperation = normalizeOperation(operation, now, token);
     if (normalizedOperation && token) {
       activeOperations[token] = normalizedOperation;
+    }
+  });
+
+  liveActivityOperations.forEach((operation, token) => {
+    if (token && !activeOperations[token]) {
+      activeOperations[token] = { ...operation };
     }
   });
 
@@ -119,24 +129,34 @@ export async function markGitHubActivityStarted(source = 'github') {
   const startedAt = new Date().toISOString();
   const token = createActivityToken(source);
   const activeUntil = toIsoTime(Date.now() + GITHUB_ACTIVITY_STALE_MS);
-  const status = await updateGitHubActivityStatus((existingStatus) => {
-    const activeOperations = {
-      ...existingStatus.activeOperations,
-      [token]: { source, startedAt, activeUntil },
-    };
+  liveActivityOperations.set(token, { source, startedAt, activeUntil });
 
-    return {
-      ...existingStatus,
-      active: true,
-      activeOperations,
-      quietUntil: activeUntil,
-    };
-  });
+  let status;
+  try {
+    status = await updateGitHubActivityStatus((existingStatus) => {
+      const activeOperations = {
+        ...existingStatus.activeOperations,
+        [token]: { source, startedAt, activeUntil },
+      };
+
+      return {
+        ...existingStatus,
+        active: true,
+        activeOperations,
+        quietUntil: activeUntil,
+      };
+    });
+  } catch (error) {
+    liveActivityOperations.delete(token);
+    throw error;
+  }
+
   return { token, status };
 }
 
 export async function markGitHubActivityFinished(activity = {}, source = 'github') {
   const finishedAt = new Date().toISOString();
+  liveActivityOperations.delete(activity.token);
   return updateGitHubActivityStatus((existingStatus) => {
     const activeOperations = { ...existingStatus.activeOperations };
     delete activeOperations[activity.token];
@@ -163,4 +183,12 @@ export async function runTrackedGitHubActivity(source, task) {
       console.warn('Unable to clear completed GitHub activity state.', cleanupError);
     }
   }
+}
+
+export function __resetGitHubActivityLiveOperationsForTest() {
+  liveActivityOperations.clear();
+}
+
+export function __getGitHubActivityLiveOperationCountForTest() {
+  return liveActivityOperations.size;
 }

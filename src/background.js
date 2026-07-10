@@ -8,6 +8,7 @@ import {
   getPendingActivity,
   getSettings,
   getViewedBaselines,
+  isValidRepositoryName,
   normalizeNotificationSettings,
   normalizeRepositoryName,
   patchLatestStats,
@@ -35,6 +36,7 @@ const SETTINGS_GITHUB_ACTIONS = Object.freeze({
 });
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
+const MAX_SETTINGS_REPOSITORIES = 20;
 const REPOSITORY_STATS = Object.freeze([
   { setting: 'stars', baselineKey: 'stars', deltaKey: 'starsDelta', currentKey: 'stars', label: 'Star' },
   { setting: 'forks', baselineKey: 'forks', deltaKey: 'forksDelta', currentKey: 'forks', label: 'Fork' },
@@ -254,13 +256,30 @@ function validateTokenPayload(payload, errorMessage) {
 }
 
 function validateRepositoryListPayload(payload) {
-  const repositories = Array.isArray(payload.repositories)
-    ? payload.repositories.map((repository) => normalizeRepositoryName(repository)).filter(Boolean)
-    : [];
-  if (repositories.length === 0) {
+  if (!Array.isArray(payload.repositories)) {
+    throw new Error('Repository payload must include an array of repositories.');
+  }
+
+  if (payload.repositories.length === 0) {
     throw new Error('Enter at least one valid repository before testing the connection.');
   }
-  return repositories;
+
+  if (payload.repositories.length > MAX_SETTINGS_REPOSITORIES) {
+    throw new Error(`Test Connection supports up to ${MAX_SETTINGS_REPOSITORIES} repositories.`);
+  }
+
+  const seenRepositories = new Set();
+  return payload.repositories.map((repository) => {
+    const normalizedRepository = normalizeRepositoryName(repository);
+    if (!normalizedRepository || !isValidRepositoryName(normalizedRepository)) {
+      throw new Error('Repository payload contains an invalid repository name.');
+    }
+    if (seenRepositories.has(normalizedRepository)) {
+      throw new Error('Repository payload contains duplicate repositories.');
+    }
+    seenRepositories.add(normalizedRepository);
+    return normalizedRepository;
+  });
 }
 
 async function executeRepositoryImport(payload) {
@@ -333,6 +352,14 @@ function handleRefreshMessage(message, sendResponse) {
 
   return true;
 }
+
+
+export const __backgroundGitHubMessageTest = {
+  executeRepositoryImport,
+  executeConnectionTest,
+  handleSettingsGitHubMessage,
+  validateRepositoryListPayload,
+};
 
 
 export const __refreshCoordinationTest = {
