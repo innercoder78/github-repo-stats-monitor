@@ -275,30 +275,100 @@ export function getLatestStats() {
   });
 }
 
-export async function mergeLatestStats(updates) {
-  const currentLatestStats = await getLatestStats();
-  const nextLatestStats = { ...currentLatestStats };
-  let changed = false;
-  const statsToMerge = updates && typeof updates === 'object' ? updates : {};
+let latestStatsMutationQueue = Promise.resolve();
 
-  Object.entries(statsToMerge).forEach(([repository, stats]) => {
+function normalizeLatestStatsEntries(latestStats) {
+  const nextLatestStats = {};
+  const statsToSave = latestStats && typeof latestStats === 'object' ? latestStats : {};
+
+  Object.entries(statsToSave).forEach(([repository, stats]) => {
     const normalizedEntry = normalizeStatsEntry(repository, stats);
 
-    if (!normalizedEntry) {
-      return;
-    }
-
-    if (JSON.stringify(nextLatestStats[normalizedEntry.repository] || null) !== JSON.stringify(normalizedEntry)) {
+    if (normalizedEntry) {
       nextLatestStats[normalizedEntry.repository] = normalizedEntry;
-      changed = true;
     }
   });
 
-  if (!changed) {
-    return currentLatestStats;
-  }
+  return nextLatestStats;
+}
 
-  return saveLatestStats(nextLatestStats);
+function haveLatestStatsChanged(previousStats, nextStats) {
+  return JSON.stringify(previousStats) !== JSON.stringify(nextStats);
+}
+
+export function mutateLatestStats(mutation) {
+  const runMutation = latestStatsMutationQueue.catch(() => {}).then(async () => {
+    const currentLatestStats = await getLatestStats();
+    const mutationResult = typeof mutation === 'function' ? await mutation({ ...currentLatestStats }) : currentLatestStats;
+    const normalizedLatestStats = normalizeLatestStatsEntries(mutationResult);
+
+    if (!haveLatestStatsChanged(currentLatestStats, normalizedLatestStats)) {
+      return currentLatestStats;
+    }
+
+    return saveLatestStats(normalizedLatestStats);
+  });
+
+  latestStatsMutationQueue = runMutation.catch(() => {});
+  return runMutation;
+}
+
+export function mergeLatestStats(updates, options = {}) {
+  return mutateLatestStats(async (currentLatestStats) => {
+    const configuredRepositories = options.configuredOnly
+      ? new Set((await getSettings()).repositories)
+      : null;
+    const nextLatestStats = { ...currentLatestStats };
+    const statsToMerge = updates && typeof updates === 'object' ? updates : {};
+
+    Object.entries(statsToMerge).forEach(([repository, stats]) => {
+      const normalizedEntry = normalizeStatsEntry(repository, stats);
+
+      if (normalizedEntry && (!configuredRepositories || configuredRepositories.has(normalizedEntry.repository))) {
+        nextLatestStats[normalizedEntry.repository] = normalizedEntry;
+      }
+    });
+
+    return nextLatestStats;
+  });
+}
+
+export function patchLatestStats(updates, options = {}) {
+  return mutateLatestStats(async (currentLatestStats) => {
+    const configuredRepositories = options.configuredOnly
+      ? new Set((await getSettings()).repositories)
+      : null;
+    const nextLatestStats = { ...currentLatestStats };
+    const statsToPatch = updates && typeof updates === 'object' ? updates : {};
+
+    Object.entries(statsToPatch).forEach(([repository, patch]) => {
+      const normalizedRepository = normalizeRepositoryName(repository);
+
+      if (!normalizedRepository || !patch || typeof patch !== 'object') {
+        return;
+      }
+
+      if (configuredRepositories && !configuredRepositories.has(normalizedRepository)) {
+        return;
+      }
+
+      nextLatestStats[normalizedRepository] = {
+        ...(nextLatestStats[normalizedRepository] || { repository: normalizedRepository }),
+        ...patch,
+        repository: normalizedRepository,
+      };
+    });
+
+    return nextLatestStats;
+  });
+}
+
+export function removeUnconfiguredLatestStats(repositories) {
+  const repositorySet = new Set(Array.isArray(repositories) ? repositories.map(normalizeRepositoryName).filter(isValidRepositoryName) : []);
+
+  return mutateLatestStats((currentLatestStats) => Object.fromEntries(
+    Object.entries(currentLatestStats).filter(([repository]) => repositorySet.has(repository)),
+  ));
 }
 
 export function resetExtensionData() {
@@ -321,16 +391,7 @@ export function resetExtensionData() {
 }
 
 export function saveLatestStats(latestStats) {
-  const nextLatestStats = {};
-  const statsToSave = latestStats && typeof latestStats === 'object' ? latestStats : {};
-
-  Object.entries(statsToSave).forEach(([repository, stats]) => {
-    const normalizedEntry = normalizeStatsEntry(repository, stats);
-
-    if (normalizedEntry) {
-      nextLatestStats[normalizedEntry.repository] = normalizedEntry;
-    }
-  });
+  const nextLatestStats = normalizeLatestStatsEntries(latestStats);
 
   return new Promise((resolve, reject) => {
     getChromeStorage().set({ latestStats: nextLatestStats }, () => {

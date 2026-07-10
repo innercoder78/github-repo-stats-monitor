@@ -10,9 +10,10 @@ import {
   getViewedBaselines,
   normalizeNotificationSettings,
   normalizeRepositoryName,
+  patchLatestStats,
+  removeUnconfiguredLatestStats,
   saveAccountStats,
   saveLastBackgroundCheckAt,
-  saveLatestStats,
   saveNotificationBaselines,
   savePendingActivity,
   saveViewedBaselines,
@@ -43,6 +44,7 @@ const NOTIFICATION_TITLE = 'Changes Detected';
 const BADGE_BACKGROUND_COLOR = '#2f81f7';
 
 let activeRefreshOperation = null;
+let backgroundCheckForTest = null;
 
 function createOperationId(type, source) {
   return `${type}-${source}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -255,6 +257,10 @@ export const __refreshCoordinationTest = {
   getActiveRefreshOperation: () => activeRefreshOperation,
   clearActiveRefreshOperationForTest() {
     activeRefreshOperation = null;
+    backgroundCheckForTest = null;
+  },
+  setBackgroundCheckForTest(task) {
+    backgroundCheckForTest = task;
   },
 };
 
@@ -543,30 +549,34 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
 
   if (elapsedMinutes >= interval) {
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
-    const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
-    if (!admission.admitted) {
-      await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-        delayInMinutes: interval,
-        periodInMinutes: interval,
-      });
-      return;
-    }
-    let checkResult;
+    let shouldScheduleNormalAlarm = true;
+
     try {
-      checkResult = await runBackgroundCheck();
+      const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
+      if (!admission.admitted) {
+        return;
+      }
+
+      let checkResult;
+      try {
+        const backgroundCheck = backgroundCheckForTest || runBackgroundCheck;
+        checkResult = await backgroundCheck();
+      } finally {
+        await finishRefreshOperation(admission.operation);
+      }
+
+      if (isManualQuietWindowSkip(checkResult)) {
+        shouldScheduleNormalAlarm = false;
+        await scheduleManualQuietWindowRetry(checkResult);
+      }
     } finally {
-      await finishRefreshOperation(admission.operation);
+      if (shouldScheduleNormalAlarm) {
+        await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
+          delayInMinutes: interval,
+          periodInMinutes: interval,
+        });
+      }
     }
-
-    if (isManualQuietWindowSkip(checkResult)) {
-      await scheduleManualQuietWindowRetry(checkResult);
-      return;
-    }
-
-    await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-      delayInMinutes: interval,
-      periodInMinutes: interval,
-    });
     return;
   }
 
@@ -752,18 +762,6 @@ function createFetchedRepositoryMetadataStatsPatch(repository, metadata, checked
   };
 }
 
-function mergeRepositoryMetadataStatsPatches(latestStats, metadataPatches) {
-  return metadataPatches.reduce((nextLatestStats, { repository, updates }) => {
-    nextLatestStats[repository] = {
-      ...(nextLatestStats[repository] || { repository }),
-      repository,
-      ...updates,
-    };
-
-    return nextLatestStats;
-  }, { ...latestStats });
-}
-
 async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
   if (!settings.notifications.trackedStats.accountFollowers) {
     return { checked: false, changed: false };
@@ -919,8 +917,7 @@ async function runBackgroundCheckNow() {
   }
 
   if (repositoryMetadataPatches.length > 0) {
-    const latestStats = await getLatestStats();
-    await saveLatestStats(mergeRepositoryMetadataStatsPatches(latestStats, repositoryMetadataPatches));
+    await patchLatestStats(Object.fromEntries(repositoryMetadataPatches.map(({ repository, updates }) => [repository, updates])), { configuredOnly: true });
   }
 
   if (hadSuccessfulCheck) {
@@ -978,14 +975,12 @@ async function cleanupRemovedRepositoryStorage(repositories) {
   const repositorySet = new Set(Array.isArray(repositories) ? repositories : []);
 
   try {
-    const [settings, latestStats, pendingActivity, viewedBaselines, notificationBaselines] = await Promise.all([
+    const [settings, pendingActivity, viewedBaselines, notificationBaselines] = await Promise.all([
       getSettings(),
-      getLatestStats(),
       getPendingActivity(),
       getViewedBaselines(),
       getNotificationBaselines(),
     ]);
-    const latestStatsCleanup = removeUnconfiguredRepositoryEntries(latestStats, repositorySet);
     const pendingRepositoriesCleanup = removeUnconfiguredRepositoryEntries(pendingActivity.repositories, repositorySet);
     const pendingBadgeRepositoriesCleanup = removeUnconfiguredRepositoryEntries(pendingActivity.badgeActivity?.repositories, repositorySet);
     const viewedBaselinesCleanup = removeUnconfiguredRepositoryEntries(viewedBaselines.repositories, repositorySet);
@@ -993,9 +988,7 @@ async function cleanupRemovedRepositoryStorage(repositories) {
     const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
     const cleanupTasks = [];
 
-    if (latestStatsCleanup.changed) {
-      cleanupTasks.push(saveLatestStats(latestStatsCleanup.entries));
-    }
+    cleanupTasks.push(removeUnconfiguredLatestStats(repositories));
 
     if (pendingRepositoriesCleanup.changed || pendingBadgeRepositoriesCleanup.changed) {
       nextPendingActivity.repositories = pendingRepositoriesCleanup.entries;

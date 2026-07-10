@@ -649,7 +649,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     )
     : null;
 
-  const savedLatestStats = await mergeLatestStats(Object.fromEntries(results.map(({ repository, stats }) => [repository, stats])));
+  const savedLatestStats = await mergeLatestStats(Object.fromEntries(results.map(({ repository, stats }) => [repository, stats])), { configuredOnly: true });
 
   if (isManualRefreshSource(source)) {
     await syncNotificationBaselinesFromManualRefresh({
@@ -697,7 +697,7 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
     )
     : null;
 
-  const savedLatestStats = await mergeLatestStats({ [repository]: result.stats });
+  const savedLatestStats = await mergeLatestStats({ [repository]: result.stats }, { configuredOnly: true });
 
   return {
     fetchedAt,

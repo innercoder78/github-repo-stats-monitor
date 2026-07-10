@@ -215,7 +215,6 @@ storageData.fullRefreshCoordination = {};
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
 let fullRefreshRunCount = 0;
-
 storageData.fullRefreshCoordination = {
   lastCompletedAt: new Date(Date.now() - 20 * 1000).toISOString(),
   lastCompletedBy: 'background',

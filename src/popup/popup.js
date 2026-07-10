@@ -531,6 +531,27 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+
+async function handleSkippedRefreshResult(refreshResult) {
+  await reloadSavedRefreshData();
+
+  if (refreshResult?.reason === 'completed-recently') {
+    return;
+  }
+
+  if (refreshResult?.reason === 'running') {
+    renderPopupStatusLines(['Another refresh is already in progress. Current saved data is shown.']);
+    return;
+  }
+
+  if (refreshResult?.reason === 'invalid-repository') {
+    renderPopupStatusLines(['Refresh failed. Last saved values are shown where available.']);
+    return;
+  }
+
+  renderPopupStatusLines(['Refresh could not start. Current saved data is shown.']);
+}
+
 function formatRepositoryRefreshSummary(refreshResult) {
   const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
   const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
@@ -568,7 +589,7 @@ async function refreshStats() {
   try {
     const refreshResult = await requestFullRefresh('quick-summary');
     if (refreshResult.skipped) {
-      await reloadSavedRefreshData();
+      await handleSkippedRefreshResult(refreshResult);
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;

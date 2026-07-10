@@ -4,7 +4,9 @@ const storageData = {};
 const alarms = new Map();
 let storageGetError = null;
 let storageSetError = null;
+let storageGetErrorKey = null;
 let fetchCalls = [];
+let storageSetCount = 0;
 
 function clone(value) {
   return value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value;
@@ -22,7 +24,7 @@ globalThis.chrome = {
   storage: {
     local: {
       get(defaults, callback) {
-        if (storageGetError) {
+        if (storageGetError && (!storageGetErrorKey || Object.hasOwn(defaults, storageGetErrorKey))) {
           chrome.runtime.lastError = storageGetError;
           callback({});
           chrome.runtime.lastError = null;
@@ -45,6 +47,7 @@ globalThis.chrome = {
           return;
         }
 
+        storageSetCount += 1;
         Object.assign(storageData, clone(values));
         callback?.();
       },
@@ -85,14 +88,16 @@ const {
   __refreshCoordinationTest,
 } = await import('../src/background.js');
 const { runExclusiveFullRefresh } = await import('../src/shared/refresh-stats.js');
-const { mergeLatestStats } = await import('../src/shared/storage.js');
+const { mergeLatestStats, mutateLatestStats, patchLatestStats, removeUnconfiguredLatestStats } = await import('../src/shared/storage.js');
 
 function resetState() {
   Object.keys(storageData).forEach((key) => delete storageData[key]);
   alarms.clear();
   storageGetError = null;
   storageSetError = null;
+  storageGetErrorKey = null;
   fetchCalls = [];
+  storageSetCount = 0;
   __refreshCoordinationTest.clearActiveRefreshOperationForTest();
 }
 
@@ -206,3 +211,157 @@ const mergedLatestStats = await mergeLatestStats({
 assert.equal(mergedLatestStats['owner/repo-a'].stars, 3);
 assert.equal(mergedLatestStats['owner/repo-b'].stars, 2);
 assert.equal(storageData.latestStats['owner/repo-b'].fetchedAt, 'new-b');
+
+
+resetState();
+storageData.repositories = ['owner/repo-a'];
+storageData.latestStats = {
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'old-a' },
+  'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'old-b' },
+};
+let releaseQueuedRefresh;
+const queuedRefresh = mutateLatestStats(async (currentLatestStats) => {
+  await new Promise((resolve) => {
+    releaseQueuedRefresh = resolve;
+  });
+  return {
+    ...currentLatestStats,
+    'owner/repo-a': { ...currentLatestStats['owner/repo-a'], stars: 10, fetchedAt: 'new-a' },
+    'owner/repo-b': { ...currentLatestStats['owner/repo-b'], stars: 20, fetchedAt: 'new-b' },
+  };
+});
+const queuedCleanup = removeUnconfiguredLatestStats(['owner/repo-a']);
+while (typeof releaseQueuedRefresh !== 'function') {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+releaseQueuedRefresh();
+await Promise.all([queuedRefresh, queuedCleanup]);
+assert.equal(storageData.latestStats['owner/repo-a'].stars, 10);
+assert.equal(storageData.latestStats['owner/repo-a'].fetchedAt, 'new-a');
+assert.equal(storageData.latestStats['owner/repo-b'], undefined);
+
+resetState();
+storageData.repositories = ['owner/repo-a'];
+storageData.latestStats = {
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'old-a' },
+  'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'old-b' },
+};
+await removeUnconfiguredLatestStats(['owner/repo-a']);
+await mergeLatestStats({
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 11, forks: 1, subscribers: 1, fetchedAt: 'new-a' },
+  'owner/repo-b': { repository: 'owner/repo-b', stars: 22, forks: 2, subscribers: 2, fetchedAt: 'new-b' },
+}, { configuredOnly: true });
+assert.equal(storageData.latestStats['owner/repo-a'].stars, 11);
+assert.equal(storageData.latestStats['owner/repo-b'], undefined);
+
+resetState();
+storageData.repositories = ['owner/repo-a'];
+storageData.latestStats = {
+  'owner/repo-a': {
+    repository: 'owner/repo-a',
+    stars: 1,
+    forks: 1,
+    subscribers: 1,
+    views: 44,
+    uniqueVisitors: 11,
+    clones: 7,
+    referrers: [{ referrer: 'example.test', count: 3, uniques: 2 }],
+    trafficFetchedAt: 'traffic-new',
+    clonesFetchedAt: 'clones-new',
+    referrersFetchedAt: 'referrers-new',
+  },
+};
+await patchLatestStats({
+  'owner/repo-a': { stars: 5, forks: 2, subscribers: 4, fetchedAt: 'metadata-new', error: '' },
+}, { configuredOnly: true });
+assert.equal(storageData.latestStats['owner/repo-a'].stars, 5);
+assert.equal(storageData.latestStats['owner/repo-a'].views, 44);
+assert.equal(storageData.latestStats['owner/repo-a'].clones, 7);
+assert.deepEqual(storageData.latestStats['owner/repo-a'].referrers, [{ referrer: 'example.test', count: 3, uniques: 2 }]);
+assert.equal(storageData.latestStats['owner/repo-a'].trafficFetchedAt, 'traffic-new');
+
+resetState();
+storageData.latestStats = {
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'old-a' },
+};
+await assert.rejects(mutateLatestStats(async () => {
+  throw new Error('mutation failed');
+}), /mutation failed/);
+await mergeLatestStats({
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 9, forks: 1, subscribers: 1, fetchedAt: 'new-a' },
+});
+assert.equal(storageData.latestStats['owner/repo-a'].stars, 9);
+
+resetState();
+await mergeLatestStats({
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'old-a' },
+});
+storageSetCount = 0;
+const noOpResult = await mergeLatestStats({
+  'owner/repo-a': storageData.latestStats['owner/repo-a'],
+});
+assert.equal(noOpResult['owner/repo-a'].stars, 1);
+assert.equal(storageSetCount, 0);
+
+resetState();
+storageData.githubToken = 'token';
+storageData.repositories = ['owner/repo'];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: false,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: true, forks: false, repoWatchers: false, accountFollowers: false },
+};
+storageData.lastBackgroundCheckAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+storageGetError = new Error('admission storage failed');
+storageGetErrorKey = 'refreshOperationState';
+await assert.rejects(__refreshCoordinationTest.scheduleBackgroundCheckAlarm({ catchUpIfDue: true }), /admission storage failed/);
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 30, periodInMinutes: 30 });
+
+resetState();
+storageData.githubToken = 'token';
+storageData.repositories = ['owner/repo'];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: false,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: true, forks: false, repoWatchers: false, accountFollowers: false },
+};
+storageData.lastBackgroundCheckAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+__refreshCoordinationTest.setBackgroundCheckForTest(async () => {
+  throw new Error('background check failed');
+});
+await assert.rejects(__refreshCoordinationTest.scheduleBackgroundCheckAlarm({ catchUpIfDue: true }), /background check failed/);
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 30, periodInMinutes: 30 });
+
+resetState();
+storageData.githubToken = 'token';
+storageData.repositories = ['owner/repo'];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: false,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: true, forks: false, repoWatchers: false, accountFollowers: false },
+};
+storageData.lastBackgroundCheckAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+__refreshCoordinationTest.setBackgroundCheckForTest(async () => ({ fetchedAt: new Date().toISOString() }));
+await __refreshCoordinationTest.scheduleBackgroundCheckAlarm({ catchUpIfDue: true });
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 30, periodInMinutes: 30 });
+
+resetState();
+storageData.githubToken = 'token';
+storageData.repositories = ['owner/repo'];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: false,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: true, forks: false, repoWatchers: false, accountFollowers: false },
+};
+storageData.lastBackgroundCheckAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+__refreshCoordinationTest.setBackgroundCheckForTest(async () => ({ skipped: true, reason: 'manual-quiet-window', retryAfterMs: 45000 }));
+await __refreshCoordinationTest.scheduleBackgroundCheckAlarm({ catchUpIfDue: true });
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 0.75, periodInMinutes: 30 });

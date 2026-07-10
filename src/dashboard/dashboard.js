@@ -761,6 +761,49 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+
+async function handleSkippedFullRefreshResult(refreshResult) {
+  await reloadSavedRefreshData();
+
+  if (refreshResult?.reason === 'completed-recently') {
+    setStatus('Showing recently refreshed data.', 'success');
+    return;
+  }
+
+  if (refreshResult?.reason === 'running') {
+    setStatus('Another refresh is already in progress. Current saved data is shown. Refresh again after it finishes.', 'warning');
+    return;
+  }
+
+  if (refreshResult?.reason === 'invalid-repository') {
+    setStatus('Refresh could not finish. Last saved values are shown where available.', 'error');
+    return;
+  }
+
+  setStatus('Refresh could not start. Current saved data is shown.', 'warning');
+}
+
+async function handleSkippedRepositoryRefreshResult(refreshResult, repository) {
+  await reloadSavedRefreshData();
+
+  if (refreshResult?.reason === 'completed-recently') {
+    setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
+    return;
+  }
+
+  if (refreshResult?.reason === 'running') {
+    setStatus(`Another refresh is already in progress. Current saved data for ${repository} is shown.`, 'warning');
+    return;
+  }
+
+  if (refreshResult?.reason === 'invalid-repository') {
+    setStatus(`Could not refresh ${repository}. Last saved values are shown where available.`, 'error');
+    return;
+  }
+
+  setStatus(`Refresh could not start for ${repository}. Current saved data is shown.`, 'warning');
+}
+
 function formatRepositoryRefreshSummary(refreshResult) {
   const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
   const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
@@ -806,8 +849,7 @@ async function refreshRepositoryStats() {
   try {
     const refreshResult = await requestRefresh('refreshStats.full', { source: 'dashboard' });
     if (refreshResult.skipped) {
-      await reloadSavedRefreshData();
-      setStatus('Showing recently refreshed data.', 'success');
+      await handleSkippedFullRefreshResult(refreshResult);
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;
@@ -855,8 +897,7 @@ async function refreshSingleRepository(repository) {
   try {
     const refreshResult = await requestRefresh('refreshStats.repository', { repository });
     if (refreshResult.skipped) {
-      await reloadSavedRefreshData();
-      setStatus(`Showing recently refreshed data for ${repository}.`, 'success');
+      await handleSkippedRepositoryRefreshResult(refreshResult, repository);
     } else {
       currentLatestStats = refreshResult.latestStats;
       if (refreshResult.pendingActivity) {
