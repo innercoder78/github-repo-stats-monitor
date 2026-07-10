@@ -7,6 +7,7 @@ let storageSetError = null;
 let storageGetErrorKey = null;
 let fetchCalls = [];
 let storageSetCount = 0;
+let onStorageSet = null;
 
 function clone(value) {
   return value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value;
@@ -49,6 +50,7 @@ globalThis.chrome = {
         }
 
         storageSetCount += 1;
+        if (typeof onStorageSet === 'function') onStorageSet(values);
         Object.assign(storageData, clone(values));
         callback?.();
       },
@@ -100,6 +102,7 @@ function resetState() {
   storageGetErrorKey = null;
   fetchCalls = [];
   storageSetCount = 0;
+  onStorageSet = null;
   __refreshCoordinationTest.clearActiveRefreshOperationForTest();
 }
 
@@ -469,11 +472,23 @@ globalThis.fetch = async (url) => {
   fakeNow = RealDate.parse('2026-07-10T10:00:09.000Z');
   return { ok: true, headers: { get: () => null }, json: async () => ({ stargazers_count: 3, forks_count: 0, subscribers_count: 0 }) };
 };
+onStorageSet = (values) => {
+  if (values.notificationBaselines) fakeNow = RealDate.parse('2026-07-10T10:00:10.000Z');
+  if (values.pendingActivity) fakeNow = RealDate.parse('2026-07-10T10:00:11.000Z');
+};
+const originalSetBadgeText = chrome.action.setBadgeText;
+const originalNotificationCreate = chrome.notifications.create;
+chrome.action.setBadgeText = () => { fakeNow = RealDate.parse('2026-07-10T10:00:12.000Z'); return Promise.resolve(); };
+chrome.notifications.create = (id, options, callback) => { fakeNow = RealDate.parse('2026-07-10T10:00:13.000Z'); callback?.(); return Promise.resolve(); };
 const backgroundResult = await __refreshCoordinationTest.runBackgroundCheck();
+chrome.action.setBadgeText = originalSetBadgeText;
+chrome.notifications.create = originalNotificationCreate;
 globalThis.Date = RealDate;
 assert.equal(backgroundResult.skipped, false);
 assert.equal(storageData.accountStats.fetchedAt, '2026-07-10T10:00:05.000Z', 'automatic account timestamp uses account completion');
 assert.equal(storageData.latestStats['owner/repo'].fetchedAt, '2026-07-10T10:00:09.000Z', 'automatic repository timestamp uses metadata completion');
 assert.equal(storageData.notificationBaselines.account.updatedAt, '2026-07-10T10:00:05.000Z');
 assert.equal(storageData.notificationBaselines.repositories['owner/repo'].updatedAt, '2026-07-10T10:00:09.000Z');
-assert.equal(storageData.lastBackgroundCheckAt, '2026-07-10T10:00:09.000Z', 'background completion is after endpoint completion');
+assert.equal(storageData.notificationBaselines.updatedAt, '2026-07-10T10:00:09.000Z', 'overall baselines updatedAt uses latest endpoint completion, not check start');
+assert.equal(storageData.lastBackgroundCheckAt, '2026-07-10T10:00:13.000Z', 'background completion is after baseline, pending, badge, and notification work');
+assert.equal(backgroundResult.fetchedAt, storageData.lastBackgroundCheckAt, 'returned background fetchedAt equals final completion timestamp');

@@ -1046,7 +1046,7 @@ async function runBackgroundCheck() {
     return { skipped: true, reason: coordinatedCheck.reason || 'running' };
   }
 
-  return { skipped: false };
+  return { skipped: false, fetchedAt: coordinatedCheck.result?.fetchedAt || '' };
 }
 
 async function runBackgroundCheckNow() {
@@ -1110,18 +1110,18 @@ async function runBackgroundCheckNow() {
     await patchLatestStats(Object.fromEntries(repositoryMetadataPatches.map(({ repository, updates }) => [repository, updates])), { configuredOnly: true });
   }
 
-  const completedAt = new Date().toISOString();
+  const latestEndpointCompletedAt = successfulEndpointCompletions[successfulEndpointCompletions.length - 1] || '';
 
   if (hadSuccessfulCheck) {
     baselines.initialized = true;
-    baselines.updatedAt = checkedAt;
+    baselines.updatedAt = latestEndpointCompletedAt;
     await saveNotificationBaselines(baselines);
   } else if (baselinesChanged) {
     await saveNotificationBaselines(baselines);
   }
 
   if (pendingChanged) {
-    const activityUpdatedAt = successfulEndpointCompletions[successfulEndpointCompletions.length - 1] || completedAt;
+    const activityUpdatedAt = latestEndpointCompletedAt || new Date().toISOString();
     pendingActivity.updatedAt = activityUpdatedAt;
 
     if (settings.notifications.badgeEnabled) {
@@ -1140,6 +1140,8 @@ async function runBackgroundCheckNow() {
     await updateBadgeFromBadgeActivity(settings, badgeActivity);
   }
   await showActivityNotification(settings, detectedChanges, shouldCompare);
+
+  const completedAt = new Date().toISOString();
 
   if (hadSuccessfulCheck) {
     await saveLastBackgroundCheckAt(completedAt);
