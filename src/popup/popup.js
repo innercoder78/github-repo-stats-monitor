@@ -12,7 +12,6 @@ import {
 } from '../shared/storage.js';
 import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
-import { refreshStatsCache } from '../shared/refresh-stats.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
@@ -516,6 +515,43 @@ async function reloadSavedRefreshData() {
   }
 }
 
+
+function requestFullRefresh(source) {
+  return chrome.runtime.sendMessage({ action: 'refreshStats.full', source }).then((response) => {
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Refresh failed.');
+    }
+    return response.result;
+  });
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.action === 'refreshStats.progress' && message.source === 'quick-summary' && isRefreshing) {
+    renderPopupStatusLines([formatRefreshProgressMessage(message.progress)]);
+  }
+});
+
+
+async function handleSkippedRefreshResult(refreshResult) {
+  await reloadSavedRefreshData();
+
+  if (refreshResult?.reason === 'completed-recently') {
+    return;
+  }
+
+  if (refreshResult?.reason === 'running') {
+    renderPopupStatusLines(['Another refresh is already in progress. Current saved data is shown.']);
+    return;
+  }
+
+  if (refreshResult?.reason === 'invalid-repository') {
+    renderPopupStatusLines(['Refresh failed. Last saved values are shown where available.']);
+    return;
+  }
+
+  renderPopupStatusLines(['Refresh could not start. Current saved data is shown.']);
+}
+
 function formatRepositoryRefreshSummary(refreshResult) {
   const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
   const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
@@ -551,17 +587,9 @@ async function refreshStats() {
   renderPopupStatusLines([formatRefreshProgressMessage({ completed: 0, total: currentSettings.repositories.length })]);
 
   try {
-    const refreshResult = await refreshStatsCache(currentSettings, currentLatestStats, {
-      source: 'quick-summary',
-      accountStats: currentAccountStats,
-      detectActivity: true,
-      skipBadgeActivity: true,
-      onProgress(progress) {
-        renderPopupStatusLines([formatRefreshProgressMessage(progress)]);
-      },
-    });
+    const refreshResult = await requestFullRefresh('quick-summary');
     if (refreshResult.skipped) {
-      await reloadSavedRefreshData();
+      await handleSkippedRefreshResult(refreshResult);
     } else {
       currentLatestStats = refreshResult.latestStats;
       currentAccountStats = refreshResult.accountStats;
