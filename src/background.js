@@ -988,7 +988,7 @@ async function cleanupRemovedRepositoryStorage(repositories) {
     const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
     const cleanupTasks = [];
 
-    cleanupTasks.push(removeUnconfiguredLatestStats(repositories));
+    cleanupTasks.push(removeUnconfiguredLatestStats());
 
     if (pendingRepositoriesCleanup.changed || pendingBadgeRepositoriesCleanup.changed) {
       nextPendingActivity.repositories = pendingRepositoriesCleanup.entries;

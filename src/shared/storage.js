@@ -363,12 +363,14 @@ export function patchLatestStats(updates, options = {}) {
   });
 }
 
-export function removeUnconfiguredLatestStats(repositories) {
-  const repositorySet = new Set(Array.isArray(repositories) ? repositories.map(normalizeRepositoryName).filter(isValidRepositoryName) : []);
+export function removeUnconfiguredLatestStats() {
+  return mutateLatestStats(async (currentLatestStats) => {
+    const repositorySet = new Set((await getSettings()).repositories);
 
-  return mutateLatestStats((currentLatestStats) => Object.fromEntries(
-    Object.entries(currentLatestStats).filter(([repository]) => repositorySet.has(repository)),
-  ));
+    return Object.fromEntries(
+      Object.entries(currentLatestStats).filter(([repository]) => repositorySet.has(repository)),
+    );
+  });
 }
 
 export function resetExtensionData() {

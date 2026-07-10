@@ -230,7 +230,7 @@ const queuedRefresh = mutateLatestStats(async (currentLatestStats) => {
     'owner/repo-b': { ...currentLatestStats['owner/repo-b'], stars: 20, fetchedAt: 'new-b' },
   };
 });
-const queuedCleanup = removeUnconfiguredLatestStats(['owner/repo-a']);
+const queuedCleanup = removeUnconfiguredLatestStats();
 while (typeof releaseQueuedRefresh !== 'function') {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -243,10 +243,36 @@ assert.equal(storageData.latestStats['owner/repo-b'], undefined);
 resetState();
 storageData.repositories = ['owner/repo-a'];
 storageData.latestStats = {
+  'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached-a' },
+  'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached-b' },
+  'owner/repo-c': { repository: 'owner/repo-c', stars: 3, forks: 3, subscribers: 3, fetchedAt: 'cached-c' },
+};
+let releaseBlockingMutation;
+const blockingMutation = mutateLatestStats(async (currentLatestStats) => {
+  await new Promise((resolve) => {
+    releaseBlockingMutation = resolve;
+  });
+  return currentLatestStats;
+});
+const queuedSettingsCleanup = removeUnconfiguredLatestStats();
+while (typeof releaseBlockingMutation !== 'function') {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+storageData.repositories = ['owner/repo-a', 'owner/repo-b'];
+releaseBlockingMutation();
+await Promise.all([blockingMutation, queuedSettingsCleanup]);
+assert.equal(storageData.latestStats['owner/repo-a'].fetchedAt, 'cached-a');
+assert.equal(storageData.latestStats['owner/repo-b'].fetchedAt, 'cached-b');
+assert.equal(storageData.latestStats['owner/repo-c'], undefined);
+
+
+resetState();
+storageData.repositories = ['owner/repo-a'];
+storageData.latestStats = {
   'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'old-a' },
   'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'old-b' },
 };
-await removeUnconfiguredLatestStats(['owner/repo-a']);
+await removeUnconfiguredLatestStats();
 await mergeLatestStats({
   'owner/repo-a': { repository: 'owner/repo-a', stars: 11, forks: 1, subscribers: 1, fetchedAt: 'new-a' },
   'owner/repo-b': { repository: 'owner/repo-b', stars: 22, forks: 2, subscribers: 2, fetchedAt: 'new-b' },
