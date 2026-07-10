@@ -1,6 +1,6 @@
 import { getVersionCheckStatus, saveVersionCheckStatus } from './storage.js';
 import { fetchGitHub } from './github-api.js';
-import { getGitHubActivityStatus, runTrackedGitHubActivity } from './github-activity.js';
+import { getGitHubActivityStatus, getGitHubQuietWindowRemainingMs, isGitHubQuiet, runTrackedGitHubActivity } from './github-activity.js';
 
 export const VERSION_CHECK_CACHE_DURATION_MS = 24 * 60 * 60 * 1000;
 export const VERSION_CHECK_QUIET_WINDOW_MS = 2 * 60 * 1000;
@@ -51,6 +51,7 @@ export function getEffectiveVersionCheckStatus(status) {
 
   return {
     checkedAt: typeof versionStatus.checkedAt === 'string' ? versionStatus.checkedAt : '',
+    attemptedAt: typeof versionStatus.attemptedAt === 'string' ? versionStatus.attemptedAt : typeof versionStatus.checkedAt === 'string' ? versionStatus.checkedAt : '',
     localVersion,
     latestVersion,
     updateAvailable: Boolean(latestVersion) && compareVersions(latestVersion, localVersion) > 0,
@@ -71,11 +72,11 @@ export function isVersionCheckStatusStale(status, now = Date.now()) {
 }
 
 export function hasQuietWindowPassed(activity, now = Date.now()) {
-  if (activity?.active) return false;
-  const quietUntil = Date.parse(activity?.quietUntil || '');
-  if (Number.isFinite(quietUntil)) return now >= quietUntil;
-  const finishedAt = Date.parse(activity?.lastFinishedAt || '');
-  return !Number.isFinite(finishedAt) || now - finishedAt >= VERSION_CHECK_QUIET_WINDOW_MS;
+  return isGitHubQuiet(activity, now);
+}
+
+export function getVersionCheckQuietWindowRemainingMs(activity, now = Date.now()) {
+  return getGitHubQuietWindowRemainingMs(activity, now);
 }
 
 function decodeBase64Json(content) {
@@ -106,6 +107,7 @@ export function fetchRemoteManifestVersion() {
 export function buildVersionCheckStatus(localVersion, latestVersion, checkedAt = new Date().toISOString()) {
   return {
     checkedAt,
+    attemptedAt: checkedAt,
     localVersion,
     latestVersion,
     updateAvailable: compareVersions(latestVersion, localVersion) > 0,
@@ -114,10 +116,12 @@ export function buildVersionCheckStatus(localVersion, latestVersion, checkedAt =
   };
 }
 
-export function buildFailedVersionCheckStatus(previousStatus, localVersion, error, checkedAt = new Date().toISOString()) {
+export function buildFailedVersionCheckStatus(previousStatus, localVersion, error, attemptedAt = new Date().toISOString()) {
   const latestVersion = typeof previousStatus?.latestVersion === 'string' ? previousStatus.latestVersion : '';
+  const checkedAt = typeof previousStatus?.checkedAt === 'string' ? previousStatus.checkedAt : '';
   return {
     checkedAt,
+    attemptedAt,
     localVersion,
     latestVersion,
     updateAvailable: Boolean(latestVersion) && compareVersions(latestVersion, localVersion) > 0,
@@ -142,7 +146,8 @@ export async function runVersionCheck() {
     }
     return { checked: false, reason: 'cache-fresh' };
   }
-  if (!hasQuietWindowPassed(await getGitHubActivityStatus())) return { checked: false, reason: 'not-quiet' };
+  const activity = await getGitHubActivityStatus();
+  if (!hasQuietWindowPassed(activity)) return { checked: false, reason: 'not-quiet', retryAfterMs: getVersionCheckQuietWindowRemainingMs(activity) };
 
   try {
     const latestVersion = await fetchRemoteManifestVersion();

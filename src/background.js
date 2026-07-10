@@ -20,7 +20,7 @@ import {
   saveViewedBaselines,
 } from './shared/storage.js';
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
-import { runTrackedGitHubActivity } from './shared/github-activity.js';
+import { getGitHubActivityStatus, getGitHubQuietWindowRemainingMs, runTrackedGitHubActivity } from './shared/github-activity.js';
 
 export const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
 const REFRESH_OPERATION_KEY = 'refreshOperationState';
@@ -35,6 +35,8 @@ const SETTINGS_GITHUB_ACTIONS = Object.freeze({
   TEST_CONNECTION: 'settings.github.testConnection',
 });
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
+const VERSION_CHECK_RETRY_ALARM_NAME = `${VERSION_CHECK_ALARM_NAME}.retry`;
+const BACKGROUND_CHECK_RETRY_ALARM_NAME = `${BACKGROUND_CHECK_ALARM_NAME}.retry`;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const MAX_SETTINGS_REPOSITORIES = 20;
 const REPOSITORY_STATS = Object.freeze([
@@ -572,7 +574,12 @@ function canRunBackgroundChecks(settings) {
 }
 
 function isManualQuietWindowSkip(result) {
-  return Boolean(result?.skipped && result.reason === 'manual-quiet-window' && Number(result.retryAfterMs) > 0);
+  return Boolean(result?.skipped && (result.reason === 'manual-quiet-window' || result.reason === 'github-quiet-window') && Number(result.retryAfterMs) > 0);
+}
+
+async function scheduleBackgroundCheckRetryAfterMs(retryAfterMs) {
+  const delayInMinutes = Math.max((Number(retryAfterMs) || 0) / 60000, 0.5);
+  await chrome.alarms.create(BACKGROUND_CHECK_RETRY_ALARM_NAME, { delayInMinutes });
 }
 
 async function scheduleManualQuietWindowRetry(result) {
@@ -607,9 +614,17 @@ async function scheduleVersionCheckAlarm() {
   });
 }
 
+async function scheduleVersionCheckRetryAfterMs(retryAfterMs) {
+  const delayInMinutes = Math.max((Number(retryAfterMs) || 0) / 60000, 0.5);
+  await chrome.alarms.create(VERSION_CHECK_RETRY_ALARM_NAME, { delayInMinutes });
+}
+
 async function attemptVersionCheck() {
   try {
-    await runVersionCheck();
+    const result = await runVersionCheck();
+    if (result?.reason === 'not-quiet' && Number(result.retryAfterMs) > 0) {
+      await scheduleVersionCheckRetryAfterMs(result.retryAfterMs);
+    }
   } catch (error) {
     console.warn('Unable to check for extension updates.', error);
   }
@@ -967,6 +982,11 @@ async function runBackgroundCheck() {
     return { skipped: true, reason: 'manual-quiet-window', retryAfterMs: manualQuietWindowRemainingMs };
   }
 
+  const githubQuietRemainingMs = getGitHubQuietWindowRemainingMs(await getGitHubActivityStatus());
+  if (githubQuietRemainingMs > 0) {
+    return { skipped: true, reason: 'github-quiet-window', retryAfterMs: githubQuietRemainingMs };
+  }
+
   const coordinatedCheck = await runExclusiveFullRefresh('background', runBackgroundCheckNow);
   if (coordinatedCheck.skipped) {
     return { skipped: true, reason: coordinatedCheck.reason || 'running' };
@@ -1033,6 +1053,8 @@ async function runBackgroundCheckNow() {
     await patchLatestStats(Object.fromEntries(repositoryMetadataPatches.map(({ repository, updates }) => [repository, updates])), { configuredOnly: true });
   }
 
+  const completedAt = new Date().toISOString();
+
   if (hadSuccessfulCheck) {
     baselines.initialized = true;
     baselines.updatedAt = checkedAt;
@@ -1062,10 +1084,10 @@ async function runBackgroundCheckNow() {
   await showActivityNotification(settings, detectedChanges, shouldCompare);
 
   if (hadSuccessfulCheck) {
-    await saveLastBackgroundCheckAt(checkedAt);
+    await saveLastBackgroundCheckAt(completedAt);
   }
 
-  return { fetchedAt: checkedAt };
+  return { fetchedAt: completedAt };
 }
 
 
@@ -1324,7 +1346,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === BACKGROUND_CHECK_ALARM_NAME) {
+  if (alarm.name === BACKGROUND_CHECK_ALARM_NAME || alarm.name === BACKGROUND_CHECK_RETRY_ALARM_NAME) {
     (async () => {
       const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
       if (!admission.admitted) {
@@ -1346,7 +1368,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return;
   }
 
-  if (alarm.name === VERSION_CHECK_ALARM_NAME) {
+  if (alarm.name === VERSION_CHECK_ALARM_NAME || alarm.name === VERSION_CHECK_RETRY_ALARM_NAME) {
     attemptVersionCheck();
   }
 });

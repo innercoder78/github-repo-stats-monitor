@@ -1,6 +1,11 @@
+import { extendGitHubQuietWindowUntil } from './github-activity.js';
 const GITHUB_API_VERSION = '2022-11-28';
 
 export const GITHUB_REQUEST_CONCURRENCY_LIMIT = 4;
+export const GITHUB_REQUEST_MAX_ATTEMPTS = 3;
+const GITHUB_RETRYABLE_STATUSES = new Set([408, 500, 502, 503, 504]);
+const GITHUB_NON_RETRYABLE_STATUSES = new Set([401, 403, 404, 429]);
+let retryDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let activeGitHubRequestCount = 0;
 const githubRequestQueue = [];
@@ -24,11 +29,24 @@ export function getGitHubRequestLimiterState() {
   return { active: activeGitHubRequestCount, queued: githubRequestQueue.length };
 }
 
-export function fetchGitHub(url, options) {
-  if (!isGitHubApiUrl(url)) {
-    return fetch(url, options);
-  }
+function isSafeGetRequest(options = {}) {
+  return String(options?.method || 'GET').toUpperCase() === 'GET';
+}
 
+function isAbortError(error) {
+  return error?.name === 'AbortError';
+}
+
+function isRetryableResponse(response) {
+  if (GITHUB_NON_RETRYABLE_STATUSES.has(response?.status)) return false;
+  return GITHUB_RETRYABLE_STATUSES.has(response?.status);
+}
+
+function getRetryDelayMs(attempt) {
+  return Math.min(1000, 100 * (2 ** Math.max(0, attempt - 1)));
+}
+
+async function runLimitedGitHubFetch(url, options) {
   return new Promise((resolve, reject) => {
     const run = () => {
       activeGitHubRequestCount += 1;
@@ -44,6 +62,32 @@ export function fetchGitHub(url, options) {
     githubRequestQueue.push(run);
     drainGitHubRequestQueue();
   });
+}
+
+export async function fetchGitHub(url, options = {}) {
+  if (!isGitHubApiUrl(url)) {
+    return fetch(url, options);
+  }
+
+  const retryable = isSafeGetRequest(options);
+  for (let attempt = 1; attempt <= GITHUB_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await runLimitedGitHubFetch(url, options);
+      if (!retryable || attempt >= GITHUB_REQUEST_MAX_ATTEMPTS || !isRetryableResponse(response)) {
+        return response;
+      }
+      await retryDelay(getRetryDelayMs(attempt));
+    } catch (error) {
+      if (!retryable || isAbortError(error) || attempt >= GITHUB_REQUEST_MAX_ATTEMPTS) {
+        throw error;
+      }
+      await retryDelay(getRetryDelayMs(attempt));
+    }
+  }
+}
+
+export function __setGitHubRetryDelayForTest(delayFunction) {
+  retryDelay = typeof delayFunction === 'function' ? delayFunction : retryDelay;
 }
 
 export function __resetGitHubRequestLimiterForTest() {
@@ -93,6 +137,34 @@ async function readGitHubErrorBody(response) {
   }
 
   return { message: '' };
+}
+
+function getRateLimitQuietUntil(headers) {
+  const rateLimit = getGitHubRateLimitHeaders(headers);
+  const retryAfterSeconds = Number(rateLimit.retryAfter);
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return new Date(Date.now() + retryAfterSeconds * 1000).toISOString();
+  }
+  const retryAfterDate = Date.parse(rateLimit.retryAfter || '');
+  if (Number.isFinite(retryAfterDate) && retryAfterDate > Date.now()) {
+    return new Date(retryAfterDate).toISOString();
+  }
+  const resetSeconds = Number(rateLimit.reset);
+  if (Number.isFinite(resetSeconds) && resetSeconds > 0 && resetSeconds * 1000 > Date.now()) {
+    return new Date(resetSeconds * 1000).toISOString();
+  }
+  return '';
+}
+
+async function recordRateLimitQuietWindow(response) {
+  if (![403, 429].includes(Number(response?.status))) return;
+  const quietUntil = getRateLimitQuietUntil(response?.headers);
+  if (!quietUntil) return;
+  try {
+    await extendGitHubQuietWindowUntil(quietUntil, 'rate-limit');
+  } catch (error) {
+    console.warn('Unable to record GitHub rate-limit quiet window.', error);
+  }
 }
 
 function formatRateLimitReset(reset) {
@@ -200,6 +272,7 @@ export function buildGitHubRequestErrorMessage({ status, context = 'general', he
 
 async function getGitHubRequestErrorMessage(response, context) {
   const body = await readGitHubErrorBody(response);
+  await recordRateLimitQuietWindow(response);
   return buildGitHubRequestErrorMessage({
     status: response?.status,
     context,

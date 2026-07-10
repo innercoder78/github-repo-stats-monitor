@@ -216,7 +216,7 @@ export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) 
 
   try {
     const result = await runTrackedGitHubActivity(source, requestTask);
-    const completedAt = result?.fetchedAt || new Date().toISOString();
+    const completedAt = new Date().toISOString();
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {
       await saveRefreshCoordination({
@@ -289,7 +289,7 @@ export async function runExclusiveRepositoryRefresh(repository, requestTask) {
 
   try {
     const result = await runTrackedGitHubActivity(source, requestTask);
-    const completedAt = result?.fetchedAt || new Date().toISOString();
+    const completedAt = new Date().toISOString();
     const latestCoordination = await getRefreshCoordination();
     const latestRepositoryRefreshes = getActiveRepositoryRefreshes(latestCoordination);
 
@@ -370,7 +370,7 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
 
   try {
     const result = await runTrackedGitHubActivity(source, refreshTask);
-    const completedAt = result?.fetchedAt || new Date().toISOString();
+    const completedAt = new Date().toISOString();
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {
       await saveRefreshCoordination({
@@ -493,12 +493,12 @@ function getRefreshInputs(settings) {
   return { githubToken, repositories };
 }
 
-async function refreshAccountStats(githubToken, previousAccountStats, fetchedAt) {
+async function refreshAccountStats(githubToken, previousAccountStats) {
   const stats = normalizeAccountStats(previousAccountStats);
 
   try {
     const account = await fetchAuthenticatedAccount(githubToken);
-    const nextStats = { ...stats, ...account, fetchedAt };
+    const nextStats = { ...stats, ...account, fetchedAt: new Date().toISOString() };
     return { accountStats: await saveAccountStats(nextStats), error: '' };
   } catch (error) {
     return { accountStats: stats, error: error.message };
@@ -532,19 +532,19 @@ async function detectRefreshActivity(settings, previousLatestStats, nextLatestSt
   return savePendingActivity(nextPendingActivity);
 }
 
-async function refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt) {
+async function refreshRepositoryStats(repository, githubToken, previousStats) {
   const stats = { ...previousStats, repository };
 
   try {
     const metadata = await fetchRepositoryMetadata(repository, githubToken);
-    Object.assign(stats, metadata, { fetchedAt, error: '' });
+    Object.assign(stats, metadata, { fetchedAt: new Date().toISOString(), error: '' });
   } catch (error) {
     stats.error = error.message;
   }
 
   try {
     const traffic = await fetchRepositoryTrafficViews(repository, githubToken);
-    Object.assign(stats, traffic, { trafficFetchedAt: fetchedAt, trafficError: '' });
+    Object.assign(stats, traffic, { trafficFetchedAt: new Date().toISOString(), trafficError: '' });
   } catch (error) {
     stats.trafficError = error.message;
     if (!hasCachedTraffic(stats)) {
@@ -557,7 +557,7 @@ async function refreshRepositoryStats(repository, githubToken, previousStats, fe
 
   try {
     const clones = await fetchRepositoryTrafficClones(repository, githubToken);
-    Object.assign(stats, clones, { clonesFetchedAt: fetchedAt, clonesError: '' });
+    Object.assign(stats, clones, { clonesFetchedAt: new Date().toISOString(), clonesError: '' });
   } catch (error) {
     stats.clonesError = error.message;
     if (!hasCachedClones(stats)) {
@@ -569,7 +569,7 @@ async function refreshRepositoryStats(repository, githubToken, previousStats, fe
 
   try {
     const referrers = await fetchRepositoryTrafficReferrers(repository, githubToken);
-    Object.assign(stats, referrers, { referrersFetchedAt: fetchedAt, referrersError: '' });
+    Object.assign(stats, referrers, { referrersFetchedAt: new Date().toISOString(), referrersError: '' });
   } catch (error) {
     stats.referrersError = error.message;
     if (!hasCachedReferrers(stats)) {
@@ -600,7 +600,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   const onProgress = options && typeof options === 'object' ? options.onProgress : undefined;
   const previousAccountStats = options && typeof options === 'object' ? options.accountStats : undefined;
 
-  const fetchedAt = new Date().toISOString();
+  const startedAt = new Date().toISOString();
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
   const recentRepositoryRefreshes = isManualRefreshSource(source)
     ? getRecentCompletedRepositoryRefreshes(await getRefreshCoordination())
@@ -612,12 +612,12 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   const skippedRepositorySet = new Set(skippedRepositories);
   const repositoriesToRefresh = repositories.filter((repository) => !skippedRepositorySet.has(repository));
   const accountResult = repositoriesToRefresh.length > 0
-    ? await refreshAccountStats(githubToken, previousAccountStats, fetchedAt)
+    ? await refreshAccountStats(githubToken, previousAccountStats)
     : { accountStats: normalizeAccountStats(previousAccountStats), error: '' };
   let completed = skippedRepositories.length;
   const results = await mapWithConcurrency(repositoriesToRefresh, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
     const previousStats = latestStats[repository] || { repository };
-    const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
+    const result = await refreshRepositoryStats(repository, githubToken, previousStats);
 
     completed += 1;
     notifyProgress(onProgress, {
@@ -643,7 +643,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
       nextLatestStats,
       previousAccountStats,
       accountResult.accountStats,
-      fetchedAt,
+      startedAt,
       repositoriesToRefresh,
       options,
     )
@@ -651,17 +651,20 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
 
   const savedLatestStats = await mergeLatestStats(Object.fromEntries(results.map(({ repository, stats }) => [repository, stats])), { configuredOnly: true });
 
+  const completedAt = new Date().toISOString();
+
   if (isManualRefreshSource(source)) {
     await syncNotificationBaselinesFromManualRefresh({
       results,
       accountStats: accountResult.accountStats,
       accountError: accountResult.error,
-      fetchedAt,
+      fetchedAt: completedAt,
     });
   }
 
   return {
-    fetchedAt,
+    startedAt,
+    fetchedAt: completedAt,
     results,
     skippedRepositories,
     refreshedRepositoryCount: results.length,
@@ -679,10 +682,10 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
     throw new Error('Repository is not configured. Open Settings and add it before refreshing.');
   }
 
-  const fetchedAt = new Date().toISOString();
+  const startedAt = new Date().toISOString();
   const latestStats = currentLatestStats && typeof currentLatestStats === 'object' ? currentLatestStats : {};
   const previousStats = latestStats[repository] || { repository };
-  const result = await refreshRepositoryStats(repository, githubToken, previousStats, fetchedAt);
+  const result = await refreshRepositoryStats(repository, githubToken, previousStats);
   const nextLatestStats = { ...latestStats, [repository]: result.stats };
   const pendingActivity = options.detectActivity
     ? await detectRefreshActivity(
@@ -691,7 +694,7 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
       nextLatestStats,
       undefined,
       undefined,
-      fetchedAt,
+      startedAt,
       [repository],
       options,
     )
@@ -699,8 +702,11 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
 
   const savedLatestStats = await mergeLatestStats({ [repository]: result.stats }, { configuredOnly: true });
 
+  const completedAt = new Date().toISOString();
+
   return {
-    fetchedAt,
+    startedAt,
+    fetchedAt: completedAt,
     repository,
     result,
     latestStats: savedLatestStats,

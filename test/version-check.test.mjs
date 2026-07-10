@@ -86,13 +86,14 @@ assert.equal(hasQuietWindowPassed({ active: false, quietUntil: new Date(Date.now
 
 const failedCheckedAt = '2026-06-25T12:00:00.000Z';
 const failedKnownUpdate = buildFailedVersionCheckStatus(
-  { localVersion: '2.2.2', latestVersion: '2.3', updateAvailable: true },
+  { checkedAt: '2026-06-24T12:00:00.000Z', localVersion: '2.2.2', latestVersion: '2.3', updateAvailable: true },
   '2.2.2',
   new Error('Network failed'),
   failedCheckedAt,
 );
-assert.equal(failedKnownUpdate.checkedAt, failedCheckedAt);
-assert.equal(isVersionCheckStatusStale(failedKnownUpdate, Date.parse(failedCheckedAt) + 1000), false);
+assert.equal(failedKnownUpdate.checkedAt, '2026-06-24T12:00:00.000Z');
+assert.equal(failedKnownUpdate.attemptedAt, failedCheckedAt);
+assert.equal(isVersionCheckStatusStale(failedKnownUpdate, Date.parse(failedCheckedAt) + 1000), true);
 assert.equal(failedKnownUpdate.updateAvailable, true);
 assert.equal(failedKnownUpdate.localVersion, '2.2.2');
 
@@ -329,7 +330,7 @@ assert.equal((await runningRepoA).skipped, false);
 
 const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', async () => ({ fetchedAt: '2026-06-25T13:00:04.000Z' }));
 assert.equal(fullRefreshAfterRepository.skipped, false);
-assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt, '2026-06-25T13:00:04.000Z');
+assert.ok(Date.parse(storageData.fullRefreshCoordination.lastManualRequestCompletedAt) > Date.parse('2026-06-25T13:00:04.000Z'));
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedBy, 'dashboard');
 
 storageData.fullRefreshCoordination = {

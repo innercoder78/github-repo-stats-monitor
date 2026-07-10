@@ -55,6 +55,7 @@ const DEFAULT_VIEWED_BASELINES = Object.freeze({
 });
 export const DEFAULT_VERSION_CHECK_STATUS = Object.freeze({
   checkedAt: '',
+  attemptedAt: '',
   localVersion: '',
   latestVersion: '',
   updateAvailable: false,
@@ -795,6 +796,7 @@ export function normalizeVersionCheckStatus(status) {
   const versionStatus = status && typeof status === 'object' ? status : {};
   return {
     checkedAt: typeof versionStatus.checkedAt === 'string' ? versionStatus.checkedAt : '',
+    attemptedAt: typeof versionStatus.attemptedAt === 'string' ? versionStatus.attemptedAt : typeof versionStatus.checkedAt === 'string' ? versionStatus.checkedAt : '',
     localVersion: typeof versionStatus.localVersion === 'string' ? versionStatus.localVersion : '',
     latestVersion: typeof versionStatus.latestVersion === 'string' ? versionStatus.latestVersion : '',
     updateAvailable: Boolean(versionStatus.updateAvailable),
