@@ -86,13 +86,14 @@ assert.equal(hasQuietWindowPassed({ active: false, quietUntil: new Date(Date.now
 
 const failedCheckedAt = '2026-06-25T12:00:00.000Z';
 const failedKnownUpdate = buildFailedVersionCheckStatus(
-  { localVersion: '2.2.2', latestVersion: '2.3', updateAvailable: true },
+  { checkedAt: '2026-06-24T12:00:00.000Z', localVersion: '2.2.2', latestVersion: '2.3', updateAvailable: true },
   '2.2.2',
   new Error('Network failed'),
   failedCheckedAt,
 );
-assert.equal(failedKnownUpdate.checkedAt, failedCheckedAt);
-assert.equal(isVersionCheckStatusStale(failedKnownUpdate, Date.parse(failedCheckedAt) + 1000), false);
+assert.equal(failedKnownUpdate.checkedAt, '2026-06-24T12:00:00.000Z');
+assert.equal(failedKnownUpdate.attemptedAt, failedCheckedAt);
+assert.equal(isVersionCheckStatusStale(failedKnownUpdate, Date.parse(failedCheckedAt) + 1000), true);
 assert.equal(failedKnownUpdate.updateAvailable, true);
 assert.equal(failedKnownUpdate.localVersion, '2.2.2');
 
@@ -329,7 +330,7 @@ assert.equal((await runningRepoA).skipped, false);
 
 const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', async () => ({ fetchedAt: '2026-06-25T13:00:04.000Z' }));
 assert.equal(fullRefreshAfterRepository.skipped, false);
-assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt, '2026-06-25T13:00:04.000Z');
+assert.ok(Date.parse(storageData.fullRefreshCoordination.lastManualRequestCompletedAt) > Date.parse('2026-06-25T13:00:04.000Z'));
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedBy, 'dashboard');
 
 storageData.fullRefreshCoordination = {
@@ -408,6 +409,52 @@ await assert.rejects(
   fetchRepositoryTrafficReferrers('owner/repo-a', 'token'),
   /Traffic data unavailable\. Check that your token has Administration: Read-only permission for this repository\./,
 );
+
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 403,
+  headers: createHeaders({ 'x-ratelimit-remaining': '8', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 900) }),
+  json: async () => ({ message: 'Resource not accessible by personal access token' }),
+});
+await assert.rejects(fetchRepositoryTrafficViews('owner/repo-a', 'token'), /Traffic data unavailable/);
+status = await getGitHubActivityStatus();
+assert.equal(status.quietUntil || '', '', 'permission 403 does not extend the quiet window');
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 403,
+  headers: createHeaders({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 900) }),
+  json: async () => ({ message: 'API rate limit exceeded' }),
+});
+await assert.rejects(fetchRepositoryTrafficViews('owner/repo-a', 'token'), /GitHub API rate limit reached/);
+status = await getGitHubActivityStatus();
+assert.ok(Date.parse(status.quietUntil) > Date.now(), 'primary rate-limit 403 extends quiet window');
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 429,
+  headers: createHeaders({ 'retry-after': '120', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 900) }),
+  json: async () => ({ message: 'Too many requests' }),
+});
+await assert.rejects(fetchRemoteManifestVersion(), /Remote manifest request failed with status 429/);
+status = await getGitHubActivityStatus();
+const retryAfterQuietMs = Date.parse(status.quietUntil) - Date.now();
+assert.ok(retryAfterQuietMs > 115000 && retryAfterQuietMs <= 120000, 'Retry-After takes precedence over X-RateLimit-Reset');
+
+storageData[GITHUB_ACTIVITY_KEY] = {};
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 429,
+  headers: createHeaders({ 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 600) }),
+  json: async () => ({ message: 'rate limited' }),
+});
+await assert.rejects(fetchRemoteManifestVersion(), /Remote manifest request failed with status 429/);
+status = await getGitHubActivityStatus();
+assert.ok(Date.parse(status.quietUntil) > Date.now(), 'version-check 429 records a quiet window');
 
 globalThis.fetch = async () => {
   throw new TypeError('Failed to fetch');

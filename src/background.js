@@ -20,7 +20,7 @@ import {
   saveViewedBaselines,
 } from './shared/storage.js';
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
-import { runTrackedGitHubActivity } from './shared/github-activity.js';
+import { getGitHubActivityStatus, getGitHubQuietWindowRemainingMs, runTrackedGitHubActivity } from './shared/github-activity.js';
 
 export const BACKGROUND_CHECK_ALARM_NAME = 'githubRepoStatsMonitorBackgroundCheck';
 const REFRESH_OPERATION_KEY = 'refreshOperationState';
@@ -35,6 +35,11 @@ const SETTINGS_GITHUB_ACTIONS = Object.freeze({
   TEST_CONNECTION: 'settings.github.testConnection',
 });
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
+const VERSION_CHECK_RETRY_ALARM_NAME = `${VERSION_CHECK_ALARM_NAME}.retry`;
+export const BACKGROUND_CHECK_RETRY_ALARM_NAME = `${BACKGROUND_CHECK_ALARM_NAME}.retry`;
+const VERSION_CHECK_RETRY_STATE_KEY = 'versionCheckRetryState';
+const VERSION_CHECK_MAX_RETRY_ATTEMPTS = 3;
+const VERSION_CHECK_RETRY_DELAY_MINUTES = 5;
 const VALID_NOTIFICATION_INTERVALS = Object.freeze([5, 15, 30, 60, 120]);
 const MAX_SETTINGS_REPOSITORIES = 20;
 const REPOSITORY_STATS = Object.freeze([
@@ -366,7 +371,9 @@ export const __refreshCoordinationTest = {
   beginRefreshOperation,
   finishRefreshOperation,
   executeRepositoryRefresh,
+  runBackgroundCheck,
   scheduleBackgroundCheckAlarm,
+  attemptVersionCheck,
   getActiveRefreshOperation: () => activeRefreshOperation,
   clearActiveRefreshOperationForTest() {
     activeRefreshOperation = null;
@@ -572,7 +579,12 @@ function canRunBackgroundChecks(settings) {
 }
 
 function isManualQuietWindowSkip(result) {
-  return Boolean(result?.skipped && result.reason === 'manual-quiet-window' && Number(result.retryAfterMs) > 0);
+  return Boolean(result?.skipped && (result.reason === 'manual-quiet-window' || result.reason === 'github-quiet-window') && Number(result.retryAfterMs) > 0);
+}
+
+async function scheduleBackgroundCheckRetryAfterMs(retryAfterMs) {
+  const delayInMinutes = Math.max((Number(retryAfterMs) || 0) / 60000, 0.5);
+  await chrome.alarms.create(BACKGROUND_CHECK_RETRY_ALARM_NAME, { delayInMinutes });
 }
 
 async function scheduleManualQuietWindowRetry(result) {
@@ -586,18 +598,49 @@ async function scheduleManualQuietWindowRetry(result) {
   }
 
   if (!canRunBackgroundChecks(settings)) {
+    await chrome.alarms.clear(BACKGROUND_CHECK_RETRY_ALARM_NAME);
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
     return;
   }
 
-  const interval = getSafeInterval(settings.notifications.checkIntervalMinutes);
-  const retryAfterMs = Number(result?.retryAfterMs) || 0;
-  const delayInMinutes = Math.max(retryAfterMs / 60000, 0.5);
+  await scheduleBackgroundCheckRetryAfterMs(Number(result?.retryAfterMs) || 0);
+}
 
-  await chrome.alarms.create(BACKGROUND_CHECK_ALARM_NAME, {
-    delayInMinutes,
-    periodInMinutes: interval,
+
+function getVersionCheckRetryState() {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get({ [VERSION_CHECK_RETRY_STATE_KEY]: {} }, (stored) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      const state = stored[VERSION_CHECK_RETRY_STATE_KEY] && typeof stored[VERSION_CHECK_RETRY_STATE_KEY] === 'object'
+        ? stored[VERSION_CHECK_RETRY_STATE_KEY]
+        : {};
+      resolve({ attempts: Math.max(0, Number(state.attempts) || 0) });
+    });
   });
+}
+
+function saveVersionCheckRetryState(state) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ [VERSION_CHECK_RETRY_STATE_KEY]: state }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(state);
+    });
+  });
+}
+
+async function clearVersionCheckRetryState() {
+  await Promise.all([
+    saveVersionCheckRetryState({ attempts: 0 }),
+    chrome.alarms.clear(VERSION_CHECK_RETRY_ALARM_NAME),
+  ]);
 }
 
 async function scheduleVersionCheckAlarm() {
@@ -607,9 +650,32 @@ async function scheduleVersionCheckAlarm() {
   });
 }
 
+async function scheduleVersionCheckRetryAfterMs(retryAfterMs) {
+  const delayInMinutes = Math.max((Number(retryAfterMs) || 0) / 60000, 0.5);
+  await chrome.alarms.create(VERSION_CHECK_RETRY_ALARM_NAME, { delayInMinutes });
+}
+
 async function attemptVersionCheck() {
   try {
-    await runVersionCheck();
+    const result = await runVersionCheck();
+    if (result?.checked || result?.reason === 'reconciled-local-version' || result?.reason === 'cache-fresh') {
+      await clearVersionCheckRetryState();
+      return;
+    }
+    if (result?.reason === 'not-quiet' && Number(result.retryAfterMs) > 0) {
+      await scheduleVersionCheckRetryAfterMs(result.retryAfterMs);
+      return;
+    }
+    if (result?.reason === 'failed') {
+      const retryState = await getVersionCheckRetryState();
+      const attempts = retryState.attempts + 1;
+      if (attempts < VERSION_CHECK_MAX_RETRY_ATTEMPTS) {
+        await saveVersionCheckRetryState({ attempts });
+        await scheduleVersionCheckRetryAfterMs(VERSION_CHECK_RETRY_DELAY_MINUTES * 60000);
+      } else {
+        await clearVersionCheckRetryState();
+      }
+    }
   } catch (error) {
     console.warn('Unable to check for extension updates.', error);
   }
@@ -626,6 +692,7 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
   }
 
   if (!canRunBackgroundChecks(settings)) {
+    await chrome.alarms.clear(BACKGROUND_CHECK_RETRY_ALARM_NAME);
     await chrome.alarms.clear(BACKGROUND_CHECK_ALARM_NAME);
     return;
   }
@@ -679,7 +746,6 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
       }
 
       if (isManualQuietWindowSkip(checkResult)) {
-        shouldScheduleNormalAlarm = false;
         await scheduleManualQuietWindowRetry(checkResult);
       }
     } finally {
@@ -882,6 +948,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
 
   try {
     const account = await fetchAuthenticatedAccount(settings.githubToken);
+    const completedAt = new Date().toISOString();
     if (!hasFetchedNumber(account.followers)) {
       return { checked: false, changed: false };
     }
@@ -901,11 +968,11 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
       ...baselines.account,
       login: account.login,
       followers,
-      updatedAt: checkedAt,
+      updatedAt: completedAt,
     };
-    await mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt);
+    await mergeFetchedAccountFollowersIntoCachedStats(account, completedAt);
 
-    return { checked: true, changed };
+    return { checked: true, changed, completedAt };
   } catch (error) {
     console.warn('Unable to check account followers in the background.', error);
     return { checked: false, changed: false };
@@ -919,8 +986,9 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
 
   try {
     const metadata = await fetchRepositoryMetadata(repository, settings.githubToken);
+    const completedAt = new Date().toISOString();
     const previousBaseline = baselines.repositories[repository] || {};
-    const nextBaseline = { ...previousBaseline, repository, updatedAt: checkedAt };
+    const nextBaseline = { ...previousBaseline, repository, updatedAt: completedAt };
     let changed = false;
 
     let checked = false;
@@ -953,7 +1021,8 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
     return {
       checked: true,
       changed,
-      metadataPatch: createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt),
+      metadataPatch: createFetchedRepositoryMetadataStatsPatch(repository, metadata, completedAt),
+      completedAt,
     };
   } catch (error) {
     console.warn(`Unable to check ${repository} in the background.`, error);
@@ -967,12 +1036,17 @@ async function runBackgroundCheck() {
     return { skipped: true, reason: 'manual-quiet-window', retryAfterMs: manualQuietWindowRemainingMs };
   }
 
+  const githubQuietRemainingMs = getGitHubQuietWindowRemainingMs(await getGitHubActivityStatus());
+  if (githubQuietRemainingMs > 0) {
+    return { skipped: true, reason: 'github-quiet-window', retryAfterMs: githubQuietRemainingMs };
+  }
+
   const coordinatedCheck = await runExclusiveFullRefresh('background', runBackgroundCheckNow);
   if (coordinatedCheck.skipped) {
     return { skipped: true, reason: coordinatedCheck.reason || 'running' };
   }
 
-  return { skipped: false };
+  return { skipped: false, fetchedAt: coordinatedCheck.result?.fetchedAt || '' };
 }
 
 async function runBackgroundCheckNow() {
@@ -1015,12 +1089,15 @@ async function runBackgroundCheckNow() {
   const cleanupResult = cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
   baselinesChanged = cleanupResult.baselinesChanged || baselinesChanged;
   pendingChanged = cleanupResult.pendingActivityChanged || pendingChanged;
+  const successfulEndpointCompletions = [];
   const accountResult = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+  if (accountResult.completedAt) successfulEndpointCompletions.push(accountResult.completedAt);
   hadSuccessfulCheck = accountResult.checked || hadSuccessfulCheck;
   pendingChanged = accountResult.changed || pendingChanged;
 
   for (const repository of settings.repositories) {
     const repositoryResult = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+    if (repositoryResult.completedAt) successfulEndpointCompletions.push(repositoryResult.completedAt);
     hadSuccessfulCheck = repositoryResult.checked || hadSuccessfulCheck;
     pendingChanged = repositoryResult.changed || pendingChanged;
 
@@ -1033,19 +1110,22 @@ async function runBackgroundCheckNow() {
     await patchLatestStats(Object.fromEntries(repositoryMetadataPatches.map(({ repository, updates }) => [repository, updates])), { configuredOnly: true });
   }
 
+  const latestEndpointCompletedAt = successfulEndpointCompletions[successfulEndpointCompletions.length - 1] || '';
+
   if (hadSuccessfulCheck) {
     baselines.initialized = true;
-    baselines.updatedAt = checkedAt;
+    baselines.updatedAt = latestEndpointCompletedAt;
     await saveNotificationBaselines(baselines);
   } else if (baselinesChanged) {
     await saveNotificationBaselines(baselines);
   }
 
   if (pendingChanged) {
-    pendingActivity.updatedAt = checkedAt;
+    const activityUpdatedAt = latestEndpointCompletedAt || new Date().toISOString();
+    pendingActivity.updatedAt = activityUpdatedAt;
 
     if (settings.notifications.badgeEnabled) {
-      pendingChanged = mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) || pendingChanged;
+      pendingChanged = mergeBadgeActivity(pendingActivity, detectedChanges, activityUpdatedAt) || pendingChanged;
     }
   }
 
@@ -1061,11 +1141,13 @@ async function runBackgroundCheckNow() {
   }
   await showActivityNotification(settings, detectedChanges, shouldCompare);
 
+  const completedAt = new Date().toISOString();
+
   if (hadSuccessfulCheck) {
-    await saveLastBackgroundCheckAt(checkedAt);
+    await saveLastBackgroundCheckAt(completedAt);
   }
 
-  return { fetchedAt: checkedAt };
+  return { fetchedAt: completedAt };
 }
 
 
@@ -1324,7 +1406,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === BACKGROUND_CHECK_ALARM_NAME) {
+  if (alarm.name === BACKGROUND_CHECK_ALARM_NAME || alarm.name === BACKGROUND_CHECK_RETRY_ALARM_NAME) {
     (async () => {
       const admission = await beginRefreshOperation({ type: 'background', source: 'background' });
       if (!admission.admitted) {
@@ -1346,7 +1428,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return;
   }
 
-  if (alarm.name === VERSION_CHECK_ALARM_NAME) {
+  if (alarm.name === VERSION_CHECK_ALARM_NAME || alarm.name === VERSION_CHECK_RETRY_ALARM_NAME) {
     attemptVersionCheck();
   }
 });

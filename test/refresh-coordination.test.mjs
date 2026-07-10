@@ -7,6 +7,7 @@ let storageSetError = null;
 let storageGetErrorKey = null;
 let fetchCalls = [];
 let storageSetCount = 0;
+let onStorageSet = null;
 
 function clone(value) {
   return value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value;
@@ -15,6 +16,7 @@ function clone(value) {
 globalThis.chrome = {
   runtime: {
     getManifest: () => ({ version: '3.1.1' }),
+    getURL: (path) => path,
     lastError: null,
     onInstalled: { addListener() {} },
     onStartup: { addListener() {} },
@@ -48,6 +50,7 @@ globalThis.chrome = {
         }
 
         storageSetCount += 1;
+        if (typeof onStorageSet === 'function') onStorageSet(values);
         Object.assign(storageData, clone(values));
         callback?.();
       },
@@ -74,7 +77,7 @@ globalThis.chrome = {
     setBadgeBackgroundColor: () => Promise.resolve(),
   },
   notifications: {
-    create: () => Promise.resolve(),
+    create: (id, options, callback) => { callback?.(); return Promise.resolve(); },
   },
 };
 
@@ -85,6 +88,7 @@ globalThis.fetch = async (url) => {
 
 const {
   BACKGROUND_CHECK_ALARM_NAME,
+  BACKGROUND_CHECK_RETRY_ALARM_NAME,
   __refreshCoordinationTest,
 } = await import('../src/background.js');
 const { runExclusiveFullRefresh } = await import('../src/shared/refresh-stats.js');
@@ -98,6 +102,7 @@ function resetState() {
   storageGetErrorKey = null;
   fetchCalls = [];
   storageSetCount = 0;
+  onStorageSet = null;
   __refreshCoordinationTest.clearActiveRefreshOperationForTest();
 }
 
@@ -390,4 +395,100 @@ storageData.notifications = {
 storageData.lastBackgroundCheckAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 __refreshCoordinationTest.setBackgroundCheckForTest(async () => ({ skipped: true, reason: 'manual-quiet-window', retryAfterMs: 45000 }));
 await __refreshCoordinationTest.scheduleBackgroundCheckAlarm({ catchUpIfDue: true });
-assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 0.75, periodInMinutes: 30 });
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 30, periodInMinutes: 30 });
+assert.deepEqual(alarms.get(BACKGROUND_CHECK_RETRY_ALARM_NAME), { delayInMinutes: 0.75 });
+assert.equal(Array.from(alarms.keys()).filter((name) => name === BACKGROUND_CHECK_RETRY_ALARM_NAME).length, 1);
+
+resetState();
+let versionFetchCalls = 0;
+globalThis.fetch = async () => {
+  versionFetchCalls += 1;
+  return { ok: false, status: 500, headers: { get: () => null }, json: async () => ({}) };
+};
+storageData.versionCheckStatus = { checkedAt: '', localVersion: '3.1.1', latestVersion: '3.1.2', updateAvailable: true, latestReleaseUrl: '', error: '' };
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(versionFetchCalls, 3);
+assert.deepEqual(alarms.get('githubRepoStatsMonitorVersionCheck.retry'), { delayInMinutes: 5 });
+assert.equal(storageData.versionCheckRetryState.attempts, 1);
+
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(storageData.versionCheckRetryState.attempts, 2);
+assert.deepEqual(alarms.get('githubRepoStatsMonitorVersionCheck.retry'), { delayInMinutes: 5 }, 'failed version check retry alarm is replaced, not duplicated');
+assert.equal(Array.from(alarms.keys()).filter((name) => name === 'githubRepoStatsMonitorVersionCheck.retry').length, 1);
+
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(storageData.versionCheckRetryState.attempts, 0, 'retry state clears after exhaustion');
+assert.equal(alarms.has('githubRepoStatsMonitorVersionCheck.retry'), false, 'retry alarm clears after exhaustion');
+
+resetState();
+versionFetchCalls = 0;
+globalThis.fetch = async () => {
+  versionFetchCalls += 1;
+  return { ok: true, json: async () => ({ content: btoa(JSON.stringify({ version: '3.1.2' })) }) };
+};
+storageData.versionCheckStatus = { checkedAt: '', localVersion: '3.1.1', latestVersion: '', updateAvailable: false, latestReleaseUrl: '', error: '' };
+storageData.versionCheckRetryState = { attempts: 2 };
+alarms.set('githubRepoStatsMonitorVersionCheck.retry', { delayInMinutes: 5 });
+storageData.githubActivityStatus = {};
+await __refreshCoordinationTest.attemptVersionCheck();
+assert.equal(storageData.versionCheckRetryState.attempts, 0, 'successful version check resets retry state');
+assert.equal(alarms.has('githubRepoStatsMonitorVersionCheck.retry'), false, 'successful version check clears retry alarm');
+
+resetState();
+const RealDate = Date;
+let fakeNow = RealDate.parse('2026-07-10T10:00:00.000Z');
+globalThis.Date = class extends RealDate {
+  constructor(...args) {
+    return args.length === 0 ? new RealDate(fakeNow) : new RealDate(...args);
+  }
+  static now() { return fakeNow; }
+  static parse(value) { return RealDate.parse(value); }
+  static UTC(...args) { return RealDate.UTC(...args); }
+};
+storageData.githubToken = 'token';
+storageData.repositories = ['owner/repo'];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: true,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: true, forks: false, repoWatchers: false, accountFollowers: true },
+};
+storageData.notificationBaselines = {
+  initialized: true,
+  account: { login: 'owner', followers: 1, updatedAt: 'old-account' },
+  repositories: { 'owner/repo': { repository: 'owner/repo', stars: 1, updatedAt: 'old-repo' } },
+  updatedAt: 'old',
+};
+globalThis.fetch = async (url) => {
+  const value = String(url);
+  if (value.endsWith('/user')) {
+    fakeNow = RealDate.parse('2026-07-10T10:00:05.000Z');
+    return { ok: true, headers: { get: () => null }, json: async () => ({ login: 'owner', followers: 2 }) };
+  }
+  fakeNow = RealDate.parse('2026-07-10T10:00:09.000Z');
+  return { ok: true, headers: { get: () => null }, json: async () => ({ stargazers_count: 3, forks_count: 0, subscribers_count: 0 }) };
+};
+onStorageSet = (values) => {
+  if (values.notificationBaselines) fakeNow = RealDate.parse('2026-07-10T10:00:10.000Z');
+  if (values.pendingActivity) fakeNow = RealDate.parse('2026-07-10T10:00:11.000Z');
+};
+const originalSetBadgeText = chrome.action.setBadgeText;
+const originalNotificationCreate = chrome.notifications.create;
+chrome.action.setBadgeText = () => { fakeNow = RealDate.parse('2026-07-10T10:00:12.000Z'); return Promise.resolve(); };
+chrome.notifications.create = (id, options, callback) => { fakeNow = RealDate.parse('2026-07-10T10:00:13.000Z'); callback?.(); return Promise.resolve(); };
+const backgroundResult = await __refreshCoordinationTest.runBackgroundCheck();
+chrome.action.setBadgeText = originalSetBadgeText;
+chrome.notifications.create = originalNotificationCreate;
+globalThis.Date = RealDate;
+assert.equal(backgroundResult.skipped, false);
+assert.equal(storageData.accountStats.fetchedAt, '2026-07-10T10:00:05.000Z', 'automatic account timestamp uses account completion');
+assert.equal(storageData.latestStats['owner/repo'].fetchedAt, '2026-07-10T10:00:09.000Z', 'automatic repository timestamp uses metadata completion');
+assert.equal(storageData.notificationBaselines.account.updatedAt, '2026-07-10T10:00:05.000Z');
+assert.equal(storageData.notificationBaselines.repositories['owner/repo'].updatedAt, '2026-07-10T10:00:09.000Z');
+assert.equal(storageData.notificationBaselines.updatedAt, '2026-07-10T10:00:09.000Z', 'overall baselines updatedAt uses latest endpoint completion, not check start');
+assert.equal(storageData.lastBackgroundCheckAt, '2026-07-10T10:00:13.000Z', 'background completion is after baseline, pending, badge, and notification work');
+assert.equal(backgroundResult.fetchedAt, storageData.lastBackgroundCheckAt, 'returned background fetchedAt equals final completion timestamp');

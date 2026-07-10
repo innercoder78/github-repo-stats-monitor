@@ -76,7 +76,8 @@ global.fetch = () => {
   if (calls === 1) throw new Error('sync boom');
   return Promise.resolve(new Response('{}'));
 };
-await assert.rejects(api.fetchGitHub('https://api.github.com/sync-failure'), /sync boom/);
+await api.fetchGitHub('https://api.github.com/sync-failure');
+assert.equal(calls, 2, 'synchronous network failures are retried before success');
 await api.fetchGitHub('https://api.github.com/after-sync-failure');
 await flush();
 assert.deepEqual(api.getGitHubRequestLimiterState(), { active: 0, queued: 0 });
@@ -88,3 +89,72 @@ await flush();
 assert.deepEqual(api.getGitHubRequestLimiterState(), { active: 0, queued: 0 });
 
 api.__resetGitHubRequestLimiterForTest();
+
+api.__resetGitHubRequestLimiterForTest();
+api.__setGitHubRetryDelayForTest(async () => {
+  assert.equal(api.getGitHubRequestLimiterState().active, 0, 'limiter slot is released before retry delay');
+});
+let retryCalls = 0;
+global.fetch = async () => {
+  retryCalls += 1;
+  if (retryCalls === 1) throw new TypeError('network failed');
+  return new Response('{}');
+};
+await api.fetchGitHub('https://api.github.com/retry-network');
+assert.equal(retryCalls, 2, 'network failure followed by success is retried');
+
+api.__resetGitHubRequestLimiterForTest();
+retryCalls = 0;
+global.fetch = async () => {
+  retryCalls += 1;
+  return new Response('{}', { status: retryCalls === 1 ? 503 : 200 });
+};
+const retry503 = await api.fetchGitHub('https://api.github.com/retry-503');
+assert.equal(retry503.status, 200);
+assert.equal(retryCalls, 2, '503 followed by success is retried');
+
+for (const status of [401, 403, 404, 429]) {
+  api.__resetGitHubRequestLimiterForTest();
+  retryCalls = 0;
+  global.fetch = async () => {
+    retryCalls += 1;
+    return new Response('{}', { status });
+  };
+  const response = await api.fetchGitHub(`https://api.github.com/no-retry-${status}`);
+  assert.equal(response.status, status);
+  assert.equal(retryCalls, 1, `${status} is not retried`);
+}
+
+api.__resetGitHubRequestLimiterForTest();
+retryCalls = 0;
+global.fetch = async () => {
+  retryCalls += 1;
+  return new Response('{}', { status: 503 });
+};
+const final503 = await api.fetchGitHub('https://api.github.com/max-retry');
+assert.equal(final503.status, 503);
+assert.equal(retryCalls, 3, 'retry attempts stop after max attempts');
+
+api.__resetGitHubRequestLimiterForTest();
+retryCalls = 0;
+global.fetch = async () => {
+  retryCalls += 1;
+  throw new DOMException('aborted', 'AbortError');
+};
+await assert.rejects(api.fetchGitHub('https://api.github.com/no-retry-abort'), /aborted/i);
+assert.equal(retryCalls, 1, 'aborted requests are not retried');
+
+api.__resetGitHubRequestLimiterForTest();
+let inFlight = 0;
+let maxInFlight = 0;
+api.__setGitHubRetryDelayForTest(async () => {});
+global.fetch = async () => {
+  inFlight += 1;
+  maxInFlight = Math.max(maxInFlight, inFlight);
+  await Promise.resolve();
+  inFlight -= 1;
+  return new Response('{}', { status: 503 });
+};
+await Promise.all(Array.from({ length: 8 }, (_, index) => api.fetchGitHub(`https://api.github.com/overlap-${index}`)));
+assert.ok(maxInFlight <= 4, 'total simultaneous raw GitHub requests never exceeds four including retries');
+api.__setGitHubRetryDelayForTest(async () => {});

@@ -2,6 +2,16 @@ export const GITHUB_ACTIVITY_KEY = 'githubActivityStatus';
 export const GITHUB_ACTIVITY_STALE_MS = 30 * 60 * 1000;
 export const GITHUB_ACTIVITY_QUIET_WINDOW_MS = 2 * 60 * 1000;
 
+function getQuietUntilTime(activity) {
+  const quietUntilTime = Date.parse(activity?.quietUntil || '');
+  return Number.isFinite(quietUntilTime) ? quietUntilTime : 0;
+}
+
+function maxIsoTime(...timestamps) {
+  const latest = Math.max(0, ...timestamps.filter((timestamp) => Number.isFinite(timestamp)));
+  return latest > 0 ? toIsoTime(latest) : '';
+}
+
 function getStorageArea() {
   return chrome.storage.local;
 }
@@ -85,6 +95,7 @@ function normalizeActivityStatus(status, now = Date.now(), { overlayLiveOperatio
     lastFinishedAt: typeof activity.lastFinishedAt === 'string' ? activity.lastFinishedAt : '',
     lastFinishedSource: typeof activity.lastFinishedSource === 'string' ? activity.lastFinishedSource : '',
     quietUntil: typeof activity.quietUntil === 'string' ? activity.quietUntil : '',
+    quietWindowSource: typeof activity.quietWindowSource === 'string' ? activity.quietWindowSource : '',
   };
 }
 
@@ -158,7 +169,8 @@ export async function markGitHubActivityStarted(source = 'github') {
         ...existingStatus,
         active: true,
         activeOperations,
-        quietUntil: activeUntil,
+        quietUntil: maxIsoTime(getQuietUntilTime(existingStatus)),
+        quietWindowSource: existingStatus.quietWindowSource || '',
       };
     });
   } catch (error) {
@@ -166,11 +178,12 @@ export async function markGitHubActivityStarted(source = 'github') {
     throw error;
   }
 
-  return { token, status };
+  return { token, activeUntil, status };
 }
 
 export async function markGitHubActivityFinished(activity = {}, source = 'github') {
-  const finishedAt = new Date().toISOString();
+  const finishedTime = Date.now();
+  const finishedAt = new Date(finishedTime).toISOString();
   liveActivityOperations.delete(activity.token);
   return updateGitHubActivityStatus((existingStatus) => {
     const activeOperations = { ...existingStatus.activeOperations };
@@ -182,7 +195,13 @@ export async function markGitHubActivityFinished(activity = {}, source = 'github
       activeOperations,
       lastFinishedAt: finishedAt,
       lastFinishedSource: source,
-      quietUntil: toIsoTime(Date.now() + GITHUB_ACTIVITY_QUIET_WINDOW_MS),
+      quietUntil: maxIsoTime(
+        existingStatus.quietWindowSource ? getQuietUntilTime(existingStatus) : 0,
+        finishedTime + GITHUB_ACTIVITY_QUIET_WINDOW_MS,
+      ),
+      quietWindowSource: existingStatus.quietWindowSource && getQuietUntilTime(existingStatus) > finishedTime + GITHUB_ACTIVITY_QUIET_WINDOW_MS
+        ? existingStatus.quietWindowSource
+        : 'normal',
     };
   });
 }
@@ -198,6 +217,38 @@ export async function runTrackedGitHubActivity(source, task) {
       console.warn('Unable to clear completed GitHub activity state.', cleanupError);
     }
   }
+}
+
+export async function extendGitHubQuietWindowUntil(quietUntil, source = 'rate-limit') {
+  const quietUntilTime = Date.parse(quietUntil || '');
+  if (!Number.isFinite(quietUntilTime) || quietUntilTime <= Date.now()) {
+    return getGitHubActivityStatus();
+  }
+
+  return updateGitHubActivityStatus((existingStatus) => ({
+    ...existingStatus,
+    lastFinishedSource: source,
+    quietUntil: maxIsoTime(getQuietUntilTime(existingStatus), quietUntilTime),
+    quietWindowSource: source,
+  }));
+}
+
+export function getGitHubQuietWindowRemainingMs(activity, now = Date.now()) {
+  if (activity?.active && !activity?.activeOperations) return GITHUB_ACTIVITY_STALE_MS;
+  const status = normalizeActivityStatus(activity, now);
+  if (status.active) {
+    const activeUntilTimes = Object.values(status.activeOperations || {})
+      .map((operation) => Date.parse(operation?.activeUntil || ''))
+      .filter(Number.isFinite);
+    const activeUntilTime = activeUntilTimes.length > 0 ? Math.max(...activeUntilTimes) : now;
+    return Math.max(1000, activeUntilTime - now);
+  }
+  const quietUntilTime = getQuietUntilTime(status);
+  return Number.isFinite(quietUntilTime) ? Math.max(0, quietUntilTime - now) : 0;
+}
+
+export function isGitHubQuiet(activity, now = Date.now()) {
+  return getGitHubQuietWindowRemainingMs(activity, now) <= 0;
 }
 
 export function __resetGitHubActivityLiveOperationsForTest() {
