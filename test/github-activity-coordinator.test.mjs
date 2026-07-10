@@ -53,6 +53,7 @@ const {
   __resetGitHubActivityLiveOperationsForTest,
   getGitHubActivityStatus,
   getGitHubQuietWindowRemainingMs,
+  isGitHubQuiet,
   markGitHubActivityFinished,
   markGitHubActivityStarted,
   runTrackedGitHubActivity,
@@ -169,7 +170,7 @@ assert.ok(remainingMs <= GITHUB_ACTIVITY_QUIET_WINDOW_MS && remainingMs > GITHUB
 assert.ok(remainingMs < 3 * 60 * 1000, 'short operation does not leave a thirty-minute quiet window');
 
 reset();
-storageData[GITHUB_ACTIVITY_KEY] = { quietUntil: new Date(now + 15 * 60 * 1000).toISOString() };
+storageData[GITHUB_ACTIVITY_KEY] = { quietUntil: new Date(now + 15 * 60 * 1000).toISOString(), quietWindowSource: 'rate-limit' };
 const rateLimitedOperation = await markGitHubActivityStarted('dashboard');
 assert.equal(storageData[GITHUB_ACTIVITY_KEY].quietUntil, new Date(now + 15 * 60 * 1000).toISOString(), 'start preserves but does not extend a longer quiet window');
 now += 1000;
@@ -185,5 +186,27 @@ const laterRemainingMs = getGitHubQuietWindowRemainingMs(await getGitHubActivity
 assert.ok(laterRemainingMs < remainingMs, 'active-operation remaining time decreases instead of resetting on read');
 assert.ok(laterRemainingMs <= GITHUB_ACTIVITY_STALE_MS - 5 * 60 * 1000);
 await markGitHubActivityFinished(activeOperation, 'background');
+
+
+reset();
+const stillLiveOperation = await markGitHubActivityStarted('long-refresh');
+now += GITHUB_ACTIVITY_STALE_MS + 5000;
+status = await getGitHubActivityStatus();
+assert.equal(status.active, true, 'live operation remains active beyond persisted stale deadline');
+assert.equal(isGitHubQuiet(status, now), false, 'live operation remains non-quiet beyond persisted stale deadline');
+remainingMs = getGitHubQuietWindowRemainingMs(status, now);
+assert.ok(remainingMs > 0 && remainingMs < GITHUB_ACTIVITY_STALE_MS, 'live operation beyond stale deadline gets a small bounded recheck delay');
+await markGitHubActivityFinished(stillLiveOperation, 'long-refresh');
+status = await getGitHubActivityStatus();
+remainingMs = getGitHubQuietWindowRemainingMs(status, now);
+assert.ok(remainingMs <= GITHUB_ACTIVITY_QUIET_WINDOW_MS && remainingMs > GITHUB_ACTIVITY_QUIET_WINDOW_MS - 1000, 'finishing long live operation starts normal quiet window');
+
+reset();
+const equalQuietOperation = await markGitHubActivityStarted('connection-test');
+storageData[GITHUB_ACTIVITY_KEY].quietUntil = equalQuietOperation.activeUntil;
+storageData[GITHUB_ACTIVITY_KEY].quietWindowSource = 'rate-limit';
+await markGitHubActivityFinished(equalQuietOperation, 'connection-test');
+status = await getGitHubActivityStatus();
+assert.equal(status.quietUntil, equalQuietOperation.activeUntil, 'rate-limit quiet window equal to activeUntil is preserved');
 
 Date.now = realDateNow;

@@ -371,6 +371,7 @@ export const __refreshCoordinationTest = {
   beginRefreshOperation,
   finishRefreshOperation,
   executeRepositoryRefresh,
+  runBackgroundCheck,
   scheduleBackgroundCheckAlarm,
   attemptVersionCheck,
   getActiveRefreshOperation: () => activeRefreshOperation,
@@ -947,6 +948,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
 
   try {
     const account = await fetchAuthenticatedAccount(settings.githubToken);
+    const completedAt = new Date().toISOString();
     if (!hasFetchedNumber(account.followers)) {
       return { checked: false, changed: false };
     }
@@ -966,11 +968,11 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
       ...baselines.account,
       login: account.login,
       followers,
-      updatedAt: checkedAt,
+      updatedAt: completedAt,
     };
-    await mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt);
+    await mergeFetchedAccountFollowersIntoCachedStats(account, completedAt);
 
-    return { checked: true, changed };
+    return { checked: true, changed, completedAt };
   } catch (error) {
     console.warn('Unable to check account followers in the background.', error);
     return { checked: false, changed: false };
@@ -984,8 +986,9 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
 
   try {
     const metadata = await fetchRepositoryMetadata(repository, settings.githubToken);
+    const completedAt = new Date().toISOString();
     const previousBaseline = baselines.repositories[repository] || {};
-    const nextBaseline = { ...previousBaseline, repository, updatedAt: checkedAt };
+    const nextBaseline = { ...previousBaseline, repository, updatedAt: completedAt };
     let changed = false;
 
     let checked = false;
@@ -1018,7 +1021,8 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
     return {
       checked: true,
       changed,
-      metadataPatch: createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt),
+      metadataPatch: createFetchedRepositoryMetadataStatsPatch(repository, metadata, completedAt),
+      completedAt,
     };
   } catch (error) {
     console.warn(`Unable to check ${repository} in the background.`, error);
@@ -1085,12 +1089,15 @@ async function runBackgroundCheckNow() {
   const cleanupResult = cleanupRepositoryStorage(baselines, pendingActivity, settings.repositories);
   baselinesChanged = cleanupResult.baselinesChanged || baselinesChanged;
   pendingChanged = cleanupResult.pendingActivityChanged || pendingChanged;
+  const successfulEndpointCompletions = [];
   const accountResult = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+  if (accountResult.completedAt) successfulEndpointCompletions.push(accountResult.completedAt);
   hadSuccessfulCheck = accountResult.checked || hadSuccessfulCheck;
   pendingChanged = accountResult.changed || pendingChanged;
 
   for (const repository of settings.repositories) {
     const repositoryResult = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+    if (repositoryResult.completedAt) successfulEndpointCompletions.push(repositoryResult.completedAt);
     hadSuccessfulCheck = repositoryResult.checked || hadSuccessfulCheck;
     pendingChanged = repositoryResult.changed || pendingChanged;
 
@@ -1114,10 +1121,11 @@ async function runBackgroundCheckNow() {
   }
 
   if (pendingChanged) {
-    pendingActivity.updatedAt = checkedAt;
+    const activityUpdatedAt = successfulEndpointCompletions[successfulEndpointCompletions.length - 1] || completedAt;
+    pendingActivity.updatedAt = activityUpdatedAt;
 
     if (settings.notifications.badgeEnabled) {
-      pendingChanged = mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) || pendingChanged;
+      pendingChanged = mergeBadgeActivity(pendingActivity, detectedChanges, activityUpdatedAt) || pendingChanged;
     }
   }
 

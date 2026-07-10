@@ -636,6 +636,8 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     nextLatestStats[repository] = stats;
   });
 
+  const completedAt = new Date().toISOString();
+
   const pendingActivity = options.detectActivity
     ? await detectRefreshActivity(
       settings,
@@ -643,15 +645,13 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
       nextLatestStats,
       previousAccountStats,
       accountResult.accountStats,
-      startedAt,
+      completedAt,
       repositoriesToRefresh,
       options,
     )
     : null;
 
   const savedLatestStats = await mergeLatestStats(Object.fromEntries(results.map(({ repository, stats }) => [repository, stats])), { configuredOnly: true });
-
-  const completedAt = new Date().toISOString();
 
   if (isManualRefreshSource(source)) {
     await syncNotificationBaselinesFromManualRefresh({
@@ -687,6 +687,7 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
   const previousStats = latestStats[repository] || { repository };
   const result = await refreshRepositoryStats(repository, githubToken, previousStats);
   const nextLatestStats = { ...latestStats, [repository]: result.stats };
+  const completedAt = new Date().toISOString();
   const pendingActivity = options.detectActivity
     ? await detectRefreshActivity(
       settings,
@@ -694,15 +695,13 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
       nextLatestStats,
       undefined,
       undefined,
-      startedAt,
+      completedAt,
       [repository],
       options,
     )
     : null;
 
   const savedLatestStats = await mergeLatestStats({ [repository]: result.stats }, { configuredOnly: true });
-
-  const completedAt = new Date().toISOString();
 
   return {
     startedAt,

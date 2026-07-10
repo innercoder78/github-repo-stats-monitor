@@ -15,6 +15,7 @@ function clone(value) {
 globalThis.chrome = {
   runtime: {
     getManifest: () => ({ version: '3.1.1' }),
+    getURL: (path) => path,
     lastError: null,
     onInstalled: { addListener() {} },
     onStartup: { addListener() {} },
@@ -74,7 +75,7 @@ globalThis.chrome = {
     setBadgeBackgroundColor: () => Promise.resolve(),
   },
   notifications: {
-    create: () => Promise.resolve(),
+    create: (id, options, callback) => { callback?.(); return Promise.resolve(); },
   },
 };
 
@@ -432,3 +433,47 @@ storageData.githubActivityStatus = {};
 await __refreshCoordinationTest.attemptVersionCheck();
 assert.equal(storageData.versionCheckRetryState.attempts, 0, 'successful version check resets retry state');
 assert.equal(alarms.has('githubRepoStatsMonitorVersionCheck.retry'), false, 'successful version check clears retry alarm');
+
+resetState();
+const RealDate = Date;
+let fakeNow = RealDate.parse('2026-07-10T10:00:00.000Z');
+globalThis.Date = class extends RealDate {
+  constructor(...args) {
+    return args.length === 0 ? new RealDate(fakeNow) : new RealDate(...args);
+  }
+  static now() { return fakeNow; }
+  static parse(value) { return RealDate.parse(value); }
+  static UTC(...args) { return RealDate.UTC(...args); }
+};
+storageData.githubToken = 'token';
+storageData.repositories = ['owner/repo'];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: true,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: true, forks: false, repoWatchers: false, accountFollowers: true },
+};
+storageData.notificationBaselines = {
+  initialized: true,
+  account: { login: 'owner', followers: 1, updatedAt: 'old-account' },
+  repositories: { 'owner/repo': { repository: 'owner/repo', stars: 1, updatedAt: 'old-repo' } },
+  updatedAt: 'old',
+};
+globalThis.fetch = async (url) => {
+  const value = String(url);
+  if (value.endsWith('/user')) {
+    fakeNow = RealDate.parse('2026-07-10T10:00:05.000Z');
+    return { ok: true, headers: { get: () => null }, json: async () => ({ login: 'owner', followers: 2 }) };
+  }
+  fakeNow = RealDate.parse('2026-07-10T10:00:09.000Z');
+  return { ok: true, headers: { get: () => null }, json: async () => ({ stargazers_count: 3, forks_count: 0, subscribers_count: 0 }) };
+};
+const backgroundResult = await __refreshCoordinationTest.runBackgroundCheck();
+globalThis.Date = RealDate;
+assert.equal(backgroundResult.skipped, false);
+assert.equal(storageData.accountStats.fetchedAt, '2026-07-10T10:00:05.000Z', 'automatic account timestamp uses account completion');
+assert.equal(storageData.latestStats['owner/repo'].fetchedAt, '2026-07-10T10:00:09.000Z', 'automatic repository timestamp uses metadata completion');
+assert.equal(storageData.notificationBaselines.account.updatedAt, '2026-07-10T10:00:05.000Z');
+assert.equal(storageData.notificationBaselines.repositories['owner/repo'].updatedAt, '2026-07-10T10:00:09.000Z');
+assert.equal(storageData.lastBackgroundCheckAt, '2026-07-10T10:00:09.000Z', 'background completion is after endpoint completion');

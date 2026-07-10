@@ -95,6 +95,7 @@ function normalizeActivityStatus(status, now = Date.now(), { overlayLiveOperatio
     lastFinishedAt: typeof activity.lastFinishedAt === 'string' ? activity.lastFinishedAt : '',
     lastFinishedSource: typeof activity.lastFinishedSource === 'string' ? activity.lastFinishedSource : '',
     quietUntil: typeof activity.quietUntil === 'string' ? activity.quietUntil : '',
+    quietWindowSource: typeof activity.quietWindowSource === 'string' ? activity.quietWindowSource : '',
   };
 }
 
@@ -169,6 +170,7 @@ export async function markGitHubActivityStarted(source = 'github') {
         active: true,
         activeOperations,
         quietUntil: maxIsoTime(getQuietUntilTime(existingStatus)),
+        quietWindowSource: existingStatus.quietWindowSource || '',
       };
     });
   } catch (error) {
@@ -194,9 +196,12 @@ export async function markGitHubActivityFinished(activity = {}, source = 'github
       lastFinishedAt: finishedAt,
       lastFinishedSource: source,
       quietUntil: maxIsoTime(
-        Date.parse(existingStatus.quietUntil || '') === Date.parse(activity.activeUntil || '') ? 0 : getQuietUntilTime(existingStatus),
+        existingStatus.quietWindowSource ? getQuietUntilTime(existingStatus) : 0,
         finishedTime + GITHUB_ACTIVITY_QUIET_WINDOW_MS,
       ),
+      quietWindowSource: existingStatus.quietWindowSource && getQuietUntilTime(existingStatus) > finishedTime + GITHUB_ACTIVITY_QUIET_WINDOW_MS
+        ? existingStatus.quietWindowSource
+        : 'normal',
     };
   });
 }
@@ -224,6 +229,7 @@ export async function extendGitHubQuietWindowUntil(quietUntil, source = 'rate-li
     ...existingStatus,
     lastFinishedSource: source,
     quietUntil: maxIsoTime(getQuietUntilTime(existingStatus), quietUntilTime),
+    quietWindowSource: source,
   }));
 }
 
@@ -235,7 +241,7 @@ export function getGitHubQuietWindowRemainingMs(activity, now = Date.now()) {
       .map((operation) => Date.parse(operation?.activeUntil || ''))
       .filter(Number.isFinite);
     const activeUntilTime = activeUntilTimes.length > 0 ? Math.max(...activeUntilTimes) : now;
-    return Math.max(0, activeUntilTime - now);
+    return Math.max(1000, activeUntilTime - now);
   }
   const quietUntilTime = getQuietUntilTime(status);
   return Number.isFinite(quietUntilTime) ? Math.max(0, quietUntilTime - now) : 0;
