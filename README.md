@@ -8,6 +8,11 @@ It is designed for manual review, optional background checks, a cleaner card-bas
 
 3.1.1
 
+## How to download
+
+ONLY DOWNLOAD THE VERSION FROM THE LATEST "RELEASES" TAB! If you use the "Download ZIP" straight from the repo, you will be download a beta/broken version.
+STABLE VERSIONS ARE ONLY FOUND IN "RELEASES"!!!
+
 ## What It Shows
 
 Supported repository stats, where available:
