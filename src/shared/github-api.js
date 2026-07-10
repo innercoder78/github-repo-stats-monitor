@@ -1,7 +1,54 @@
 const GITHUB_API_VERSION = '2022-11-28';
 
+export const GITHUB_REQUEST_CONCURRENCY_LIMIT = 4;
+
+let activeGitHubRequestCount = 0;
+const githubRequestQueue = [];
+
+function isGitHubApiUrl(url) {
+  try {
+    return new URL(String(url)).hostname === 'api.github.com';
+  } catch (error) {
+    return false;
+  }
+}
+
+function drainGitHubRequestQueue() {
+  while (activeGitHubRequestCount < GITHUB_REQUEST_CONCURRENCY_LIMIT && githubRequestQueue.length > 0) {
+    const task = githubRequestQueue.shift();
+    task();
+  }
+}
+
+export function getGitHubRequestLimiterState() {
+  return { active: activeGitHubRequestCount, queued: githubRequestQueue.length };
+}
+
 export function fetchGitHub(url, options) {
-  return fetch(url, options);
+  if (!isGitHubApiUrl(url)) {
+    return fetch(url, options);
+  }
+
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      activeGitHubRequestCount += 1;
+      Promise.resolve()
+        .then(() => fetch(url, options))
+        .then(resolve, reject)
+        .finally(() => {
+          activeGitHubRequestCount = Math.max(0, activeGitHubRequestCount - 1);
+          drainGitHubRequestQueue();
+        });
+    };
+
+    githubRequestQueue.push(run);
+    drainGitHubRequestQueue();
+  });
+}
+
+export function __resetGitHubRequestLimiterForTest() {
+  activeGitHubRequestCount = 0;
+  githubRequestQueue.length = 0;
 }
 
 function sanitizeRepository(repository) {

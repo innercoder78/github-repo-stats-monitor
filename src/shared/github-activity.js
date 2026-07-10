@@ -157,6 +157,10 @@ export async function runTrackedGitHubActivity(source, task) {
   try {
     return await task();
   } finally {
-    await markGitHubActivityFinished(activity, source);
+    try {
+      await markGitHubActivityFinished(activity, source);
+    } catch (cleanupError) {
+      console.warn('Unable to clear completed GitHub activity state.', cleanupError);
+    }
   }
 }
