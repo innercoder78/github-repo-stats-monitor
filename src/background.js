@@ -521,6 +521,12 @@ export const __backgroundGitHubMessageTest = {
   validateRepositoryListPayload,
   claimActivityDelivery,
   acknowledgeActivityDelivery,
+  handleActivityDeliveryMessage,
+  handleRefreshMessage,
+  cleanupRemovedRepositoryStorage,
+  resetAccountStateForTokenChange,
+  handleNotificationSettingsChange,
+  applyManualRefreshPendingActivity,
 };
 
 
