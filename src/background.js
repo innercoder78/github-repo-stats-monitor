@@ -19,6 +19,7 @@ import {
   savePendingActivity,
   saveViewedBaselines,
 } from './shared/storage.js';
+import { createEmptyPendingActivity, recordAccountActivityDelta, recordRepositoryActivityDelta, claimPendingActivityForSurface, acknowledgePendingActivityForSurface } from './shared/activity.js';
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
 import { getGitHubActivityStatus, getGitHubQuietWindowRemainingMs, runTrackedGitHubActivity } from './shared/github-activity.js';
 
@@ -33,6 +34,10 @@ const REFRESH_ACTIONS = Object.freeze({
 const SETTINGS_GITHUB_ACTIONS = Object.freeze({
   IMPORT_REPOSITORIES: 'settings.github.importRepositories',
   TEST_CONNECTION: 'settings.github.testConnection',
+});
+const ACTIVITY_DELIVERY_ACTIONS = Object.freeze({
+  CLAIM: 'activity.claim',
+  ACKNOWLEDGE: 'activity.acknowledge',
 });
 const VERSION_CHECK_ALARM_PERIOD_MINUTES = 24 * 60;
 const VERSION_CHECK_RETRY_ALARM_NAME = `${VERSION_CHECK_ALARM_NAME}.retry`;
@@ -58,6 +63,7 @@ const BADGE_BACKGROUND_COLOR = '#2f81f7';
 
 let activeRefreshOperation = null;
 let backgroundCheckForTest = null;
+let pendingActivityMutation = Promise.resolve();
 
 function createOperationId(type, source) {
   return `${type}-${source}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -321,6 +327,49 @@ async function executeConnectionTest(payload) {
   return Promise.all(repositories.map((repository) => testRepositoryConnection(repository, token)));
 }
 
+
+function runPendingActivityMutation(mutator) {
+  const run = pendingActivityMutation.then(mutator, mutator);
+  pendingActivityMutation = run.catch(() => {});
+  return run;
+}
+
+function isValidActivitySurface(surface) {
+  return surface === 'quick-summary' || surface === 'dashboard';
+}
+
+async function claimActivityDelivery(surface) {
+  if (!isValidActivitySurface(surface)) throw new Error('Invalid activity surface.');
+  return runPendingActivityMutation(async () => {
+    const pendingActivity = await getPendingActivity();
+    const delivery = claimPendingActivityForSurface(pendingActivity, surface);
+    const savedPendingActivity = await savePendingActivity(pendingActivity);
+    return { ...delivery, pendingActivity: savedPendingActivity };
+  });
+}
+
+async function acknowledgeActivityDelivery(surface, token, displayedActivity = {}) {
+  if (!isValidActivitySurface(surface)) throw new Error('Invalid activity surface.');
+  return runPendingActivityMutation(async () => {
+    const pendingActivity = await getPendingActivity();
+    const acknowledged = acknowledgePendingActivityForSurface(pendingActivity, surface, token, displayedActivity);
+    const savedPendingActivity = acknowledged ? await savePendingActivity(pendingActivity) : pendingActivity;
+    return { acknowledged, pendingActivity: savedPendingActivity };
+  });
+}
+
+function handleActivityDeliveryMessage(message, sendResponse) {
+  const action = message?.action;
+  if (action !== ACTIVITY_DELIVERY_ACTIONS.CLAIM && action !== ACTIVITY_DELIVERY_ACTIONS.ACKNOWLEDGE) return false;
+  (async () => {
+    const result = action === ACTIVITY_DELIVERY_ACTIONS.CLAIM
+      ? await claimActivityDelivery(message.surface)
+      : await acknowledgeActivityDelivery(message.surface, message.token, message.displayedActivity);
+    sendResponse({ ok: true, result });
+  })().catch((error) => sendResponse({ ok: false, error: error.message || 'Activity delivery failed.' }));
+  return true;
+}
+
 function handleSettingsGitHubMessage(message, sendResponse) {
   const action = message?.action;
   if (action !== SETTINGS_GITHUB_ACTIONS.IMPORT_REPOSITORIES && action !== SETTINGS_GITHUB_ACTIONS.TEST_CONNECTION) {
@@ -364,6 +413,8 @@ export const __backgroundGitHubMessageTest = {
   executeConnectionTest,
   handleSettingsGitHubMessage,
   validateRepositoryListPayload,
+  claimActivityDelivery,
+  acknowledgeActivityDelivery,
 };
 
 
@@ -765,90 +816,41 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
   });
 }
 
-function createEmptyPendingActivity(existingPendingActivity) {
-  return {
-    account: existingPendingActivity?.account && typeof existingPendingActivity.account === 'object'
-      ? { ...existingPendingActivity.account }
-      : {},
-    repositories: existingPendingActivity?.repositories && typeof existingPendingActivity.repositories === 'object'
-      ? { ...existingPendingActivity.repositories }
-      : {},
-    badgeActivity: existingPendingActivity?.badgeActivity && typeof existingPendingActivity.badgeActivity === 'object'
-      ? {
-        ...existingPendingActivity.badgeActivity,
-        repositories: { ...(existingPendingActivity.badgeActivity.repositories || {}) },
-      }
-      : { account: false, repositories: {}, updatedAt: '' },
-    updatedAt: typeof existingPendingActivity?.updatedAt === 'string' ? existingPendingActivity.updatedAt : '',
-  };
+function hasFetchedNumber(value) {
+  return Number.isFinite(Number(value));
 }
 
-function applyDelta(value, delta) {
-  const nextValue = (Number(value) || 0) + delta;
-  return nextValue === 0 ? undefined : nextValue;
+async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt) {
+  if (!hasFetchedNumber(account?.followers)) return null;
+  const existingAccountStats = await getAccountStats();
+  return saveAccountStats({
+    ...existingAccountStats,
+    login: typeof account.login === 'string' ? account.login : existingAccountStats.login,
+    followers: Number(account.followers),
+    fetchedAt: checkedAt,
+  });
 }
 
-function recordAccountDelta(pendingActivity, delta, detectedChanges) {
-  if (delta === 0) {
-    return false;
-  }
-
-  if (detectedChanges) {
-    detectedChanges.account.push({ delta, label: ACCOUNT_FOLLOWERS_LABEL });
-  }
-
-  const followersDelta = applyDelta(pendingActivity.account?.followersDelta, delta);
-
-  if (followersDelta === undefined) {
-    pendingActivity.account = {};
-  } else {
-    pendingActivity.account = {
-      ...pendingActivity.account,
-      followersDelta,
-      quickSummaryShown: false,
-      dashboardShown: false,
-    };
-  }
-
-  return true;
+function createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt) {
+  const metadataFields = [
+    ['stars', metadata?.stars],
+    ['forks', metadata?.forks],
+    ['subscribers', metadata?.subscribers],
+  ].filter(([, value]) => hasFetchedNumber(value));
+  if (metadataFields.length === 0) return null;
+  return { repository, updates: Object.fromEntries([
+    ...metadataFields.map(([key, value]) => [key, Number(value)]),
+    ['fetchedAt', checkedAt],
+    ['error', ''],
+  ]) };
 }
 
-function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges) {
-  if (delta === 0) {
-    return false;
-  }
+function recordAccountDelta(pendingActivity, delta, detectedChanges, checkedAt = new Date().toISOString()) {
+  return recordAccountActivityDelta(pendingActivity, delta, detectedChanges, checkedAt);
+}
 
-  if (detectedChanges) {
-    if (!detectedChanges.repositories[repository]) {
-      detectedChanges.repositories[repository] = [];
-    }
-
-    detectedChanges.repositories[repository].push({ delta, label });
-  }
-
-  const existingActivity = pendingActivity.repositories[repository] || {};
-  const repositoryActivity = {
-    ...existingActivity,
-    repository,
-    quickSummaryShown: false,
-    dashboardShown: false,
-  };
-  const nextDelta = applyDelta(repositoryActivity[deltaKey], delta);
-
-  if (nextDelta === undefined) {
-    delete repositoryActivity[deltaKey];
-  } else {
-    repositoryActivity[deltaKey] = nextDelta;
-  }
-
-  const hasDelta = ['starsDelta', 'forksDelta', 'repoWatchersDelta'].some((key) => Number(repositoryActivity[key]) !== 0);
-  if (hasDelta) {
-    pendingActivity.repositories[repository] = repositoryActivity;
-  } else {
-    delete pendingActivity.repositories[repository];
-  }
-
-  return true;
+function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges, checkedAt = new Date().toISOString()) {
+  return recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges, checkedAt);
 }
 
 
@@ -872,24 +874,37 @@ function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
   return true;
 }
 
+function removeRepositoryFromSurface(surface, repositorySet) {
+  let changed = false;
+  ['queued', 'inFlight'].forEach((container) => {
+    const repositories = surface?.[container]?.repositories || {};
+    Object.keys(repositories).forEach((repository) => {
+      if (!repositorySet.has(repository)) {
+        delete repositories[repository];
+        changed = true;
+      }
+    });
+  });
+  return changed;
+}
+
 function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   const repositorySet = new Set(repositories);
   let baselinesChanged = false;
   let pendingActivityChanged = false;
 
-  Object.keys(baselines.repositories).forEach((repository) => {
-    if (!repositorySet.has(repository)) {
-      delete baselines.repositories[repository];
-      baselinesChanged = true;
-    }
+  ['quickSummary', 'dashboard'].forEach((surface) => {
+    const surfaceBaselines = baselines[surface]?.repositories || {};
+    Object.keys(surfaceBaselines).forEach((repository) => {
+      if (!repositorySet.has(repository)) {
+        delete surfaceBaselines[repository];
+        baselinesChanged = true;
+      }
+    });
   });
 
-  Object.keys(pendingActivity.repositories).forEach((repository) => {
-    if (!repositorySet.has(repository)) {
-      delete pendingActivity.repositories[repository];
-      pendingActivityChanged = true;
-    }
-  });
+  pendingActivityChanged = removeRepositoryFromSurface(pendingActivity.quickSummary, repositorySet) || pendingActivityChanged;
+  pendingActivityChanged = removeRepositoryFromSurface(pendingActivity.dashboard, repositorySet) || pendingActivityChanged;
 
   Object.keys(pendingActivity.badgeActivity?.repositories || {}).forEach((repository) => {
     if (!repositorySet.has(repository)) {
@@ -901,45 +916,6 @@ function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
   return { baselinesChanged, pendingActivityChanged };
 }
 
-
-function hasFetchedNumber(value) {
-  return Number.isFinite(Number(value));
-}
-
-async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt) {
-  if (!hasFetchedNumber(account?.followers)) {
-    return null;
-  }
-
-  const existingAccountStats = await getAccountStats();
-  return saveAccountStats({
-    ...existingAccountStats,
-    login: typeof account.login === 'string' ? account.login : existingAccountStats.login,
-    followers: Number(account.followers),
-    fetchedAt: checkedAt,
-  });
-}
-
-function createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt) {
-  const metadataFields = [
-    ['stars', metadata?.stars],
-    ['forks', metadata?.forks],
-    ['subscribers', metadata?.subscribers],
-  ].filter(([, value]) => hasFetchedNumber(value));
-
-  if (metadataFields.length === 0) {
-    return null;
-  }
-
-  return {
-    repository,
-    updates: Object.fromEntries([
-      ...metadataFields.map(([key, value]) => [key, Number(value)]),
-      ['fetchedAt', checkedAt],
-      ['error', ''],
-    ]),
-  };
-}
 
 async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
   if (!settings.notifications.trackedStats.accountFollowers) {
@@ -961,7 +937,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     let changed = false;
 
     if (shouldCompare && Number.isFinite(previousFollowers) && !accountLoginChanged) {
-      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges);
+      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges, checkedAt);
     }
 
     baselines.account = {
@@ -1007,7 +983,7 @@ async function checkRepositoryStats(settings, repository, baselines, pendingActi
       const previousValue = previousBaseline[baselineKey];
 
       if (shouldCompare && Number.isFinite(previousValue)) {
-        changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue, label, detectedChanges) || changed;
+        changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, currentValue - previousValue, label, detectedChanges, checkedAt) || changed;
       }
 
       nextBaseline[baselineKey] = currentValue;
@@ -1176,17 +1152,15 @@ async function cleanupRemovedRepositoryStorage(repositories) {
       getViewedBaselines(),
       getNotificationBaselines(),
     ]);
-    const pendingRepositoriesCleanup = removeUnconfiguredRepositoryEntries(pendingActivity.repositories, repositorySet);
-    const pendingBadgeRepositoriesCleanup = removeUnconfiguredRepositoryEntries(pendingActivity.badgeActivity?.repositories, repositorySet);
-    const viewedBaselinesCleanup = removeUnconfiguredRepositoryEntries(viewedBaselines.repositories, repositorySet);
-    const notificationBaselinesCleanup = removeUnconfiguredRepositoryEntries(notificationBaselines.repositories, repositorySet);
     const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
+    const cleanupResult = cleanupRepositoryStorage(viewedBaselines, nextPendingActivity, [...repositorySet]);
+    const pendingBadgeRepositoriesCleanup = removeUnconfiguredRepositoryEntries(nextPendingActivity.badgeActivity?.repositories, repositorySet);
+    const notificationBaselinesCleanup = removeUnconfiguredRepositoryEntries(notificationBaselines.repositories, repositorySet);
     const cleanupTasks = [];
 
     cleanupTasks.push(removeUnconfiguredLatestStats());
 
-    if (pendingRepositoriesCleanup.changed || pendingBadgeRepositoriesCleanup.changed) {
-      nextPendingActivity.repositories = pendingRepositoriesCleanup.entries;
+    if (cleanupResult.pendingActivityChanged || pendingBadgeRepositoriesCleanup.changed) {
       nextPendingActivity.badgeActivity = {
         ...(nextPendingActivity.badgeActivity || {}),
         repositories: pendingBadgeRepositoriesCleanup.entries,
@@ -1194,11 +1168,8 @@ async function cleanupRemovedRepositoryStorage(repositories) {
       cleanupTasks.push(savePendingActivity(nextPendingActivity));
     }
 
-    if (viewedBaselinesCleanup.changed) {
-      cleanupTasks.push(saveViewedBaselines({
-        ...viewedBaselines,
-        repositories: viewedBaselinesCleanup.entries,
-      }));
+    if (cleanupResult.baselinesChanged) {
+      cleanupTasks.push(saveViewedBaselines(viewedBaselines));
     }
 
     if (notificationBaselinesCleanup.changed) {
@@ -1210,7 +1181,7 @@ async function cleanupRemovedRepositoryStorage(repositories) {
 
     await Promise.all(cleanupTasks);
 
-    if (pendingRepositoriesCleanup.changed || pendingBadgeRepositoriesCleanup.changed) {
+    if (cleanupResult.pendingActivityChanged || pendingBadgeRepositoriesCleanup.changed) {
       await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
     }
   } catch (error) {
@@ -1258,14 +1229,15 @@ async function resetAccountStateForTokenChange() {
       getViewedBaselines(),
       getNotificationBaselines(),
     ]);
-    const nextPendingActivity = {
-      ...pendingActivity,
-      account: {},
-      badgeActivity: {
-        ...(pendingActivity.badgeActivity || {}),
-        account: false,
-        repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
-      },
+    const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
+    ['quickSummary', 'dashboard'].forEach((surface) => {
+      if (nextPendingActivity[surface]?.queued) nextPendingActivity[surface].queued.account = {};
+      if (nextPendingActivity[surface]?.inFlight) nextPendingActivity[surface].inFlight.account = {};
+    });
+    nextPendingActivity.badgeActivity = {
+      ...(pendingActivity.badgeActivity || {}),
+      account: false,
+      repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
     };
 
     await Promise.all([
@@ -1273,7 +1245,8 @@ async function resetAccountStateForTokenChange() {
       savePendingActivity(nextPendingActivity),
       saveViewedBaselines({
         ...viewedBaselines,
-        account: {},
+        quickSummary: { ...(viewedBaselines.quickSummary || {}), account: {} },
+        dashboard: { ...(viewedBaselines.dashboard || {}), account: {} },
       }),
       saveNotificationBaselines({
         ...notificationBaselines,
@@ -1359,7 +1332,7 @@ async function handleNotificationSettingsChange(change, { scheduleAlarm = true }
   }
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => handleRefreshMessage(message, sendResponse) || handleSettingsGitHubMessage(message, sendResponse));
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => handleActivityDeliveryMessage(message, sendResponse) || handleRefreshMessage(message, sendResponse) || handleSettingsGitHubMessage(message, sendResponse));
 
 chrome.runtime.onInstalled.addListener(() => {
   scheduleBackgroundCheckAlarm();

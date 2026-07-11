@@ -432,18 +432,10 @@ function normalizeOptionalNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
+
 function normalizePendingAccountActivity(activity) {
   const followersDelta = normalizeOptionalNumber(activity?.followersDelta);
-
-  if (!followersDelta) {
-    return {};
-  }
-
-  return {
-    followersDelta,
-    quickSummaryShown: Boolean(activity?.quickSummaryShown),
-    dashboardShown: Boolean(activity?.dashboardShown),
-  };
+  return followersDelta ? { followersDelta } : {};
 }
 
 function normalizePendingRepositoryActivity(repository, activity) {
@@ -453,11 +445,7 @@ function normalizePendingRepositoryActivity(repository, activity) {
     return null;
   }
 
-  const normalizedActivity = {
-    repository: normalizedRepository,
-    quickSummaryShown: Boolean(activity?.quickSummaryShown),
-    dashboardShown: Boolean(activity?.dashboardShown),
-  };
+  const normalizedActivity = { repository: normalizedRepository };
 
   ['starsDelta', 'forksDelta', 'repoWatchersDelta'].forEach((key) => {
     const delta = normalizeOptionalNumber(activity?.[key]);
@@ -467,8 +455,105 @@ function normalizePendingRepositoryActivity(repository, activity) {
     }
   });
 
-  const hasDelta = ['starsDelta', 'forksDelta', 'repoWatchersDelta'].some((key) => Number(normalizedActivity[key]) !== 0);
+  const hasDelta = ['starsDelta', 'forksDelta', 'repoWatchersDelta'].some((key) => (Number(normalizedActivity[key]) || 0) !== 0);
   return hasDelta ? normalizedActivity : null;
+}
+
+function normalizeActivityQueue(queue) {
+  const source = queue && typeof queue === 'object' ? queue : {};
+  const repositories = {};
+  const storedRepositories = source.repositories && typeof source.repositories === 'object'
+    ? source.repositories
+    : {};
+
+  Object.entries(storedRepositories).forEach(([repository, repositoryActivity]) => {
+    const normalizedActivity = normalizePendingRepositoryActivity(repository, repositoryActivity);
+
+    if (normalizedActivity) {
+      repositories[normalizedActivity.repository] = normalizedActivity;
+    }
+  });
+
+  return {
+    account: normalizePendingAccountActivity(source.account),
+    repositories,
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '',
+  };
+}
+
+function normalizeInFlightActivity(activity) {
+  const normalized = normalizeActivityQueue(activity);
+
+  if (!activity || typeof activity !== 'object' || typeof activity.token !== 'string' || !activity.token) {
+    return null;
+  }
+
+  const hasActivity = Object.keys(normalized.account).length > 0 || Object.keys(normalized.repositories).length > 0;
+  if (!hasActivity) {
+    return null;
+  }
+
+  return {
+    ...normalized,
+    token: activity.token,
+    claimedAt: typeof activity.claimedAt === 'string' ? activity.claimedAt : '',
+  };
+}
+
+function normalizeSurfaceActivity(surface) {
+  const source = surface && typeof surface === 'object' ? surface : {};
+
+  return {
+    queued: normalizeActivityQueue(source.queued),
+    inFlight: normalizeInFlightActivity(source.inFlight),
+  };
+}
+
+function queueLegacyActivityForSurface(surface, legacyActivity, checkedAt) {
+  const queued = surface.queued;
+  const account = normalizePendingAccountActivity(legacyActivity.account);
+  if (Object.keys(account).length > 0) {
+    queued.account = account;
+  }
+
+  Object.entries(legacyActivity.repositories || {}).forEach(([repository, activity]) => {
+    const normalizedActivity = normalizePendingRepositoryActivity(repository, activity);
+    if (normalizedActivity) {
+      queued.repositories[normalizedActivity.repository] = normalizedActivity;
+    }
+  });
+
+  if (Object.keys(queued.account).length > 0 || Object.keys(queued.repositories).length > 0) {
+    queued.updatedAt = checkedAt;
+  }
+}
+
+function normalizeLegacyPendingActivity(pendingActivity) {
+  const checkedAt = typeof pendingActivity.updatedAt === 'string' ? pendingActivity.updatedAt : '';
+  const quickSummary = normalizeSurfaceActivity();
+  const dashboard = normalizeSurfaceActivity();
+  const legacyRepositories = {};
+
+  Object.entries(pendingActivity.repositories && typeof pendingActivity.repositories === 'object' ? pendingActivity.repositories : {}).forEach(([repository, activity]) => {
+    const normalizedActivity = normalizePendingRepositoryActivity(repository, activity);
+    if (normalizedActivity) {
+      legacyRepositories[normalizedActivity.repository] = { ...normalizedActivity, quickSummaryShown: Boolean(activity?.quickSummaryShown), dashboardShown: Boolean(activity?.dashboardShown) };
+    }
+  });
+
+  const legacyAccount = normalizePendingAccountActivity(pendingActivity.account);
+  const legacy = { account: legacyAccount, repositories: legacyRepositories };
+  if (Object.keys(legacyAccount).length > 0) {
+    if (!pendingActivity.account || pendingActivity.account.quickSummaryShown !== true) queueLegacyActivityForSurface(quickSummary, { account: legacyAccount, repositories: {} }, checkedAt);
+    if (!pendingActivity.account || pendingActivity.account.dashboardShown !== true) queueLegacyActivityForSurface(dashboard, { account: legacyAccount, repositories: {} }, checkedAt);
+  }
+
+  Object.entries(legacy.repositories).forEach(([repository, activity]) => {
+    if (activity.quickSummaryShown !== true) queueLegacyActivityForSurface(quickSummary, { account: {}, repositories: { [repository]: activity } }, checkedAt);
+    if (activity.dashboardShown !== true) queueLegacyActivityForSurface(dashboard, { account: {}, repositories: { [repository]: activity } }, checkedAt);
+  });
+
+  return { quickSummary, dashboard };
 }
 
 function normalizePendingBadgeActivity(activity) {
@@ -495,22 +580,16 @@ function normalizePendingBadgeActivity(activity) {
 
 export function normalizePendingActivity(activity) {
   const pendingActivity = activity && typeof activity === 'object' ? activity : {};
-  const repositories = {};
-  const storedRepositories = pendingActivity.repositories && typeof pendingActivity.repositories === 'object'
-    ? pendingActivity.repositories
-    : {};
-
-  Object.entries(storedRepositories).forEach(([repository, repositoryActivity]) => {
-    const normalizedActivity = normalizePendingRepositoryActivity(repository, repositoryActivity);
-
-    if (normalizedActivity) {
-      repositories[normalizedActivity.repository] = normalizedActivity;
+  const hasCanonicalSurfaces = pendingActivity.quickSummary || pendingActivity.dashboard;
+  const surfaces = hasCanonicalSurfaces
+    ? {
+      quickSummary: normalizeSurfaceActivity(pendingActivity.quickSummary),
+      dashboard: normalizeSurfaceActivity(pendingActivity.dashboard),
     }
-  });
+    : normalizeLegacyPendingActivity(pendingActivity);
 
   return {
-    account: normalizePendingAccountActivity(pendingActivity.account),
-    repositories,
+    ...surfaces,
     badgeActivity: normalizePendingBadgeActivity(pendingActivity.badgeActivity),
     updatedAt: typeof pendingActivity.updatedAt === 'string' ? pendingActivity.updatedAt : '',
   };
@@ -543,39 +622,41 @@ function normalizeViewedBaselineRepository(repository, baseline) {
   return normalizeBaselineRepository(repository, baseline);
 }
 
-export function normalizeViewedBaselines(baselines) {
-  const viewedBaselines = baselines && typeof baselines === 'object' ? baselines : {};
+
+function normalizeViewedBaselineSurface(surface) {
+  const source = surface && typeof surface === 'object' ? surface : {};
   const account = {};
-  const followers = normalizeOptionalNumber(viewedBaselines.account?.followers);
+  const followers = normalizeOptionalNumber(source.account?.followers);
   const repositories = {};
-  const storedRepositories = viewedBaselines.repositories && typeof viewedBaselines.repositories === 'object'
-    ? viewedBaselines.repositories
+  const storedRepositories = source.repositories && typeof source.repositories === 'object'
+    ? source.repositories
     : {};
 
-  if (followers !== undefined && followers >= 0) {
-    account.followers = followers;
-  }
-
-  if (typeof viewedBaselines.account?.login === 'string') {
-    account.login = viewedBaselines.account.login;
-  }
-
-  if (typeof viewedBaselines.account?.updatedAt === 'string') {
-    account.updatedAt = viewedBaselines.account.updatedAt;
-  }
+  if (followers !== undefined && followers >= 0) account.followers = followers;
+  if (typeof source.account?.login === 'string') account.login = source.account.login;
+  if (typeof source.account?.updatedAt === 'string') account.updatedAt = source.account.updatedAt;
 
   Object.entries(storedRepositories).forEach(([repository, baseline]) => {
     const normalizedBaseline = normalizeViewedBaselineRepository(repository, baseline);
-
-    if (normalizedBaseline) {
-      repositories[normalizedBaseline.repository] = normalizedBaseline;
-    }
+    if (normalizedBaseline) repositories[normalizedBaseline.repository] = normalizedBaseline;
   });
 
+  return { account, repositories, updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '' };
+}
+
+export function normalizeViewedBaselines(baselines) {
+  const viewedBaselines = baselines && typeof baselines === 'object' ? baselines : {};
+  const hasCanonicalSurfaces = viewedBaselines.quickSummary || viewedBaselines.dashboard;
+  const legacySurface = normalizeViewedBaselineSurface(viewedBaselines);
+  const quickSummary = hasCanonicalSurfaces ? normalizeViewedBaselineSurface(viewedBaselines.quickSummary) : legacySurface;
+  const dashboard = hasCanonicalSurfaces ? normalizeViewedBaselineSurface(viewedBaselines.dashboard) : normalizeViewedBaselineSurface(viewedBaselines);
+
   return {
-    account,
-    repositories,
-    updatedAt: typeof viewedBaselines.updatedAt === 'string' ? viewedBaselines.updatedAt : '',
+    quickSummary,
+    dashboard,
+    account: quickSummary.account,
+    repositories: quickSummary.repositories,
+    updatedAt: typeof viewedBaselines.updatedAt === 'string' ? viewedBaselines.updatedAt : (quickSummary.updatedAt || dashboard.updatedAt || ''),
   };
 }
 

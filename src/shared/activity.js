@@ -11,222 +11,37 @@ const REPOSITORY_ACTIVITY_STATS = Object.freeze([
   { setting: 'repoWatchers', deltaKey: 'repoWatchersDelta', previousKey: 'subscribers', currentKey: 'subscribers', label: ACTIVITY_DELTA_LABELS.repoWatchersDelta },
 ]);
 
-function getTrackedStats(settings) {
-  return settings?.notifications?.trackedStats || {};
-}
+export const ACTIVITY_SURFACES = Object.freeze({ QUICK_SUMMARY: 'quick-summary', DASHBOARD: 'dashboard' });
+export const ACTIVITY_IN_FLIGHT_TIMEOUT_MS = 10 * 60 * 1000;
 
-export function pluralizeActivityLabel(label, amount) {
-  return Math.abs(Number(amount) || 0) === 1 ? label : `${label}s`;
-}
+function getTrackedStats(settings) { return settings?.notifications?.trackedStats || {}; }
+export function pluralizeActivityLabel(label, amount) { return Math.abs(Number(amount) || 0) === 1 ? label : `${label}s`; }
+export function formatDelta(delta, label) { const numericDelta = Number(delta) || 0; const sign = numericDelta >= 0 ? '+' : '-'; return `${sign}${Math.abs(numericDelta)} ${pluralizeActivityLabel(label, numericDelta)}`; }
+export function getDeltaClass(delta) { return Number(delta) >= 0 ? 'activity-delta-positive' : 'activity-delta-negative'; }
+function hasTrackedStatBaseline(stats, key) { return stats && Object.prototype.hasOwnProperty.call(stats, key) && Number.isFinite(Number(stats[key])); }
+function hasAccountFollowersBaseline(accountStats) { return Boolean(accountStats?.fetchedAt) && hasTrackedStatBaseline(accountStats, 'followers'); }
+export function getRepositoryActivityDeltas(activity) { if (!activity || typeof activity !== 'object') return []; return REPOSITORY_ACTIVITY_STATS.map(({ deltaKey, label }) => ({ key: deltaKey, delta: Number(activity[deltaKey]) || 0, label })).filter(({ delta }) => delta !== 0); }
 
-export function formatDelta(delta, label) {
-  const numericDelta = Number(delta) || 0;
-  const sign = numericDelta >= 0 ? '+' : '-';
-
-  return `${sign}${Math.abs(numericDelta)} ${pluralizeActivityLabel(label, numericDelta)}`;
-}
-
-export function getDeltaClass(delta) {
-  return Number(delta) >= 0 ? 'activity-delta-positive' : 'activity-delta-negative';
-}
-
-function hasTrackedStatBaseline(stats, key) {
-  return stats && Object.prototype.hasOwnProperty.call(stats, key) && Number.isFinite(Number(stats[key]));
-}
-
-function hasAccountFollowersBaseline(accountStats) {
-  return Boolean(accountStats?.fetchedAt) && hasTrackedStatBaseline(accountStats, 'followers');
-}
-
-export function getRepositoryActivityDeltas(activity) {
-  if (!activity || typeof activity !== 'object') {
-    return [];
-  }
-
-  return REPOSITORY_ACTIVITY_STATS
-    .map(({ deltaKey, label }) => ({ key: deltaKey, delta: Number(activity[deltaKey]) || 0, label }))
-    .filter(({ delta }) => delta !== 0);
-}
-
-export function createEmptyPendingActivity(existingPendingActivity) {
-  return {
-    account: existingPendingActivity?.account && typeof existingPendingActivity.account === 'object'
-      ? { ...existingPendingActivity.account }
-      : {},
-    repositories: existingPendingActivity?.repositories && typeof existingPendingActivity.repositories === 'object'
-      ? { ...existingPendingActivity.repositories }
-      : {},
-    badgeActivity: existingPendingActivity?.badgeActivity && typeof existingPendingActivity.badgeActivity === 'object'
-      ? {
-        ...existingPendingActivity.badgeActivity,
-        repositories: { ...(existingPendingActivity.badgeActivity.repositories || {}) },
-      }
-      : { account: false, repositories: {}, updatedAt: '' },
-    updatedAt: typeof existingPendingActivity?.updatedAt === 'string' ? existingPendingActivity.updatedAt : '',
-  };
-}
-
-function applyDelta(value, delta) {
-  const nextValue = (Number(value) || 0) + delta;
-  return nextValue === 0 ? undefined : nextValue;
-}
-
-export function createEmptyPendingChanges() {
-  return { account: [], repositories: {} };
-}
-
-export function recordAccountActivityDelta(pendingActivity, delta, detectedChanges) {
-  if (delta === 0) {
-    return false;
-  }
-
-  if (detectedChanges) {
-    detectedChanges.account.push({ delta, label: ACTIVITY_DELTA_LABELS.followersDelta });
-  }
-
-  const followersDelta = applyDelta(pendingActivity.account?.followersDelta, delta);
-
-  if (followersDelta === undefined) {
-    pendingActivity.account = {};
-  } else {
-    pendingActivity.account = {
-      ...pendingActivity.account,
-      followersDelta,
-      quickSummaryShown: false,
-      dashboardShown: false,
-    };
-  }
-
-  return true;
-}
-
-export function recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges) {
-  if (delta === 0) {
-    return false;
-  }
-
-  if (detectedChanges) {
-    if (!detectedChanges.repositories[repository]) {
-      detectedChanges.repositories[repository] = [];
-    }
-
-    detectedChanges.repositories[repository].push({ delta, label });
-  }
-
-  const existingActivity = pendingActivity.repositories[repository] || {};
-  const repositoryActivity = {
-    ...existingActivity,
-    repository,
-    quickSummaryShown: false,
-    dashboardShown: false,
-  };
-  const nextDelta = applyDelta(repositoryActivity[deltaKey], delta);
-
-  if (nextDelta === undefined) {
-    delete repositoryActivity[deltaKey];
-  } else {
-    repositoryActivity[deltaKey] = nextDelta;
-  }
-
-  const hasDelta = REPOSITORY_ACTIVITY_STATS.some(({ deltaKey: key }) => Number(repositoryActivity[key]) !== 0);
-  if (hasDelta) {
-    pendingActivity.repositories[repository] = repositoryActivity;
-  } else {
-    delete pendingActivity.repositories[repository];
-  }
-
-  return true;
-}
-
-export function detectPendingActivityFromStats(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, pendingActivity, checkedAt, repositories, detectedChanges) {
-  const trackedStats = getTrackedStats(settings);
-  let changed = false;
-
-  if (trackedStats.accountFollowers) {
-    const previousFollowers = Number(previousAccountStats?.followers);
-    const nextFollowers = Number(nextAccountStats?.followers);
-
-    if (hasAccountFollowersBaseline(previousAccountStats) && Number.isFinite(nextFollowers)) {
-      changed = recordAccountActivityDelta(pendingActivity, nextFollowers - previousFollowers, detectedChanges) || changed;
-    }
-  }
-
-  repositories.forEach((repository) => {
-    const previousStats = previousLatestStats?.[repository];
-    const nextStats = nextLatestStats?.[repository];
-
-    REPOSITORY_ACTIVITY_STATS.forEach(({ setting, deltaKey, previousKey, currentKey, label }) => {
-      if (!trackedStats[setting]) {
-        return;
-      }
-
-      const previousValue = Number(previousStats?.[previousKey]);
-      const nextValue = Number(nextStats?.[currentKey]);
-
-      if (hasTrackedStatBaseline(previousStats, previousKey) && Number.isFinite(nextValue)) {
-        changed = recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, nextValue - previousValue, label, detectedChanges) || changed;
-      }
-    });
-  });
-
-  if (changed) {
-    pendingActivity.updatedAt = checkedAt;
-  }
-
-  return changed;
-}
-
-export function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
-  const accountChanges = Array.isArray(detectedChanges?.account) ? detectedChanges.account : [];
-  const repositoryChanges = detectedChanges?.repositories && typeof detectedChanges.repositories === 'object'
-    ? detectedChanges.repositories
-    : {};
-
-  if (!accountChanges.some(({ delta }) => delta !== 0)
-    && !Object.values(repositoryChanges).some((deltas) => Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0))) {
-    return;
-  }
-
-  pendingActivity.badgeActivity = {
-    account: Boolean(pendingActivity.badgeActivity?.account || accountChanges.length > 0),
-    repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
-    updatedAt: checkedAt,
-  };
-
-  Object.entries(repositoryChanges).forEach(([repository, deltas]) => {
-    if (Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0)) {
-      pendingActivity.badgeActivity.repositories[repository] = true;
-    }
-  });
-}
-
-export function createDeltaElement(delta, label) {
-  const element = document.createElement('span');
-  element.className = `activity-delta ${getDeltaClass(delta)}`;
-  element.textContent = formatDelta(delta, label);
-  return element;
-}
-
-export function cleanupShownPendingActivity(pendingActivity) {
-  const nextActivity = createEmptyPendingActivity(pendingActivity);
-
-  if (nextActivity.account.quickSummaryShown && nextActivity.account.dashboardShown) {
-    nextActivity.account = {};
-  }
-
-  Object.entries(pendingActivity?.repositories || {}).forEach(([repository, activity]) => {
-    if (!activity || typeof activity !== 'object') {
-      return;
-    }
-
-    if (activity.quickSummaryShown && activity.dashboardShown) {
-      delete nextActivity.repositories[repository];
-    }
-  });
-
-  if (Object.keys(nextActivity.account).length === 0 && Object.keys(nextActivity.repositories).length === 0) {
-    nextActivity.updatedAt = '';
-  }
-
-  return nextActivity;
-}
+function emptyQueue() { return { account: {}, repositories: {}, updatedAt: '' }; }
+function cloneQueue(queue) { return { account: { ...(queue?.account || {}) }, repositories: Object.fromEntries(Object.entries(queue?.repositories || {}).map(([r, a]) => [r, { ...a }])), updatedAt: typeof queue?.updatedAt === 'string' ? queue.updatedAt : '' }; }
+function emptySurface(surface) { return { queued: emptyQueue(), inFlight: surface?.inFlight ? { ...cloneQueue(surface.inFlight), token: surface.inFlight.token || '', claimedAt: surface.inFlight.claimedAt || '' } : null }; }
+export function createEmptyPendingActivity(existingPendingActivity) { return { quickSummary: existingPendingActivity?.quickSummary ? emptySurface(existingPendingActivity.quickSummary) : emptySurface(), dashboard: existingPendingActivity?.dashboard ? emptySurface(existingPendingActivity.dashboard) : emptySurface(), badgeActivity: existingPendingActivity?.badgeActivity && typeof existingPendingActivity.badgeActivity === 'object' ? { ...existingPendingActivity.badgeActivity, repositories: { ...(existingPendingActivity.badgeActivity.repositories || {}) } } : { account: false, repositories: {}, updatedAt: '' }, updatedAt: typeof existingPendingActivity?.updatedAt === 'string' ? existingPendingActivity.updatedAt : '' }; }
+function applyDelta(value, delta) { const nextValue = (Number(value) || 0) + delta; return nextValue === 0 ? undefined : nextValue; }
+export function createEmptyPendingChanges() { return { account: [], repositories: {} }; }
+function queueAccountDelta(queue, delta, checkedAt) { const followersDelta = applyDelta(queue.account?.followersDelta, delta); queue.account = followersDelta === undefined ? {} : { followersDelta }; queue.updatedAt = Object.keys(queue.account).length || Object.keys(queue.repositories || {}).length ? checkedAt : ''; }
+function queueRepositoryDelta(queue, repository, deltaKey, delta, checkedAt) { const activity = { ...(queue.repositories[repository] || {}), repository }; const nextDelta = applyDelta(activity[deltaKey], delta); if (nextDelta === undefined) delete activity[deltaKey]; else activity[deltaKey] = nextDelta; if (REPOSITORY_ACTIVITY_STATS.some(({ deltaKey: key }) => (Number(activity[key]) || 0) !== 0)) queue.repositories[repository] = activity; else delete queue.repositories[repository]; queue.updatedAt = Object.keys(queue.account || {}).length || Object.keys(queue.repositories || {}).length ? checkedAt : ''; }
+function addToSurfaceQueues(pendingActivity, fn) { ['quickSummary', 'dashboard'].forEach((surfaceKey) => { if (!pendingActivity[surfaceKey]) pendingActivity[surfaceKey] = emptySurface(); fn(pendingActivity[surfaceKey].queued); }); }
+export function recordAccountActivityDelta(pendingActivity, delta, detectedChanges, checkedAt = new Date().toISOString()) { if (delta === 0) return false; if (detectedChanges) detectedChanges.account.push({ delta, label: ACTIVITY_DELTA_LABELS.followersDelta }); addToSurfaceQueues(pendingActivity, (queue) => queueAccountDelta(queue, delta, checkedAt)); return true; }
+export function recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, delta, label, detectedChanges, checkedAt = new Date().toISOString()) { if (delta === 0) return false; if (detectedChanges) { if (!detectedChanges.repositories[repository]) detectedChanges.repositories[repository] = []; detectedChanges.repositories[repository].push({ delta, label }); } addToSurfaceQueues(pendingActivity, (queue) => queueRepositoryDelta(queue, repository, deltaKey, delta, checkedAt)); return true; }
+export function detectPendingActivityFromStats(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, pendingActivity, checkedAt, repositories, detectedChanges) { const trackedStats = getTrackedStats(settings); let changed = false; if (trackedStats.accountFollowers) { const previousFollowers = Number(previousAccountStats?.followers); const nextFollowers = Number(nextAccountStats?.followers); if (hasAccountFollowersBaseline(previousAccountStats) && Number.isFinite(nextFollowers)) changed = recordAccountActivityDelta(pendingActivity, nextFollowers - previousFollowers, detectedChanges, checkedAt) || changed; } repositories.forEach((repository) => { const previousStats = previousLatestStats?.[repository]; const nextStats = nextLatestStats?.[repository]; REPOSITORY_ACTIVITY_STATS.forEach(({ setting, deltaKey, previousKey, currentKey, label }) => { if (!trackedStats[setting]) return; const previousValue = Number(previousStats?.[previousKey]); const nextValue = Number(nextStats?.[currentKey]); if (hasTrackedStatBaseline(previousStats, previousKey) && Number.isFinite(nextValue)) changed = recordRepositoryActivityDelta(pendingActivity, repository, deltaKey, nextValue - previousValue, label, detectedChanges, checkedAt) || changed; }); }); if (changed) pendingActivity.updatedAt = checkedAt; return changed; }
+export function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) { const accountChanges = Array.isArray(detectedChanges?.account) ? detectedChanges.account : []; const repositoryChanges = detectedChanges?.repositories && typeof detectedChanges.repositories === 'object' ? detectedChanges.repositories : {}; if (!accountChanges.some(({ delta }) => delta !== 0) && !Object.values(repositoryChanges).some((deltas) => Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0))) return; pendingActivity.badgeActivity = { account: Boolean(pendingActivity.badgeActivity?.account || accountChanges.length > 0), repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) }, updatedAt: checkedAt }; Object.entries(repositoryChanges).forEach(([repository, deltas]) => { if (Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0)) pendingActivity.badgeActivity.repositories[repository] = true; }); }
+function surfaceKey(surface) { if (surface === ACTIVITY_SURFACES.QUICK_SUMMARY || surface === 'quickSummary') return 'quickSummary'; if (surface === ACTIVITY_SURFACES.DASHBOARD) return 'dashboard'; return ''; }
+function hasQueueActivity(queue) { return Boolean(Number(queue?.account?.followersDelta)) || Object.values(queue?.repositories || {}).some((a) => getRepositoryActivityDeltas(a).length > 0); }
+function makeToken(surface) { return `${surface}-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+export function reclaimStaleInFlightActivity(pendingActivity, nowMs = Date.now()) { ['quickSummary', 'dashboard'].forEach((key) => { const inFlight = pendingActivity[key]?.inFlight; const claimedAt = Date.parse(inFlight?.claimedAt || ''); if (!inFlight || !Number.isFinite(claimedAt) || nowMs - claimedAt < ACTIVITY_IN_FLIGHT_TIMEOUT_MS) return; if (Number(inFlight.account?.followersDelta)) queueAccountDelta(pendingActivity[key].queued, Number(inFlight.account.followersDelta), inFlight.updatedAt || new Date(nowMs).toISOString()); Object.entries(inFlight.repositories || {}).forEach(([repo, activity]) => { REPOSITORY_ACTIVITY_STATS.forEach(({ deltaKey }) => { if (Number(activity[deltaKey])) queueRepositoryDelta(pendingActivity[key].queued, repo, deltaKey, Number(activity[deltaKey]), inFlight.updatedAt || new Date(nowMs).toISOString()); }); }); pendingActivity[key].inFlight = null; }); return pendingActivity; }
+export function claimPendingActivityForSurface(pendingActivity, surface, now = new Date()) { const key = surfaceKey(surface); if (!key) return null; reclaimStaleInFlightActivity(pendingActivity, now.getTime()); const state = pendingActivity[key] || emptySurface(); pendingActivity[key] = state; if (state.inFlight && hasQueueActivity(state.inFlight)) return { token: state.inFlight.token, activity: cloneQueue(state.inFlight) }; if (!hasQueueActivity(state.queued)) return { token: '', activity: emptyQueue() }; const token = makeToken(surface); state.inFlight = { ...cloneQueue(state.queued), token, claimedAt: now.toISOString() }; state.queued = emptyQueue(); return { token, activity: cloneQueue(state.inFlight) }; }
+function subtractRepositoryActivity(target, repository, acknowledged) { REPOSITORY_ACTIVITY_STATS.forEach(({ deltaKey }) => { const amount = Number(acknowledged?.[deltaKey]) || 0; if (amount) queueRepositoryDelta(target, repository, deltaKey, -amount, target.updatedAt || new Date().toISOString()); }); }
+export function acknowledgePendingActivityForSurface(pendingActivity, surface, token, displayed = {}) { const key = surfaceKey(surface); const state = key ? pendingActivity[key] : null; if (!state?.inFlight || !token || state.inFlight.token !== token) return false; const remaining = cloneQueue(state.inFlight); if (displayed.account && Number(remaining.account.followersDelta)) remaining.account = {}; Object.entries(displayed.repositories || {}).forEach(([repository, activity]) => subtractRepositoryActivity(remaining, repository, activity)); state.inFlight = hasQueueActivity(remaining) ? { ...remaining, token: state.inFlight.token, claimedAt: state.inFlight.claimedAt } : null; clearBadgeLocations(pendingActivity, Boolean(displayed.account), Object.keys(displayed.repositories || {})); return true; }
+export function clearBadgeLocations(pendingActivity, account, repositories = []) { if (!pendingActivity.badgeActivity) pendingActivity.badgeActivity = { account: false, repositories: {}, updatedAt: '' }; if (account) pendingActivity.badgeActivity.account = false; repositories.forEach((repository) => { delete pendingActivity.badgeActivity.repositories?.[repository]; }); if (!pendingActivity.badgeActivity.account && Object.keys(pendingActivity.badgeActivity.repositories || {}).length === 0) pendingActivity.badgeActivity.updatedAt = ''; }
+export function createDeltaElement(delta, label) { const element = document.createElement('span'); element.className = `activity-delta ${getDeltaClass(delta)}`; element.textContent = formatDelta(delta, label); return element; }
+export function cleanupShownPendingActivity(pendingActivity) { return createEmptyPendingActivity(pendingActivity); }

@@ -10,7 +10,7 @@ import {
   getViewedBaselines,
   saveViewedBaselines,
 } from '../shared/storage.js';
-import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
+import { createDeltaElement } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
@@ -230,8 +230,8 @@ function hasFetchedAccountStats(accountStats) {
 
 function hasCurrentAccountViewedBaseline() {
   return hasFetchedAccountStats(currentAccountStats)
-    && currentViewedBaselines.account?.login === currentAccountStats.login
-    && Number.isFinite(Number(currentViewedBaselines.account?.followers));
+    && currentViewedBaselines.quickSummary?.account?.login === currentAccountStats.login
+    && Number.isFinite(Number(currentViewedBaselines.quickSummary?.account?.followers));
 }
 
 function getBaselineDelta(baseline, key, currentValue) {
@@ -245,11 +245,7 @@ function getBaselineDelta(baseline, key, currentValue) {
 
 function getQuickSummaryPendingDeltas() {
   return currentSettings.repositories.reduce((totals, repository) => {
-    const activity = currentPendingActivity.repositories?.[repository];
-
-    if (activity?.quickSummaryShown) {
-      return totals;
-    }
+    const activity = (currentPendingActivity.quickSummary?.inFlight || currentPendingActivity.quickSummary?.queued || {}).repositories?.[repository];
 
     totals.starsDelta += Number(activity?.starsDelta) || 0;
     totals.forksDelta += Number(activity?.forksDelta) || 0;
@@ -266,7 +262,7 @@ function getQuickSummaryViewedDeltas() {
       return totals;
     }
 
-    const baseline = currentViewedBaselines.repositories?.[repository];
+    const baseline = currentViewedBaselines.quickSummary?.repositories?.[repository];
     totals.starsDelta += getBaselineDelta(baseline, 'stars', stats.stars);
     totals.forksDelta += getBaselineDelta(baseline, 'forks', stats.forks);
     totals.repoWatchersDelta += getBaselineDelta(baseline, 'repoWatchers', stats.subscribers);
@@ -275,11 +271,7 @@ function getQuickSummaryViewedDeltas() {
 }
 
 function getQuickSummaryPendingAccountDelta() {
-  if (currentPendingActivity.account?.quickSummaryShown) {
-    return 0;
-  }
-
-  return Number(currentPendingActivity.account?.followersDelta) || 0;
+  return Number((currentPendingActivity.quickSummary?.inFlight || currentPendingActivity.quickSummary?.queued || {}).account?.followersDelta) || 0;
 }
 
 function getPreferredQuickSummaryDelta(pendingDelta, viewedDelta) {
@@ -291,68 +283,44 @@ function getQuickSummaryAccountDelta() {
     return 0;
   }
 
-  return getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
+  return getBaselineDelta(currentViewedBaselines.quickSummary?.account, 'followers', currentAccountStats.followers);
+}
+
+function getQuickSummaryDeliveryToken() {
+  return currentPendingActivity.quickSummary?.inFlight?.token || '';
 }
 
 async function markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity) {
-  const nextPendingActivity = {
-    ...currentPendingActivity,
-    account: { ...currentPendingActivity.account },
-    repositories: { ...currentPendingActivity.repositories },
-    badgeActivity: {
-      ...(currentPendingActivity.badgeActivity || {}),
-      repositories: { ...(currentPendingActivity.badgeActivity?.repositories || {}) },
-    },
+  const token = getQuickSummaryDeliveryToken();
+  if (!token && consideredRepositories.size === 0 && !displayedAccountActivity) return;
+  const displayedActivity = {
+    account: displayedAccountActivity,
+    repositories: {},
   };
-  let changed = false;
-  let badgeActivityCleared = false;
-
-  if (displayedAccountActivity && Number(nextPendingActivity.account.followersDelta) !== 0 && !nextPendingActivity.account.quickSummaryShown) {
-    nextPendingActivity.account.quickSummaryShown = true;
-    changed = true;
-  }
-
-  if (displayedAccountActivity && nextPendingActivity.badgeActivity.account) {
-    nextPendingActivity.badgeActivity.account = false;
-    changed = true;
-    badgeActivityCleared = true;
-  }
-
   consideredRepositories.forEach((repository) => {
-    const activity = nextPendingActivity.repositories[repository];
-
-    if (activity && !activity.quickSummaryShown) {
-      nextPendingActivity.repositories[repository] = { ...activity, quickSummaryShown: true };
-      changed = true;
-    }
-
-    if (nextPendingActivity.badgeActivity.repositories[repository]) {
-      delete nextPendingActivity.badgeActivity.repositories[repository];
-      changed = true;
-      badgeActivityCleared = true;
-    }
+    const activity = currentPendingActivity.quickSummary?.inFlight?.repositories?.[repository];
+    if (activity) displayedActivity.repositories[repository] = activity;
   });
-
-  if (!changed) {
-    return;
-  }
-
   try {
-    currentPendingActivity = await savePendingActivity(cleanupShownPendingActivity(nextPendingActivity));
-    if (badgeActivityCleared) {
-      await clearBadgeText();
-    }
+    const response = await chrome.runtime.sendMessage({ action: 'activity.acknowledge', surface: 'quick-summary', token, displayedActivity });
+    if (response?.ok && response.result?.pendingActivity) currentPendingActivity = response.result.pendingActivity;
+    if (displayedAccountActivity || consideredRepositories.size > 0) await clearBadgeText();
   } catch (error) {
     console.warn('Unable to mark Quick Summary activity as shown.', error);
   }
 }
 
+
 async function saveQuickSummaryViewedBaselines(consideredRepositories, displayedAccount) {
   const viewedAt = new Date().toISOString();
   const nextViewedBaselines = {
     ...currentViewedBaselines,
-    account: { ...currentViewedBaselines.account },
-    repositories: { ...currentViewedBaselines.repositories },
+    quickSummary: {
+      ...(currentViewedBaselines.quickSummary || {}),
+      account: { ...(currentViewedBaselines.quickSummary?.account || {}) },
+      repositories: { ...(currentViewedBaselines.quickSummary?.repositories || {}) },
+      updatedAt: viewedAt,
+    },
     updatedAt: viewedAt,
   };
 
@@ -360,8 +328,8 @@ async function saveQuickSummaryViewedBaselines(consideredRepositories, displayed
     const stats = currentLatestStats[repository];
 
     if (hasCachedMetadata(stats)) {
-      nextViewedBaselines.repositories[repository] = {
-        ...(nextViewedBaselines.repositories[repository] || {}),
+      nextViewedBaselines.quickSummary.repositories[repository] = {
+        ...(nextViewedBaselines.quickSummary.repositories[repository] || {}),
         repository,
         stars: stats.stars,
         forks: stats.forks,
@@ -372,7 +340,7 @@ async function saveQuickSummaryViewedBaselines(consideredRepositories, displayed
   });
 
   if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
-    nextViewedBaselines.account = {
+    nextViewedBaselines.quickSummary.account = {
       login: currentAccountStats.login,
       followers: currentAccountStats.followers,
       updatedAt: viewedAt,
@@ -463,6 +431,14 @@ function renderStatsSummary(settings, latestStats) {
   renderQuickSummaryActivity();
 }
 
+
+async function claimQuickSummaryActivity() {
+  const response = await chrome.runtime.sendMessage({ action: 'activity.claim', surface: 'quick-summary' });
+  if (response?.ok && response.result?.pendingActivity) {
+    currentPendingActivity = response.result.pendingActivity;
+  }
+}
+
 async function renderSettingsSummary() {
   try {
     [
@@ -484,6 +460,7 @@ async function renderSettingsSummary() {
       getViewedBaselines(),
       getVersionCheckStatus(),
     ]);
+    await claimQuickSummaryActivity();
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
     renderUpdateCard();
@@ -508,6 +485,7 @@ async function reloadSavedRefreshData() {
     getPendingActivity(),
     getViewedBaselines(),
   ]);
+  await claimQuickSummaryActivity();
   currentQuickSummaryStatus = await getQuickSummaryStatus();
   renderStatsSummary(currentSettings, currentLatestStats);
   if (!renderSetupGuidanceStatus(currentSettings)) {
