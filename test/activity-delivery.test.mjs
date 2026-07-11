@@ -28,14 +28,14 @@ const quickClaim = claimPendingActivityForSurface(activity, 'quick-summary', new
 assert.equal(quickClaim.activity.repositories['owner/repo'].starsDelta, 1);
 assert.equal(activity.quickSummary.queued.repositories['owner/repo'], undefined);
 assert.equal(repoDelta(activity, 'dashboard'), 1);
-assert.equal(acknowledgePendingActivityForSurface(activity, 'quick-summary', quickClaim.token, { repositories: { 'owner/repo': quickClaim.activity.repositories['owner/repo'] } }), true);
+assert.equal(acknowledgePendingActivityForSurface(activity, 'quick-summary', quickClaim.token, { repositories: { 'owner/repo': quickClaim.activity.repositories['owner/repo'] } }).acknowledged, true);
 assert.equal(activity.quickSummary.inFlight, null);
 assert.equal(repoDelta(activity, 'dashboard'), 1);
 assert.equal(claimPendingActivityForSurface(activity, 'quick-summary').token, '');
 
 const dashboardClaim = claimPendingActivityForSurface(activity, 'dashboard', new Date('2026-01-01T00:00:01.000Z'));
 assert.equal(dashboardClaim.activity.repositories['owner/repo'].starsDelta, 1);
-assert.equal(acknowledgePendingActivityForSurface(activity, 'dashboard', dashboardClaim.token, { repositories: { 'owner/repo': dashboardClaim.activity.repositories['owner/repo'] } }), true);
+assert.equal(acknowledgePendingActivityForSurface(activity, 'dashboard', dashboardClaim.token, { repositories: { 'owner/repo': dashboardClaim.activity.repositories['owner/repo'] } }).acknowledged, true);
 assert.equal(claimPendingActivityForSurface(activity, 'dashboard').token, '');
 
 activity = createEmptyPendingActivity();
@@ -61,12 +61,12 @@ recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 2, 'Star', n
 assert.equal(repoDelta(activity, 'quickSummary'), 2);
 acknowledgePendingActivityForSurface(activity, 'quick-summary', inFlight.token, { repositories: { 'owner/repo': inFlight.activity.repositories['owner/repo'] } });
 assert.equal(claimPendingActivityForSurface(activity, 'quick-summary', new Date('2026-01-01T00:00:03.000Z')).activity.repositories['owner/repo'].starsDelta, 2);
-assert.equal(acknowledgePendingActivityForSurface(activity, 'quick-summary', inFlight.token, { repositories: { 'owner/repo': inFlight.activity.repositories['owner/repo'] } }), false);
+assert.equal(acknowledgePendingActivityForSurface(activity, 'quick-summary', inFlight.token, { repositories: { 'owner/repo': inFlight.activity.repositories['owner/repo'] } }).acknowledged, false);
 
 activity = createEmptyPendingActivity();
 recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 3, 'Star', null, 't1');
 const partial = claimPendingActivityForSurface(activity, 'dashboard', new Date('2026-01-01T00:00:00.000Z'));
-assert.equal(acknowledgePendingActivityForSurface(activity, 'dashboard', 'wrong-token', { repositories: { 'owner/repo': partial.activity.repositories['owner/repo'] } }), false);
+assert.equal(acknowledgePendingActivityForSurface(activity, 'dashboard', 'wrong-token', { repositories: { 'owner/repo': partial.activity.repositories['owner/repo'] } }).acknowledged, false);
 assert.equal(activity.dashboard.inFlight.repositories['owner/repo'].starsDelta, 3);
 acknowledgePendingActivityForSurface(activity, 'dashboard', partial.token, { repositories: {} });
 assert.equal(activity.dashboard.inFlight.repositories['owner/repo'].starsDelta, 3);
@@ -115,5 +115,32 @@ const claim = claimPendingActivityForSurface(activity, 'quick-summary', new Date
 acknowledgePendingActivityForSurface(activity, 'quick-summary', claim.token, { repositories: { 'owner/repo': claim.activity.repositories['owner/repo'] } });
 assert.equal(activity.badgeActivity.repositories['owner/repo'], undefined);
 assert.equal(repoDelta(activity, 'dashboard'), 1);
+
+
+activity = createEmptyPendingActivity();
+recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 1, 'Star', null, 't1');
+recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 2, 'Star', null, 't2');
+assert.equal(activity.quickSummary.queued.repositories['owner/repo'].starsDelta, 3);
+assert.equal(activity.dashboard.queued.repositories['owner/repo'].starsDelta, 3);
+
+activity = createEmptyPendingActivity();
+recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 1, 'Star', null, 't1');
+recordRepositoryActivityDelta(activity, 'owner/other', 'forksDelta', 2, 'Fork', null, 't1');
+claimPendingActivityForSurface(activity, 'quick-summary', new Date('2026-01-01T00:00:00.000Z'));
+claimPendingActivityForSurface(activity, 'dashboard', new Date('2026-01-01T00:00:00.000Z'));
+recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 3, 'Star', null, 't2');
+const copied = createEmptyPendingActivity(activity);
+assert.equal(copied.quickSummary.queued.repositories['owner/repo'].starsDelta, 3);
+assert.equal(copied.dashboard.queued.repositories['owner/repo'].starsDelta, 3);
+assert.equal(copied.quickSummary.inFlight.repositories['owner/repo'].starsDelta, 1);
+assert.equal(copied.dashboard.inFlight.repositories['owner/other'].forksDelta, 2);
+
+activity = createEmptyPendingActivity();
+recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 2, 'Star', null, 't1');
+const invalidPartial = claimPendingActivityForSurface(activity, 'quick-summary', new Date('2026-01-01T00:00:00.000Z'));
+acknowledgePendingActivityForSurface(activity, 'quick-summary', invalidPartial.token, { repositories: { 'owner/repo': { starsDelta: 1 } } });
+assert.equal(activity.quickSummary.inFlight.repositories['owner/repo'].starsDelta, 2);
+acknowledgePendingActivityForSurface(activity, 'quick-summary', invalidPartial.token, { repositories: { 'owner/repo': { starsDelta: 2 } } });
+assert.equal(activity.quickSummary.inFlight, null);
 
 console.log('activity delivery tests passed');

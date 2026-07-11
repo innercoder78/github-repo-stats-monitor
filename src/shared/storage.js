@@ -654,8 +654,6 @@ export function normalizeViewedBaselines(baselines) {
   return {
     quickSummary,
     dashboard,
-    account: quickSummary.account,
-    repositories: quickSummary.repositories,
     updatedAt: typeof viewedBaselines.updatedAt === 'string' ? viewedBaselines.updatedAt : (quickSummary.updatedAt || dashboard.updatedAt || ''),
   };
 }

@@ -6,9 +6,7 @@ import {
   getQuickSummaryStatus,
   getVersionCheckStatus,
   getSettings,
-  savePendingActivity,
   getViewedBaselines,
-  saveViewedBaselines,
 } from '../shared/storage.js';
 import { createDeltaElement } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
@@ -50,28 +48,16 @@ applySavedAppearance();
 
 async function acknowledgeBadgeActivity() {
   try {
-    const pendingActivity = await getPendingActivity();
-
-    if (pendingActivity.badgeActivity?.account || Object.values(pendingActivity.badgeActivity?.repositories || {}).some(Boolean)) {
-      await savePendingActivity({
-        ...pendingActivity,
-        badgeActivity: { account: false, repositories: {}, updatedAt: '' },
-      });
-    }
+    const response = await chrome.runtime.sendMessage({
+      action: 'activity.acknowledge',
+      surface: 'quick-summary',
+      token: '',
+      displayedActivity: {},
+      displayedReview: {},
+    });
+    if (response?.ok && response.result?.pendingActivity) currentPendingActivity = response.result.pendingActivity;
   } catch (error) {
     console.warn('Unable to acknowledge badge activity.', error);
-  }
-}
-
-async function clearBadgeText() {
-  if (!globalThis.chrome?.action?.setBadgeText) {
-    return;
-  }
-
-  try {
-    await globalThis.chrome.action.setBadgeText({ text: '' });
-  } catch (error) {
-    console.warn('Unable to clear the extension badge.', error);
   }
 }
 
@@ -290,9 +276,34 @@ function getQuickSummaryDeliveryToken() {
   return currentPendingActivity.quickSummary?.inFlight?.token || '';
 }
 
+function getQuickSummaryDisplayedReview(consideredRepositories, displayedAccount) {
+  const reviewedAt = new Date().toISOString();
+  const displayedReview = { reviewedAt, account: null, repositories: {} };
+
+  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
+    displayedReview.account = {
+      login: currentAccountStats.login,
+      followers: currentAccountStats.followers,
+    };
+  }
+
+  consideredRepositories.forEach((repository) => {
+    const stats = currentLatestStats[repository];
+    if (hasCachedMetadata(stats)) {
+      displayedReview.repositories[repository] = {
+        repository,
+        stars: stats.stars,
+        forks: stats.forks,
+        repoWatchers: stats.subscribers,
+      };
+    }
+  });
+
+  return displayedReview;
+}
+
 async function markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity) {
   const token = getQuickSummaryDeliveryToken();
-  if (!token && consideredRepositories.size === 0 && !displayedAccountActivity) return;
   const displayedActivity = {
     account: displayedAccountActivity,
     repositories: {},
@@ -302,57 +313,31 @@ async function markQuickSummaryActivityShown(consideredRepositories, displayedAc
     if (activity) displayedActivity.repositories[repository] = activity;
   });
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'activity.acknowledge', surface: 'quick-summary', token, displayedActivity });
+    const response = await chrome.runtime.sendMessage({
+      action: 'activity.acknowledge',
+      surface: 'quick-summary',
+      token,
+      displayedActivity,
+      displayedReview: getQuickSummaryDisplayedReview(consideredRepositories, displayedAccountActivity),
+    });
     if (response?.ok && response.result?.pendingActivity) currentPendingActivity = response.result.pendingActivity;
-    if (displayedAccountActivity || consideredRepositories.size > 0) await clearBadgeText();
+    if (response?.ok && response.result?.viewedBaselines) currentViewedBaselines = response.result.viewedBaselines;
+    if (response?.ok && response.result?.badgeActivity) await updateQuickSummaryBadge(response.result.badgeActivity);
   } catch (error) {
     console.warn('Unable to mark Quick Summary activity as shown.', error);
   }
 }
 
-
-async function saveQuickSummaryViewedBaselines(consideredRepositories, displayedAccount) {
-  const viewedAt = new Date().toISOString();
-  const nextViewedBaselines = {
-    ...currentViewedBaselines,
-    quickSummary: {
-      ...(currentViewedBaselines.quickSummary || {}),
-      account: { ...(currentViewedBaselines.quickSummary?.account || {}) },
-      repositories: { ...(currentViewedBaselines.quickSummary?.repositories || {}) },
-      updatedAt: viewedAt,
-    },
-    updatedAt: viewedAt,
-  };
-
-  consideredRepositories.forEach((repository) => {
-    const stats = currentLatestStats[repository];
-
-    if (hasCachedMetadata(stats)) {
-      nextViewedBaselines.quickSummary.repositories[repository] = {
-        ...(nextViewedBaselines.quickSummary.repositories[repository] || {}),
-        repository,
-        stars: stats.stars,
-        forks: stats.forks,
-        repoWatchers: stats.subscribers,
-        updatedAt: viewedAt,
-      };
-    }
-  });
-
-  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
-    nextViewedBaselines.quickSummary.account = {
-      login: currentAccountStats.login,
-      followers: currentAccountStats.followers,
-      updatedAt: viewedAt,
-    };
-  }
-
+async function updateQuickSummaryBadge(badgeActivity) {
+  if (!globalThis.chrome?.action?.setBadgeText) return;
+  const count = (badgeActivity?.account ? 1 : 0) + Object.keys(badgeActivity?.repositories || {}).length;
   try {
-    currentViewedBaselines = await saveViewedBaselines(nextViewedBaselines);
+    await globalThis.chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
   } catch (error) {
-    console.warn('Unable to save Quick Summary viewed baselines.', error);
+    console.warn('Unable to update badge text after Quick Summary review.', error);
   }
 }
+
 
 function renderQuickSummaryActivity() {
   clearActivityHighlights();
@@ -387,7 +372,6 @@ function renderQuickSummaryActivity() {
   }
 
   markQuickSummaryActivityShown(consideredRepositories, accountFollowersDisplayed);
-  saveQuickSummaryViewedBaselines(consideredRepositories, accountFollowersDisplayed);
 }
 
 function renderStatsSummary(settings, latestStats) {
@@ -575,6 +559,7 @@ async function refreshStats() {
       if (refreshResult.pendingActivity) {
         currentPendingActivity = refreshResult.pendingActivity;
       }
+      await claimQuickSummaryActivity();
       renderStatsSummary(currentSettings, currentLatestStats);
       renderUpdateCard();
 

@@ -10,14 +10,15 @@ import {
   getViewedBaselines,
   isValidRepositoryName,
   normalizeNotificationSettings,
+  normalizePendingActivity,
   normalizeRepositoryName,
+  normalizeViewedBaselines,
   patchLatestStats,
   removeUnconfiguredLatestStats,
   saveAccountStats,
   saveLastBackgroundCheckAt,
   saveNotificationBaselines,
   savePendingActivity,
-  saveViewedBaselines,
 } from './shared/storage.js';
 import { createEmptyPendingActivity, recordAccountActivityDelta, recordRepositoryActivityDelta, claimPendingActivityForSurface, acknowledgePendingActivityForSurface } from './shared/activity.js';
 import { VERSION_CHECK_ALARM_NAME, runVersionCheck } from './shared/version-check.js';
@@ -338,23 +339,108 @@ function isValidActivitySurface(surface) {
   return surface === 'quick-summary' || surface === 'dashboard';
 }
 
+
+function normalizeDisplayedReview(displayedReview = {}) {
+  const reviewedAt = typeof displayedReview.reviewedAt === 'string' ? displayedReview.reviewedAt : new Date().toISOString();
+  const account = {};
+  const repositories = {};
+
+  if (displayedReview.account && typeof displayedReview.account === 'object') {
+    const followers = Number(displayedReview.account.followers);
+    if (typeof displayedReview.account.login === 'string' && Number.isFinite(followers) && followers >= 0) {
+      account.login = displayedReview.account.login;
+      account.followers = followers;
+      account.updatedAt = reviewedAt;
+    }
+  }
+
+  Object.entries(displayedReview.repositories && typeof displayedReview.repositories === 'object' ? displayedReview.repositories : {}).forEach(([repository, values]) => {
+    const normalizedRepository = normalizeRepositoryName(repository || values?.repository);
+    const stars = Number(values?.stars);
+    const forks = Number(values?.forks);
+    const repoWatchers = Number(values?.repoWatchers);
+    if (isValidRepositoryName(normalizedRepository)
+      && Number.isFinite(stars) && stars >= 0
+      && Number.isFinite(forks) && forks >= 0
+      && Number.isFinite(repoWatchers) && repoWatchers >= 0) {
+      repositories[normalizedRepository] = {
+        repository: normalizedRepository,
+        stars,
+        forks,
+        repoWatchers,
+        updatedAt: reviewedAt,
+      };
+    }
+  });
+
+  return { account, repositories, reviewedAt };
+}
+
+function updateSurfaceViewedBaselines(viewedBaselines, surface, displayedReview) {
+  const surfaceKey = surface === 'quick-summary' ? 'quickSummary' : 'dashboard';
+  const normalizedReview = normalizeDisplayedReview(displayedReview);
+  const nextViewedBaselines = normalizeViewedBaselines(viewedBaselines);
+  const surfaceBaselines = {
+    ...(nextViewedBaselines[surfaceKey] || {}),
+    account: { ...(nextViewedBaselines[surfaceKey]?.account || {}) },
+    repositories: { ...(nextViewedBaselines[surfaceKey]?.repositories || {}) },
+    updatedAt: normalizedReview.reviewedAt,
+  };
+
+  if (Object.keys(normalizedReview.account).length > 0) {
+    surfaceBaselines.account = normalizedReview.account;
+  }
+
+  Object.entries(normalizedReview.repositories).forEach(([repository, values]) => {
+    surfaceBaselines.repositories[repository] = values;
+  });
+
+  nextViewedBaselines[surfaceKey] = surfaceBaselines;
+  nextViewedBaselines.updatedAt = normalizedReview.reviewedAt;
+  return nextViewedBaselines;
+}
+
+function saveActivityState({ pendingActivity, viewedBaselines }) {
+  const values = {};
+  if (pendingActivity) values.pendingActivity = normalizePendingActivity(pendingActivity);
+  if (viewedBaselines) values.viewedBaselines = normalizeViewedBaselines(viewedBaselines);
+
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set(values, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(values);
+    });
+  });
+}
+
 async function claimActivityDelivery(surface) {
   if (!isValidActivitySurface(surface)) throw new Error('Invalid activity surface.');
   return runPendingActivityMutation(async () => {
     const pendingActivity = await getPendingActivity();
     const delivery = claimPendingActivityForSurface(pendingActivity, surface);
-    const savedPendingActivity = await savePendingActivity(pendingActivity);
-    return { ...delivery, pendingActivity: savedPendingActivity };
+    const saved = await saveActivityState({ pendingActivity });
+    return { ...delivery, pendingActivity: saved.pendingActivity };
   });
 }
 
-async function acknowledgeActivityDelivery(surface, token, displayedActivity = {}) {
+async function acknowledgeActivityDelivery(surface, token, displayedActivity = {}, displayedReview = {}) {
   if (!isValidActivitySurface(surface)) throw new Error('Invalid activity surface.');
   return runPendingActivityMutation(async () => {
-    const pendingActivity = await getPendingActivity();
-    const acknowledged = acknowledgePendingActivityForSurface(pendingActivity, surface, token, displayedActivity);
-    const savedPendingActivity = acknowledged ? await savePendingActivity(pendingActivity) : pendingActivity;
-    return { acknowledged, pendingActivity: savedPendingActivity };
+    const [pendingActivity, viewedBaselines] = await Promise.all([getPendingActivity(), getViewedBaselines()]);
+    const acknowledgement = acknowledgePendingActivityForSurface(pendingActivity, surface, token, displayedActivity);
+    const nextViewedBaselines = updateSurfaceViewedBaselines(viewedBaselines, surface, displayedReview);
+    const saved = await saveActivityState({ pendingActivity, viewedBaselines: nextViewedBaselines });
+    return {
+      acknowledged: acknowledgement.acknowledged,
+      reviewedBadgeLocations: acknowledgement.reviewedBadgeLocations,
+      pendingActivity: saved.pendingActivity,
+      viewedBaselines: saved.viewedBaselines,
+      badgeActivity: saved.pendingActivity.badgeActivity,
+    };
   });
 }
 
@@ -364,7 +450,7 @@ function handleActivityDeliveryMessage(message, sendResponse) {
   (async () => {
     const result = action === ACTIVITY_DELIVERY_ACTIONS.CLAIM
       ? await claimActivityDelivery(message.surface)
-      : await acknowledgeActivityDelivery(message.surface, message.token, message.displayedActivity);
+      : await acknowledgeActivityDelivery(message.surface, message.token, message.displayedActivity, message.displayedReview);
     sendResponse({ ok: true, result });
   })().catch((error) => sendResponse({ ok: false, error: error.message || 'Activity delivery failed.' }));
   return true;
@@ -854,6 +940,25 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, lab
 }
 
 
+
+function applyDetectedChangesToPendingActivity(pendingActivity, detectedChanges, checkedAt) {
+  let changed = false;
+  detectedChanges.account.forEach(({ delta }) => {
+    changed = recordAccountDelta(pendingActivity, delta, null, checkedAt) || changed;
+  });
+  Object.entries(detectedChanges.repositories || {}).forEach(([repository, deltas]) => {
+    deltas.forEach(({ delta, label }) => {
+      const deltaKey = label === REPOSITORY_DELTA_LABELS.forksDelta
+        ? 'forksDelta'
+        : label === REPOSITORY_DELTA_LABELS.repoWatchersDelta || label === 'Repo Watcher'
+          ? 'repoWatchersDelta'
+          : 'starsDelta';
+      changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, null, checkedAt) || changed;
+    });
+  });
+  return changed;
+}
+
 function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
   if (!hasDetectedActivity(detectedChanges)) {
     return false;
@@ -1108,8 +1213,18 @@ async function runBackgroundCheckNow() {
   let badgeActivity = pendingActivity.badgeActivity;
 
   if (pendingChanged) {
-    const savedPendingActivity = await savePendingActivity(pendingActivity);
-    badgeActivity = savedPendingActivity.badgeActivity;
+    badgeActivity = await runPendingActivityMutation(async () => {
+      const latestPendingActivity = createEmptyPendingActivity(await getPendingActivity());
+      cleanupRepositoryStorage(baselines, latestPendingActivity, settings.repositories);
+      const activityUpdatedAt = latestEndpointCompletedAt || new Date().toISOString();
+      applyDetectedChangesToPendingActivity(latestPendingActivity, detectedChanges, activityUpdatedAt);
+      latestPendingActivity.updatedAt = activityUpdatedAt;
+      if (settings.notifications.badgeEnabled) {
+        mergeBadgeActivity(latestPendingActivity, detectedChanges, activityUpdatedAt);
+      }
+      const savedPendingActivity = await savePendingActivity(latestPendingActivity);
+      return savedPendingActivity.badgeActivity;
+    });
   }
 
   if (hasDetectedActivity(detectedChanges)) {
@@ -1146,31 +1261,30 @@ async function cleanupRemovedRepositoryStorage(repositories) {
   const repositorySet = new Set(Array.isArray(repositories) ? repositories : []);
 
   try {
-    const [settings, pendingActivity, viewedBaselines, notificationBaselines] = await Promise.all([
+    const [settings, notificationBaselines] = await Promise.all([
       getSettings(),
-      getPendingActivity(),
-      getViewedBaselines(),
       getNotificationBaselines(),
     ]);
-    const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
-    const cleanupResult = cleanupRepositoryStorage(viewedBaselines, nextPendingActivity, [...repositorySet]);
-    const pendingBadgeRepositoriesCleanup = removeUnconfiguredRepositoryEntries(nextPendingActivity.badgeActivity?.repositories, repositorySet);
+    let savedBadgeActivity = null;
+    let activityChanged = false;
+    let baselinesChanged = false;
     const notificationBaselinesCleanup = removeUnconfiguredRepositoryEntries(notificationBaselines.repositories, repositorySet);
-    const cleanupTasks = [];
+    const cleanupTasks = [removeUnconfiguredLatestStats()];
 
-    cleanupTasks.push(removeUnconfiguredLatestStats());
-
-    if (cleanupResult.pendingActivityChanged || pendingBadgeRepositoriesCleanup.changed) {
-      nextPendingActivity.badgeActivity = {
-        ...(nextPendingActivity.badgeActivity || {}),
-        repositories: pendingBadgeRepositoriesCleanup.entries,
-      };
-      cleanupTasks.push(savePendingActivity(nextPendingActivity));
-    }
-
-    if (cleanupResult.baselinesChanged) {
-      cleanupTasks.push(saveViewedBaselines(viewedBaselines));
-    }
+    await runPendingActivityMutation(async () => {
+      const [pendingActivity, viewedBaselines] = await Promise.all([getPendingActivity(), getViewedBaselines()]);
+      const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
+      const cleanupResult = cleanupRepositoryStorage(viewedBaselines, nextPendingActivity, [...repositorySet]);
+      activityChanged = cleanupResult.pendingActivityChanged;
+      baselinesChanged = cleanupResult.baselinesChanged;
+      if (activityChanged || baselinesChanged) {
+        const saved = await saveActivityState({
+          pendingActivity: activityChanged ? nextPendingActivity : null,
+          viewedBaselines: baselinesChanged ? viewedBaselines : null,
+        });
+        savedBadgeActivity = saved.pendingActivity?.badgeActivity || nextPendingActivity.badgeActivity;
+      }
+    });
 
     if (notificationBaselinesCleanup.changed) {
       cleanupTasks.push(saveNotificationBaselines({
@@ -1181,8 +1295,8 @@ async function cleanupRemovedRepositoryStorage(repositories) {
 
     await Promise.all(cleanupTasks);
 
-    if (cleanupResult.pendingActivityChanged || pendingBadgeRepositoriesCleanup.changed) {
-      await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
+    if (activityChanged) {
+      await updateBadgeFromBadgeActivity(settings, savedBadgeActivity);
     }
   } catch (error) {
     console.warn('Unable to clean up removed repository activity.', error);
@@ -1223,37 +1337,41 @@ async function resetBaselinesForNextAutomaticCheck() {
 
 async function resetAccountStateForTokenChange() {
   try {
-    const [settings, pendingActivity, viewedBaselines, notificationBaselines] = await Promise.all([
+    const [settings, notificationBaselines] = await Promise.all([
       getSettings(),
-      getPendingActivity(),
-      getViewedBaselines(),
       getNotificationBaselines(),
     ]);
-    const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
-    ['quickSummary', 'dashboard'].forEach((surface) => {
-      if (nextPendingActivity[surface]?.queued) nextPendingActivity[surface].queued.account = {};
-      if (nextPendingActivity[surface]?.inFlight) nextPendingActivity[surface].inFlight.account = {};
-    });
-    nextPendingActivity.badgeActivity = {
-      ...(pendingActivity.badgeActivity || {}),
-      account: false,
-      repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
-    };
+    let savedBadgeActivity = { account: false, repositories: {} };
 
-    await Promise.all([
-      saveAccountStats({}),
-      savePendingActivity(nextPendingActivity),
-      saveViewedBaselines({
+    await runPendingActivityMutation(async () => {
+      const [pendingActivity, viewedBaselines] = await Promise.all([getPendingActivity(), getViewedBaselines()]);
+      const nextPendingActivity = createEmptyPendingActivity(pendingActivity);
+      ['quickSummary', 'dashboard'].forEach((surface) => {
+        if (nextPendingActivity[surface]?.queued) nextPendingActivity[surface].queued.account = {};
+        if (nextPendingActivity[surface]?.inFlight) nextPendingActivity[surface].inFlight.account = {};
+      });
+      nextPendingActivity.badgeActivity = {
+        ...(pendingActivity.badgeActivity || {}),
+        account: false,
+        repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
+      };
+      const nextViewedBaselines = {
         ...viewedBaselines,
         quickSummary: { ...(viewedBaselines.quickSummary || {}), account: {} },
         dashboard: { ...(viewedBaselines.dashboard || {}), account: {} },
-      }),
+      };
+      const saved = await saveActivityState({ pendingActivity: nextPendingActivity, viewedBaselines: nextViewedBaselines });
+      savedBadgeActivity = saved.pendingActivity.badgeActivity;
+    });
+
+    await Promise.all([
+      saveAccountStats({}),
       saveNotificationBaselines({
         ...notificationBaselines,
         account: {},
       }),
     ]);
-    await updateBadgeFromBadgeActivity(settings, nextPendingActivity.badgeActivity);
+    await updateBadgeFromBadgeActivity(settings, savedBadgeActivity);
   } catch (error) {
     console.warn('Unable to reset account state after token changed.', error);
   }
@@ -1319,11 +1437,10 @@ async function handleNotificationSettingsChange(change, { scheduleAlarm = true }
 
   try {
     if (!settings.notifications.backgroundChecksEnabled || !settings.notifications.badgeEnabled) {
-      const pendingActivity = await getPendingActivity();
-
-      await savePendingActivity({
-        ...pendingActivity,
-        badgeActivity: { account: false, repositories: {}, updatedAt: '' },
+      await runPendingActivityMutation(async () => {
+        const pendingActivity = createEmptyPendingActivity(await getPendingActivity());
+        pendingActivity.badgeActivity = { account: false, repositories: {}, updatedAt: '' };
+        await savePendingActivity(pendingActivity);
       });
       await updateBadgeFromBadgeActivity(settings, { account: false, repositories: {} });
     }
