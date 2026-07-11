@@ -313,6 +313,38 @@ function getGitHubHeaders(token) {
   };
 }
 
+function getAuthenticatedRepositoriesUrl(page = 1) {
+  const url = new URL('https://api.github.com/user/repos');
+  url.searchParams.set('visibility', 'all');
+  url.searchParams.set('affiliation', 'owner,collaborator,organization_member');
+  url.searchParams.set('sort', 'full_name');
+  url.searchParams.set('direction', 'asc');
+  url.searchParams.set('per_page', '100');
+  url.searchParams.set('page', String(page));
+  return url;
+}
+
+function getLinkHeaderNextUrl(linkHeader) {
+  const value = typeof linkHeader === 'string' ? linkHeader : '';
+  for (const part of value.split(',')) {
+    const match = part.match(/<([^>]+)>\s*;\s*rel="next"/i);
+    if (match) return match[1];
+  }
+  return '';
+}
+
+function validateAuthenticatedRepositoriesNextUrl(nextUrl) {
+  let url;
+  try {
+    url = new URL(nextUrl);
+  } catch (error) {
+    throw new Error('GitHub repository import returned an invalid pagination link.');
+  }
+  if (url.protocol !== 'https:' || url.hostname !== 'api.github.com' || url.pathname !== '/user/repos') {
+    throw new Error('GitHub repository import returned an unsafe pagination link.');
+  }
+  return url.toString();
+}
 
 function mapAuthenticatedRepository(repository) {
   return {
@@ -365,23 +397,19 @@ export async function fetchAuthenticatedRepositories(token) {
     throw new Error('A GitHub token is required before importing repositories.');
   }
 
-  const repositories = [];
-  let page = 1;
-  let hasNextPage = true;
+  const repositoriesByName = new Map();
+  const visitedUrls = new Set();
+  let nextUrl = getAuthenticatedRepositoriesUrl(1).toString();
 
-  while (hasNextPage) {
+  while (nextUrl) {
+    if (visitedUrls.has(nextUrl)) {
+      throw new Error('GitHub repository import pagination repeated a page and was stopped safely.');
+    }
+    visitedUrls.add(nextUrl);
+
     let response;
-
     try {
-      const url = new URL('https://api.github.com/user/repos');
-      url.searchParams.set('visibility', 'all');
-      url.searchParams.set('affiliation', 'owner,collaborator,organization_member');
-      url.searchParams.set('sort', 'full_name');
-      url.searchParams.set('direction', 'asc');
-      url.searchParams.set('per_page', '100');
-      url.searchParams.set('page', String(page));
-
-      response = await fetchGitHub(url.toString(), {
+      response = await fetchGitHub(nextUrl, {
         headers: getGitHubHeaders(safeToken),
       });
     } catch (error) {
@@ -393,20 +421,23 @@ export async function fetchAuthenticatedRepositories(token) {
     }
 
     const data = await response.json();
-    const pageRepositories = Array.isArray(data) ? data.map(mapAuthenticatedRepository).filter((repository) => repository.fullName) : [];
-    repositories.push(...pageRepositories);
-
-    const linkHeader = response.headers.get('Link') || '';
-    hasNextPage = /<[^>]+[?&]page=\d+[^>]*>;\s*rel="next"/.test(linkHeader) || (linkHeader.includes('rel="next"'));
-
-    if (!hasNextPage && Array.isArray(data) && data.length === 100) {
-      hasNextPage = true;
+    if (!Array.isArray(data)) {
+      throw new Error('GitHub repository import returned an unexpected response format.');
     }
 
-    page += 1;
+    data.map(mapAuthenticatedRepository).forEach((repository) => {
+      const normalizedName = repository.fullName.toLowerCase();
+      if (repository.fullName && !repositoriesByName.has(normalizedName)) {
+        repositoriesByName.set(normalizedName, repository);
+      }
+    });
+
+    const rawNextUrl = getLinkHeaderNextUrl(response.headers.get('Link') || '');
+    nextUrl = rawNextUrl ? validateAuthenticatedRepositoriesNextUrl(rawNextUrl) : '';
   }
 
-  return repositories;
+  return Array.from(repositoriesByName.values())
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' }));
 }
 
 

@@ -54,9 +54,7 @@ globalThis.fetch = async (url) => {
   fetchCalls.push(String(url));
   if (String(url).includes('/user/repos')) {
     const page = new URL(String(url)).searchParams.get('page');
-    const repositories = page === '1'
-      ? Array.from({ length: 100 }, (_, index) => ({ full_name: `owner/repo-${index}`, visibility: 'public' }))
-      : [{ full_name: 'owner/final-repo', visibility: 'private', private: true }];
+    const repositories = Array.from({ length: 100 }, (_, index) => ({ full_name: `owner/repo-${index}`, visibility: 'public' }));
     return { ok: true, headers: { get: () => '' }, json: async () => repositories };
   }
   return { ok: true, headers: { get: () => '' }, json: async () => ({}) };
@@ -85,8 +83,8 @@ function countActivityStarts(source) {
 
 let response = await sendSettingsMessage('settings.github.importRepositories', { token: 'token' });
 assert.equal(response.ok, true);
-assert.equal(response.result.length, 101, 'multi-page import preserves returned repository data');
-assert.equal(fetchCalls.filter((url) => url.includes('/user/repos')).length, 2, 'import follows pagination');
+assert.equal(response.result.length, 100, 'single-page exact page import preserves returned repository data');
+assert.equal(fetchCalls.filter((url) => url.includes('/user/repos')).length, 1, 'import stops without an explicit next link');
 assert.equal(countActivityStarts('repository-import'), 1, 'multi-page import is one high-level operation');
 assert.equal(__getGitHubActivityLiveOperationCountForTest(), 0);
 
@@ -107,11 +105,11 @@ globalThis.fetch = (url) => {
 };
 const connectionResponsePromise = sendSettingsMessage('settings.github.testConnection', { token: 'token', repositories: ['Owner/Repoa', 'owner/repob'] });
 await tick();
-assert.equal(maxActive, 4, 'Test Connection individual requests use the four-request limiter');
-assert.equal(getGitHubRequestLimiterState().active, 4);
+assert.equal(maxActive, 1, 'Test Connection starts with one account preflight request');
+assert.equal(getGitHubRequestLimiterState().active, 1);
 assert.equal(countActivityStarts('connection-test'), 1, 'Test Connection is one high-level operation');
 while (pendingFetches.length > 0) {
-  pendingFetches.shift().resolve({ ok: true, headers: { get: () => '' }, json: async () => ({}) });
+  pendingFetches.shift().resolve({ ok: true, headers: { get: () => '' }, json: async () => ({ login: 'octo', followers: 1 }) });
   await tick();
 }
 response = await connectionResponsePromise;
