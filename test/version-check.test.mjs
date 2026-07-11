@@ -315,7 +315,8 @@ const allSkippedRepositoryRefresh = await refreshStatsCache(
 );
 assert.deepEqual(allSkippedRepositoryRefresh.skippedRepositories, ['owner/repo-a', 'owner/repo-b']);
 assert.equal(allSkippedRepositoryRefresh.results.length, 0);
-assert.deepEqual(fetchedUrls, []);
+assert.deepEqual(fetchedUrls, ['https://api.github.com/user']);
+assert.equal(allSkippedRepositoryRefresh.accountRefreshed, true);
 
 let releaseRepoA;
 const runningRepoA = runExclusiveRepositoryRefresh('owner/repo-a', () => new Promise((resolve) => {

@@ -969,8 +969,8 @@ function recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, lab
 
 function applyDetectedChangesToPendingActivity(pendingActivity, detectedChanges, checkedAt) {
   let changed = false;
-  detectedChanges.account.forEach(({ delta }) => {
-    changed = recordAccountDelta(pendingActivity, delta, null, checkedAt) || changed;
+  detectedChanges.account.forEach(({ delta, checkedAt: accountCheckedAt }) => {
+    changed = recordAccountDelta(pendingActivity, delta, null, accountCheckedAt || checkedAt) || changed;
   });
   Object.entries(detectedChanges.repositories || {}).forEach(([repository, deltas]) => {
     deltas.forEach(({ delta, label }) => {
@@ -990,10 +990,12 @@ function mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt) {
     return false;
   }
 
+  const accountCheckedAt = detectedChanges.account.find(({ delta }) => delta !== 0)?.checkedAt || '';
+  const hasRepositoryChanges = Object.values(detectedChanges.repositories || {}).some((deltas) => Array.isArray(deltas) && deltas.some(({ delta }) => delta !== 0));
   pendingActivity.badgeActivity = {
     account: Boolean(pendingActivity.badgeActivity?.account || detectedChanges.account.length > 0),
     repositories: { ...(pendingActivity.badgeActivity?.repositories || {}) },
-    updatedAt: checkedAt,
+    updatedAt: hasRepositoryChanges ? checkedAt : accountCheckedAt || checkedAt,
   };
 
   Object.entries(detectedChanges.repositories || {}).forEach(([repository, deltas]) => {
@@ -1064,11 +1066,11 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     const previousFollowers = baselines.account.followers;
     const previousLogin = typeof baselines.account.login === 'string' ? baselines.account.login : '';
     const fetchedLogin = typeof account.login === 'string' ? account.login : '';
-    const accountLoginChanged = Boolean(previousLogin && fetchedLogin && previousLogin !== fetchedLogin);
+    const sameAccountLogin = Boolean(previousLogin && fetchedLogin && previousLogin === fetchedLogin);
     let changed = false;
 
-    if (shouldCompare && Number.isFinite(previousFollowers) && !accountLoginChanged) {
-      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges, checkedAt);
+    if (shouldCompare && Number.isFinite(previousFollowers) && sameAccountLogin) {
+      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges, completedAt);
     }
 
     baselines.account = {

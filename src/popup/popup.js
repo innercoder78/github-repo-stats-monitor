@@ -13,6 +13,7 @@ import { closeExtensionPage } from '../shared/close-page.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
+import { getFullRefreshStatus } from '../shared/refresh-status.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -514,23 +515,6 @@ async function handleSkippedRefreshResult(refreshResult) {
   renderPopupStatusLines(['Refresh could not start. Current saved data is shown.']);
 }
 
-function formatRepositoryRefreshSummary(refreshResult) {
-  const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
-  const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
-    ? Number(refreshResult.refreshedRepositoryCount)
-    : Array.isArray(refreshResult?.results) ? refreshResult.results.length : 0;
-
-  if (skippedCount === 0) {
-    return '';
-  }
-
-  if (refreshedCount === 0) {
-    return 'All repositories skipped due to recent data found.';
-  }
-
-  return `Refreshed ${refreshedCount} ${refreshedCount === 1 ? 'repository' : 'repositories'}. ${skippedCount} skipped due to recent data found.`;
-}
-
 async function refreshStats() {
   if (isRefreshing) return;
 
@@ -563,17 +547,11 @@ async function refreshStats() {
       renderStatsSummary(currentSettings, currentLatestStats);
       renderUpdateCard();
 
-      const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
-
-      const refreshSummary = formatRepositoryRefreshSummary(refreshResult);
-      if (failureCount === 0) {
-        if (refreshSummary) {
-          renderPopupStatusLines([refreshSummary]);
-        } else {
-          renderLastCheckedStatus();
-        }
+      const refreshStatus = getFullRefreshStatus(refreshResult, { formatTime: formatRefreshTime });
+      if (refreshStatus.message.startsWith('Last successful refresh:')) {
+        renderLastCheckedStatus();
       } else {
-        renderPopupStatusLines([`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with GitHub request errors. Last saved values are shown where available.`]);
+        renderPopupStatusLines([refreshStatus.message]);
       }
     }
   } catch (error) {

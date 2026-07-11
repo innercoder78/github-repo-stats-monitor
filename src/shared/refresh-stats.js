@@ -406,7 +406,7 @@ function hasFetchedRepositoryNotificationStats(stats) {
     && Number.isFinite(Number(stats?.subscribers));
 }
 
-export async function syncNotificationBaselinesFromManualRefresh({ results = [], accountStats, accountError = '', fetchedAt = '' } = {}) {
+export async function syncNotificationBaselinesFromManualRefresh({ results = [], accountStats, accountRefreshed = false, fetchedAt = '' } = {}) {
   const checkedAt = fetchedAt || new Date().toISOString();
   const baselines = await getNotificationBaselines();
   const nextBaselines = {
@@ -417,7 +417,7 @@ export async function syncNotificationBaselinesFromManualRefresh({ results = [],
   };
   let changed = false;
 
-  if (!accountError && accountStats?.fetchedAt && Number.isFinite(Number(accountStats.followers))) {
+  if (accountRefreshed && accountStats?.fetchedAt && Number.isFinite(Number(accountStats.followers))) {
     nextBaselines.account = {
       ...nextBaselines.account,
       login: typeof accountStats.login === 'string' ? accountStats.login : nextBaselines.account.login || '',
@@ -498,27 +498,56 @@ async function refreshAccountStats(githubToken, previousAccountStats) {
 
   try {
     const account = await fetchAuthenticatedAccount(githubToken);
-    const nextStats = { ...stats, ...account, fetchedAt: new Date().toISOString() };
-    return { accountStats: await saveAccountStats(nextStats), error: '' };
+    const fetchedAt = new Date().toISOString();
+    const nextStats = { ...stats, ...account, fetchedAt };
+    return {
+      attempted: true,
+      refreshed: true,
+      fetchedAt,
+      accountStats: await saveAccountStats(nextStats),
+      error: '',
+    };
   } catch (error) {
-    return { accountStats: stats, error: error.message };
+    return {
+      attempted: true,
+      refreshed: false,
+      fetchedAt: '',
+      accountStats: stats,
+      error: error.message,
+    };
   }
 }
 
 async function detectRefreshActivity(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, fetchedAt, repositories, options) {
   const detectedActivity = createEmptyPendingActivity();
   const newPendingChanges = createEmptyPendingChanges();
-  const pendingChanged = detectPendingActivityFromStats(
-    settings,
+  let pendingChanged = false;
+
+  if (nextAccountStats?.fetchedAt) {
+    pendingChanged = detectPendingActivityFromStats(
+      settings,
+      previousLatestStats,
+      nextLatestStats,
+      previousAccountStats,
+      nextAccountStats,
+      detectedActivity,
+      nextAccountStats.fetchedAt,
+      [],
+      newPendingChanges,
+    ) || pendingChanged;
+  }
+
+  pendingChanged = detectPendingActivityFromStats(
+    { ...settings, notifications: { ...settings?.notifications, trackedStats: { ...settings?.notifications?.trackedStats, accountFollowers: false } } },
     previousLatestStats,
     nextLatestStats,
-    previousAccountStats,
-    nextAccountStats,
+    undefined,
+    undefined,
     detectedActivity,
     fetchedAt,
     repositories,
     newPendingChanges,
-  );
+  ) || pendingChanged;
 
   if (!pendingChanged) {
     return null;
@@ -614,11 +643,9 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   });
   const skippedRepositorySet = new Set(skippedRepositories);
   const repositoriesToRefresh = repositories.filter((repository) => !skippedRepositorySet.has(repository));
-  const accountResult = repositoriesToRefresh.length > 0
-    ? await refreshAccountStats(githubToken, previousAccountStats)
-    : { accountStats: normalizeAccountStats(previousAccountStats), error: '' };
+  const accountResultPromise = refreshAccountStats(githubToken, previousAccountStats);
   let completed = skippedRepositories.length;
-  const results = await mapWithConcurrency(repositoriesToRefresh, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
+  const resultsPromise = mapWithConcurrency(repositoriesToRefresh, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
     const previousStats = latestStats[repository] || { repository };
     const result = await refreshRepositoryStats(repository, githubToken, previousStats);
 
@@ -633,6 +660,8 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
 
     return result;
   });
+
+  const [accountResult, results] = await Promise.all([accountResultPromise, resultsPromise]);
 
   const nextLatestStats = { ...latestStats };
   results.forEach(({ repository, stats }) => {
@@ -660,7 +689,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     await syncNotificationBaselinesFromManualRefresh({
       results,
       accountStats: accountResult.accountStats,
-      accountError: accountResult.error,
+      accountRefreshed: accountResult.refreshed,
       fetchedAt: completedAt,
     });
   }
@@ -672,6 +701,9 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     skippedRepositories,
     refreshedRepositoryCount: results.length,
     latestStats: savedLatestStats,
+    accountAttempted: accountResult.attempted,
+    accountRefreshed: accountResult.refreshed,
+    accountFetchedAt: accountResult.fetchedAt,
     accountStats: accountResult.accountStats,
     accountError: accountResult.error,
     pendingActivity,
