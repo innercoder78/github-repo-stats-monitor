@@ -1,5 +1,14 @@
 import assert from 'node:assert/strict';
 
+process.env.TZ = 'UTC';
+
+const NativeDateTimeFormat = Intl.DateTimeFormat;
+Intl.DateTimeFormat = function deterministicDateTimeFormat(locale, options = {}) {
+  return new NativeDateTimeFormat(locale ?? 'en-US', { timeZone: 'UTC', ...options });
+};
+Intl.DateTimeFormat.prototype = NativeDateTimeFormat.prototype;
+Intl.DateTimeFormat.supportedLocalesOf = NativeDateTimeFormat.supportedLocalesOf.bind(NativeDateTimeFormat);
+
 const ids = [
   'repository-count', 'token-status', 'last-updated', 'total-stars', 'total-forks', 'total-views',
   'total-clones', 'account-followers', 'total-watchers', 'popup-status', 'refresh-stats',
@@ -161,8 +170,11 @@ assert.doesNotMatch(statusText(), /Refresh failed\. Last saved values are shown 
 assert.equal(element('total-stars').textContent, '42', 'refreshed repository totals render');
 assert.equal(element('account-followers').textContent, '99', 'refreshed account followers render');
 assert.ok(messages.some((message) => message.action === 'refreshStats.full' && message.source === 'quick-summary'), 'refresh button sends full refresh request');
-assert.match(statusText(), /Manual refresh: 07\/11 12:00/, 'manual-refresh status reloads after success');
-assert.match(statusText(), /Background check: 06\/01 10:00/, 'ordinary success shows background-check status line');
+assert.equal(
+  statusText(),
+  'Manual refresh: 07/11 12:00\nBackground check: 06/01 10:00',
+  'ordinary success reloads manual-refresh status and shows background-check status line',
+);
 assert.equal(element('refresh-stats').disabled, false, 'refresh button restored after success');
 assert.equal(element('refresh-stats').textContent, 'Refresh', 'refresh button label restored after success');
 
