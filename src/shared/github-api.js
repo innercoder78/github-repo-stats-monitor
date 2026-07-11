@@ -348,11 +348,14 @@ export async function fetchAuthenticatedAccount(token) {
   }
 
   const data = await response.json();
+  const login = typeof data?.login === 'string' ? data.login.trim() : '';
+  const followers = data?.followers;
 
-  return {
-    login: String(data?.login || ''),
-    followers: Number(data?.followers) || 0,
-  };
+  if (!login || !Number.isInteger(followers) || followers < 0) {
+    throw new Error('GitHub account response was missing a valid login or follower count.');
+  }
+
+  return { login, followers };
 }
 
 export async function fetchAuthenticatedRepositories(token) {

@@ -830,12 +830,16 @@ async function refreshRepositoryStats() {
       const successCount = refreshResult.results.length - failureCount;
 
       const refreshSummary = formatRepositoryRefreshSummary(refreshResult);
-      if (failureCount === 0) {
-        setStatus(refreshSummary || `Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`, 'success');
-      } else if (successCount > 0) {
-        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with partial errors: ${successCount} repositories fully refreshed, and ${failureCount} had repository, traffic, clone, or referrer errors. Last saved values are shown where available.`, 'warning');
+      const accountFailed = Boolean(refreshResult.accountAttempted && !refreshResult.accountRefreshed);
+      const accountOnlySuccess = refreshResult.accountRefreshed && refreshResult.results.length === 0;
+      if (failureCount === 0 && !accountFailed) {
+        setStatus(refreshSummary || (accountOnlySuccess
+          ? `Account followers refreshed: ${formatRefreshTime(refreshResult.accountFetchedAt || refreshResult.fetchedAt)}`
+          : `Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`), 'success');
+      } else if (successCount > 0 || (refreshResult.accountRefreshed && failureCount > 0)) {
+        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with partial errors. Last saved values are shown where available.`, 'warning');
       } else {
-        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with errors for all refreshed repositories. Last saved values are shown where available.`, 'error');
+        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with errors. Last saved values are shown where available.`, 'error');
       }
     }
   } catch (error) {

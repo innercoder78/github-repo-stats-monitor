@@ -1064,11 +1064,11 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
     const previousFollowers = baselines.account.followers;
     const previousLogin = typeof baselines.account.login === 'string' ? baselines.account.login : '';
     const fetchedLogin = typeof account.login === 'string' ? account.login : '';
-    const accountLoginChanged = Boolean(previousLogin && fetchedLogin && previousLogin !== fetchedLogin);
+    const sameAccountLogin = Boolean(previousLogin && fetchedLogin && previousLogin === fetchedLogin);
     let changed = false;
 
-    if (shouldCompare && Number.isFinite(previousFollowers) && !accountLoginChanged) {
-      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges, checkedAt);
+    if (shouldCompare && Number.isFinite(previousFollowers) && sameAccountLogin) {
+      changed = recordAccountDelta(pendingActivity, followers - previousFollowers, detectedChanges, completedAt);
     }
 
     baselines.account = {

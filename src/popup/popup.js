@@ -566,9 +566,13 @@ async function refreshStats() {
       const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
 
       const refreshSummary = formatRepositoryRefreshSummary(refreshResult);
-      if (failureCount === 0) {
+      const accountFailed = Boolean(refreshResult.accountAttempted && !refreshResult.accountRefreshed);
+      const accountOnlySuccess = refreshResult.accountRefreshed && refreshResult.results.length === 0;
+      if (failureCount === 0 && !accountFailed) {
         if (refreshSummary) {
           renderPopupStatusLines([refreshSummary]);
+        } else if (accountOnlySuccess) {
+          renderPopupStatusLines([`Account followers refreshed: ${formatRefreshTime(refreshResult.accountFetchedAt || refreshResult.fetchedAt)}`]);
         } else {
           renderLastCheckedStatus();
         }

@@ -40,8 +40,12 @@ function hasTrackedStatBaseline(stats, key) {
   return stats && Object.prototype.hasOwnProperty.call(stats, key) && Number.isFinite(Number(stats[key]));
 }
 
+function getAccountLogin(accountStats) {
+  return typeof accountStats?.login === 'string' ? accountStats.login.trim() : '';
+}
+
 function hasAccountFollowersBaseline(accountStats) {
-  return Boolean(accountStats?.fetchedAt) && hasTrackedStatBaseline(accountStats, 'followers');
+  return Boolean(accountStats?.fetchedAt) && Boolean(getAccountLogin(accountStats)) && hasTrackedStatBaseline(accountStats, 'followers');
 }
 
 export function getRepositoryActivityDeltas(activity) {
@@ -199,7 +203,10 @@ export function detectPendingActivityFromStats(settings, previousLatestStats, ne
     const previousFollowers = Number(previousAccountStats?.followers);
     const nextFollowers = Number(nextAccountStats?.followers);
 
-    if (hasAccountFollowersBaseline(previousAccountStats) && Number.isFinite(nextFollowers)) {
+    const previousLogin = getAccountLogin(previousAccountStats);
+    const nextLogin = getAccountLogin(nextAccountStats);
+
+    if (hasAccountFollowersBaseline(previousAccountStats) && Number.isFinite(nextFollowers) && previousLogin && nextLogin && previousLogin === nextLogin) {
       changed = recordAccountActivityDelta(pendingActivity, nextFollowers - previousFollowers, detectedChanges, checkedAt) || changed;
     }
   }
