@@ -706,6 +706,25 @@ function renderRepositories() {
 
 
 
+async function claimDashboardActivity() {
+  const response = await chrome.runtime.sendMessage({ action: 'activity.claim', surface: 'dashboard' });
+  if (response?.ok && response.result?.pendingActivity) {
+    currentPendingActivity = response.result.pendingActivity;
+  }
+}
+
+async function reloadSavedRefreshData() {
+  [currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([
+    getLatestStats(),
+    getAccountStats(),
+    getPendingActivity(),
+    getViewedBaselines(),
+  ]);
+  await claimDashboardActivity();
+  renderRepositories();
+}
+
+
 function requestRefresh(action, payload = {}) {
   return chrome.runtime.sendMessage({ action, ...payload }).then((response) => {
     if (!response?.ok) {
