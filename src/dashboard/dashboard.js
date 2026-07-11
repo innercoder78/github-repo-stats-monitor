@@ -1,5 +1,5 @@
-import { getAccountStats, getLatestStats, getPendingActivity, getSettings, savePendingActivity, getViewedBaselines, saveViewedBaselines } from '../shared/storage.js';
-import { ACTIVITY_DELTA_LABELS, cleanupShownPendingActivity, createDeltaElement } from '../shared/activity.js';
+import { getAccountStats, getLatestStats, getPendingActivity, getSettings, getViewedBaselines } from '../shared/storage.js';
+import { ACTIVITY_DELTA_LABELS, createDeltaElement } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
@@ -368,8 +368,8 @@ function hasFetchedAccountStats(accountStats) {
 
 function hasCurrentAccountViewedBaseline() {
   return hasFetchedAccountStats(currentAccountStats)
-    && currentViewedBaselines.account?.login === currentAccountStats.login
-    && Number.isFinite(Number(currentViewedBaselines.account?.followers));
+    && currentViewedBaselines.dashboard?.account?.login === currentAccountStats.login
+    && Number.isFinite(Number(currentViewedBaselines.dashboard?.account?.followers));
 }
 
 function getBaselineDelta(baseline, key, currentValue) {
@@ -398,7 +398,7 @@ function setSummaryValue(valueElement, value, delta = 0) {
 }
 
 function getRepositoryPendingDeltaMap(repository) {
-  const activity = currentPendingActivity.repositories?.[repository];
+  const activity = (currentPendingActivity.dashboard?.inFlight || {}).repositories?.[repository];
   const deltas = {
     stars: { delta: Number(activity?.starsDelta) || 0, label: ACTIVITY_DELTA_LABELS.starsDelta },
     forks: { delta: Number(activity?.forksDelta) || 0, label: ACTIVITY_DELTA_LABELS.forksDelta },
@@ -429,7 +429,7 @@ function getRepositoryViewedDeltaMap(repository, stats) {
     return {};
   }
 
-  const baseline = currentViewedBaselines.repositories?.[repository];
+  const baseline = currentViewedBaselines.dashboard?.repositories?.[repository];
   const deltas = {
     stars: { delta: getBaselineDelta(baseline, 'stars', stats.stars), label: ACTIVITY_DELTA_LABELS.starsDelta },
     forks: { delta: getBaselineDelta(baseline, 'forks', stats.forks), label: ACTIVITY_DELTA_LABELS.forksDelta },
@@ -454,111 +454,71 @@ function getAccountFollowersDelta() {
     return 0;
   }
 
-  return getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
+  return getBaselineDelta(currentViewedBaselines.dashboard?.account, 'followers', currentAccountStats.followers);
 }
 
 function getVisibleAccountFollowersDelta() {
-  const pendingDelta = Number(currentPendingActivity.account?.followersDelta) || 0;
+  const pendingDelta = Number((currentPendingActivity.dashboard?.inFlight || {}).account?.followersDelta) || 0;
   return pendingDelta !== 0 ? pendingDelta : getAccountFollowersDelta();
 }
 
-async function markDashboardActivityShown(renderedRepositories, displayedAccountActivity) {
-  if (renderedRepositories.size === 0 && !displayedAccountActivity) {
-    return;
-  }
+function getDashboardDeliveryToken() {
+  return currentPendingActivity.dashboard?.inFlight?.token || '';
+}
 
-  const nextPendingActivity = {
-    ...currentPendingActivity,
-    account: { ...currentPendingActivity.account },
-    repositories: { ...currentPendingActivity.repositories },
-    badgeActivity: {
-      ...(currentPendingActivity.badgeActivity || {}),
-      repositories: { ...(currentPendingActivity.badgeActivity?.repositories || {}) },
-    },
-  };
-  let changed = false;
-  let badgeActivityCleared = false;
+function getDashboardDisplayedReview(renderedRepositories, displayedAccount) {
+  const reviewedAt = new Date().toISOString();
+  const displayedReview = { reviewedAt, account: null, repositories: {} };
 
-  if (displayedAccountActivity
-    && Number(nextPendingActivity.account.followersDelta) !== 0
-    && !nextPendingActivity.account.dashboardShown) {
-    nextPendingActivity.account.dashboardShown = true;
-    changed = true;
-  }
-
-  if (displayedAccountActivity && nextPendingActivity.badgeActivity.account) {
-    nextPendingActivity.badgeActivity.account = false;
-    changed = true;
-    badgeActivityCleared = true;
+  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
+    displayedReview.account = {
+      login: currentAccountStats.login,
+      followers: currentAccountStats.followers,
+    };
   }
 
   renderedRepositories.forEach((repository) => {
-    const activity = nextPendingActivity.repositories[repository];
-
-    if (activity && !activity.dashboardShown) {
-      nextPendingActivity.repositories[repository] = { ...activity, dashboardShown: true };
-      changed = true;
-    }
-
-    if (nextPendingActivity.badgeActivity.repositories[repository]) {
-      delete nextPendingActivity.badgeActivity.repositories[repository];
-      changed = true;
-      badgeActivityCleared = true;
+    const stats = currentLatestStats[repository];
+    if (hasCachedMetadata(stats)) {
+      displayedReview.repositories[repository] = {
+        repository,
+        stars: stats.stars,
+        forks: stats.forks,
+        repoWatchers: stats.subscribers,
+      };
     }
   });
 
-  if (!changed) {
-    return;
-  }
+  return displayedReview;
+}
 
+async function markDashboardActivityShown(renderedRepositories, displayedAccountActivity) {
+  if (renderedRepositories.size === 0 && !displayedAccountActivity) return;
+  const token = getDashboardDeliveryToken();
+  const displayedActivity = {
+    account: displayedAccountActivity ? { ...((currentPendingActivity.dashboard?.inFlight || {}).account || {}) } : null,
+    repositories: {},
+  };
+  renderedRepositories.forEach((repository) => {
+    const activity = currentPendingActivity.dashboard?.inFlight?.repositories?.[repository];
+    if (activity) displayedActivity.repositories[repository] = activity;
+  });
   try {
-    currentPendingActivity = await savePendingActivity(cleanupShownPendingActivity(nextPendingActivity));
-    if (badgeActivityCleared) {
-      await updateBadgeTextFromDashboardReview(currentPendingActivity.badgeActivity);
-    }
+    const response = await chrome.runtime.sendMessage({
+      action: 'activity.acknowledge',
+      surface: 'dashboard',
+      token,
+      displayedActivity,
+      displayedReview: getDashboardDisplayedReview(renderedRepositories, displayedAccountActivity),
+    });
+    if (response?.ok && response.result?.pendingActivity) currentPendingActivity = response.result.pendingActivity;
+    if (response?.ok && response.result?.viewedBaselines) currentViewedBaselines = response.result.viewedBaselines;
+    if (response?.ok) await updateBadgeTextFromDashboardReview(response.result.badgeActivity);
   } catch (error) {
     console.warn('Unable to mark Dashboard activity as shown.', error);
   }
 }
 
-async function saveDashboardViewedBaselines(renderedRepositories, displayedAccount) {
-  const viewedAt = new Date().toISOString();
-  const nextViewedBaselines = {
-    ...currentViewedBaselines,
-    account: { ...currentViewedBaselines.account },
-    repositories: { ...currentViewedBaselines.repositories },
-    updatedAt: viewedAt,
-  };
-
-  renderedRepositories.forEach((repository) => {
-    const stats = currentLatestStats[repository];
-
-    if (hasCachedMetadata(stats)) {
-      nextViewedBaselines.repositories[repository] = {
-        ...(nextViewedBaselines.repositories[repository] || {}),
-        repository,
-        stars: stats.stars,
-        forks: stats.forks,
-        repoWatchers: stats.subscribers,
-        updatedAt: viewedAt,
-      };
-    }
-  });
-
-  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
-    nextViewedBaselines.account = {
-      login: currentAccountStats.login,
-      followers: currentAccountStats.followers,
-      updatedAt: viewedAt,
-    };
-  }
-
-  try {
-    currentViewedBaselines = await saveViewedBaselines(nextViewedBaselines);
-  } catch (error) {
-    console.warn('Unable to save Dashboard viewed baselines.', error);
-  }
-}
 
 function createRepositoryIdentity(repository, stats) {
   const identity = document.createElement('div');
@@ -741,7 +701,6 @@ function renderRepositories() {
   });
   const displayedAccountActivity = renderSummary();
   markDashboardActivityShown(displayedRepositories, displayedAccountActivity);
-  saveDashboardViewedBaselines(displayedRepositories, displayedAccountActivity);
 }
 
 
@@ -821,6 +780,14 @@ function formatRepositoryRefreshSummary(refreshResult) {
   return `Refreshed ${refreshedCount} ${refreshedCount === 1 ? 'repository' : 'repositories'}. ${skippedCount} skipped due to recent data found.`;
 }
 
+
+async function claimDashboardActivity() {
+  const response = await chrome.runtime.sendMessage({ action: 'activity.claim', surface: 'dashboard' });
+  if (response?.ok && response.result?.pendingActivity) {
+    currentPendingActivity = response.result.pendingActivity;
+  }
+}
+
 async function reloadSavedRefreshData() {
   [currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([
     getLatestStats(),
@@ -828,6 +795,7 @@ async function reloadSavedRefreshData() {
     getPendingActivity(),
     getViewedBaselines(),
   ]);
+  await claimDashboardActivity();
   renderRepositories();
 }
 
@@ -856,6 +824,7 @@ async function refreshRepositoryStats() {
       if (refreshResult.pendingActivity) {
         currentPendingActivity = refreshResult.pendingActivity;
       }
+      await claimDashboardActivity();
 
       const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
       const successCount = refreshResult.results.length - failureCount;
@@ -876,6 +845,7 @@ async function refreshRepositoryStats() {
   }
 
   isRefreshing = false;
+  await claimDashboardActivity();
   renderRepositories();
 }
 
@@ -903,6 +873,7 @@ async function refreshSingleRepository(repository) {
       if (refreshResult.pendingActivity) {
         currentPendingActivity = refreshResult.pendingActivity;
       }
+      await claimDashboardActivity();
 
       if (hasRefreshError(refreshResult.result.stats)) {
         setStatus(`${repository} refreshed with partial errors. Last saved values are shown where available.`, 'warning');
@@ -915,6 +886,7 @@ async function refreshSingleRepository(repository) {
   }
 
   refreshingRepository = '';
+  await claimDashboardActivity();
   renderRepositories();
 }
 
@@ -922,6 +894,7 @@ async function initializeDashboard() {
   try {
     [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity(), getViewedBaselines()]);
     applyAppearance(currentSettings.appearance);
+    await claimDashboardActivity();
     renderRepositories();
 
     if (currentSettings.repositories.length === 0) {

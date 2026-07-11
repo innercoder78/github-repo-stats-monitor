@@ -6,11 +6,9 @@ import {
   getQuickSummaryStatus,
   getVersionCheckStatus,
   getSettings,
-  savePendingActivity,
   getViewedBaselines,
-  saveViewedBaselines,
 } from '../shared/storage.js';
-import { createDeltaElement, cleanupShownPendingActivity } from '../shared/activity.js';
+import { createDeltaElement } from '../shared/activity.js';
 import { closeExtensionPage } from '../shared/close-page.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
@@ -50,28 +48,16 @@ applySavedAppearance();
 
 async function acknowledgeBadgeActivity() {
   try {
-    const pendingActivity = await getPendingActivity();
-
-    if (pendingActivity.badgeActivity?.account || Object.values(pendingActivity.badgeActivity?.repositories || {}).some(Boolean)) {
-      await savePendingActivity({
-        ...pendingActivity,
-        badgeActivity: { account: false, repositories: {}, updatedAt: '' },
-      });
-    }
+    const response = await chrome.runtime.sendMessage({
+      action: 'activity.acknowledge',
+      surface: 'quick-summary',
+      token: '',
+      displayedActivity: {},
+      displayedReview: {},
+    });
+    if (response?.ok && response.result?.pendingActivity) currentPendingActivity = response.result.pendingActivity;
   } catch (error) {
     console.warn('Unable to acknowledge badge activity.', error);
-  }
-}
-
-async function clearBadgeText() {
-  if (!globalThis.chrome?.action?.setBadgeText) {
-    return;
-  }
-
-  try {
-    await globalThis.chrome.action.setBadgeText({ text: '' });
-  } catch (error) {
-    console.warn('Unable to clear the extension badge.', error);
   }
 }
 
@@ -230,8 +216,8 @@ function hasFetchedAccountStats(accountStats) {
 
 function hasCurrentAccountViewedBaseline() {
   return hasFetchedAccountStats(currentAccountStats)
-    && currentViewedBaselines.account?.login === currentAccountStats.login
-    && Number.isFinite(Number(currentViewedBaselines.account?.followers));
+    && currentViewedBaselines.quickSummary?.account?.login === currentAccountStats.login
+    && Number.isFinite(Number(currentViewedBaselines.quickSummary?.account?.followers));
 }
 
 function getBaselineDelta(baseline, key, currentValue) {
@@ -245,11 +231,7 @@ function getBaselineDelta(baseline, key, currentValue) {
 
 function getQuickSummaryPendingDeltas() {
   return currentSettings.repositories.reduce((totals, repository) => {
-    const activity = currentPendingActivity.repositories?.[repository];
-
-    if (activity?.quickSummaryShown) {
-      return totals;
-    }
+    const activity = (currentPendingActivity.quickSummary?.inFlight || {}).repositories?.[repository];
 
     totals.starsDelta += Number(activity?.starsDelta) || 0;
     totals.forksDelta += Number(activity?.forksDelta) || 0;
@@ -266,7 +248,7 @@ function getQuickSummaryViewedDeltas() {
       return totals;
     }
 
-    const baseline = currentViewedBaselines.repositories?.[repository];
+    const baseline = currentViewedBaselines.quickSummary?.repositories?.[repository];
     totals.starsDelta += getBaselineDelta(baseline, 'stars', stats.stars);
     totals.forksDelta += getBaselineDelta(baseline, 'forks', stats.forks);
     totals.repoWatchersDelta += getBaselineDelta(baseline, 'repoWatchers', stats.subscribers);
@@ -275,11 +257,7 @@ function getQuickSummaryViewedDeltas() {
 }
 
 function getQuickSummaryPendingAccountDelta() {
-  if (currentPendingActivity.account?.quickSummaryShown) {
-    return 0;
-  }
-
-  return Number(currentPendingActivity.account?.followersDelta) || 0;
+  return Number((currentPendingActivity.quickSummary?.inFlight || {}).account?.followersDelta) || 0;
 }
 
 function getPreferredQuickSummaryDelta(pendingDelta, viewedDelta) {
@@ -291,100 +269,75 @@ function getQuickSummaryAccountDelta() {
     return 0;
   }
 
-  return getBaselineDelta(currentViewedBaselines.account, 'followers', currentAccountStats.followers);
+  return getBaselineDelta(currentViewedBaselines.quickSummary?.account, 'followers', currentAccountStats.followers);
 }
 
-async function markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity) {
-  const nextPendingActivity = {
-    ...currentPendingActivity,
-    account: { ...currentPendingActivity.account },
-    repositories: { ...currentPendingActivity.repositories },
-    badgeActivity: {
-      ...(currentPendingActivity.badgeActivity || {}),
-      repositories: { ...(currentPendingActivity.badgeActivity?.repositories || {}) },
-    },
-  };
-  let changed = false;
-  let badgeActivityCleared = false;
+function getQuickSummaryDeliveryToken() {
+  return currentPendingActivity.quickSummary?.inFlight?.token || '';
+}
 
-  if (displayedAccountActivity && Number(nextPendingActivity.account.followersDelta) !== 0 && !nextPendingActivity.account.quickSummaryShown) {
-    nextPendingActivity.account.quickSummaryShown = true;
-    changed = true;
-  }
+function getQuickSummaryDisplayedReview(consideredRepositories, displayedAccount) {
+  const reviewedAt = new Date().toISOString();
+  const displayedReview = { reviewedAt, account: null, repositories: {} };
 
-  if (displayedAccountActivity && nextPendingActivity.badgeActivity.account) {
-    nextPendingActivity.badgeActivity.account = false;
-    changed = true;
-    badgeActivityCleared = true;
+  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
+    displayedReview.account = {
+      login: currentAccountStats.login,
+      followers: currentAccountStats.followers,
+    };
   }
 
   consideredRepositories.forEach((repository) => {
-    const activity = nextPendingActivity.repositories[repository];
-
-    if (activity && !activity.quickSummaryShown) {
-      nextPendingActivity.repositories[repository] = { ...activity, quickSummaryShown: true };
-      changed = true;
-    }
-
-    if (nextPendingActivity.badgeActivity.repositories[repository]) {
-      delete nextPendingActivity.badgeActivity.repositories[repository];
-      changed = true;
-      badgeActivityCleared = true;
+    const stats = currentLatestStats[repository];
+    if (hasCachedMetadata(stats)) {
+      displayedReview.repositories[repository] = {
+        repository,
+        stars: stats.stars,
+        forks: stats.forks,
+        repoWatchers: stats.subscribers,
+      };
     }
   });
 
-  if (!changed) {
-    return;
-  }
+  return displayedReview;
+}
 
+async function markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity) {
+  const token = getQuickSummaryDeliveryToken();
+  const displayedActivity = {
+    account: displayedAccountActivity ? { ...((currentPendingActivity.quickSummary?.inFlight || {}).account || {}) } : null,
+    repositories: {},
+  };
+  consideredRepositories.forEach((repository) => {
+    const activity = currentPendingActivity.quickSummary?.inFlight?.repositories?.[repository];
+    if (activity) displayedActivity.repositories[repository] = activity;
+  });
   try {
-    currentPendingActivity = await savePendingActivity(cleanupShownPendingActivity(nextPendingActivity));
-    if (badgeActivityCleared) {
-      await clearBadgeText();
-    }
+    const response = await chrome.runtime.sendMessage({
+      action: 'activity.acknowledge',
+      surface: 'quick-summary',
+      token,
+      displayedActivity,
+      displayedReview: getQuickSummaryDisplayedReview(consideredRepositories, displayedAccountActivity),
+    });
+    if (response?.ok && response.result?.pendingActivity) currentPendingActivity = response.result.pendingActivity;
+    if (response?.ok && response.result?.viewedBaselines) currentViewedBaselines = response.result.viewedBaselines;
+    if (response?.ok && response.result?.badgeActivity) await updateQuickSummaryBadge(response.result.badgeActivity);
   } catch (error) {
     console.warn('Unable to mark Quick Summary activity as shown.', error);
   }
 }
 
-async function saveQuickSummaryViewedBaselines(consideredRepositories, displayedAccount) {
-  const viewedAt = new Date().toISOString();
-  const nextViewedBaselines = {
-    ...currentViewedBaselines,
-    account: { ...currentViewedBaselines.account },
-    repositories: { ...currentViewedBaselines.repositories },
-    updatedAt: viewedAt,
-  };
-
-  consideredRepositories.forEach((repository) => {
-    const stats = currentLatestStats[repository];
-
-    if (hasCachedMetadata(stats)) {
-      nextViewedBaselines.repositories[repository] = {
-        ...(nextViewedBaselines.repositories[repository] || {}),
-        repository,
-        stars: stats.stars,
-        forks: stats.forks,
-        repoWatchers: stats.subscribers,
-        updatedAt: viewedAt,
-      };
-    }
-  });
-
-  if (displayedAccount && hasFetchedAccountStats(currentAccountStats)) {
-    nextViewedBaselines.account = {
-      login: currentAccountStats.login,
-      followers: currentAccountStats.followers,
-      updatedAt: viewedAt,
-    };
-  }
-
+async function updateQuickSummaryBadge(badgeActivity) {
+  if (!globalThis.chrome?.action?.setBadgeText) return;
+  const count = (badgeActivity?.account ? 1 : 0) + Object.keys(badgeActivity?.repositories || {}).length;
   try {
-    currentViewedBaselines = await saveViewedBaselines(nextViewedBaselines);
+    await globalThis.chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
   } catch (error) {
-    console.warn('Unable to save Quick Summary viewed baselines.', error);
+    console.warn('Unable to update badge text after Quick Summary review.', error);
   }
 }
+
 
 function renderQuickSummaryActivity() {
   clearActivityHighlights();
@@ -419,7 +372,6 @@ function renderQuickSummaryActivity() {
   }
 
   markQuickSummaryActivityShown(consideredRepositories, accountFollowersDisplayed);
-  saveQuickSummaryViewedBaselines(consideredRepositories, accountFollowersDisplayed);
 }
 
 function renderStatsSummary(settings, latestStats) {
@@ -463,6 +415,14 @@ function renderStatsSummary(settings, latestStats) {
   renderQuickSummaryActivity();
 }
 
+
+async function claimQuickSummaryActivity() {
+  const response = await chrome.runtime.sendMessage({ action: 'activity.claim', surface: 'quick-summary' });
+  if (response?.ok && response.result?.pendingActivity) {
+    currentPendingActivity = response.result.pendingActivity;
+  }
+}
+
 async function renderSettingsSummary() {
   try {
     [
@@ -484,6 +444,7 @@ async function renderSettingsSummary() {
       getViewedBaselines(),
       getVersionCheckStatus(),
     ]);
+    await claimQuickSummaryActivity();
     applyAppearance(currentSettings.appearance);
     renderStatsSummary(currentSettings, currentLatestStats);
     renderUpdateCard();
@@ -508,6 +469,7 @@ async function reloadSavedRefreshData() {
     getPendingActivity(),
     getViewedBaselines(),
   ]);
+  await claimQuickSummaryActivity();
   currentQuickSummaryStatus = await getQuickSummaryStatus();
   renderStatsSummary(currentSettings, currentLatestStats);
   if (!renderSetupGuidanceStatus(currentSettings)) {
@@ -597,6 +559,7 @@ async function refreshStats() {
       if (refreshResult.pendingActivity) {
         currentPendingActivity = refreshResult.pendingActivity;
       }
+      await claimQuickSummaryActivity();
       renderStatsSummary(currentSettings, currentLatestStats);
       renderUpdateCard();
 
