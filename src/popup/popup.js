@@ -547,7 +547,9 @@ async function refreshStats() {
       renderStatsSummary(currentSettings, currentLatestStats);
       renderUpdateCard();
 
-      const refreshStatus = getFullRefreshStatus(refreshResult, { formatTime: formatRefreshTime });
+      const refreshStatus = getFullRefreshStatus(refreshResult, {
+        formatTime: (value) => formatDisplayTimestamp(value, currentSettings.displayPreferences, 'full'),
+      });
       if (refreshStatus.message.startsWith('Last successful refresh:')) {
         renderLastCheckedStatus();
       } else {
