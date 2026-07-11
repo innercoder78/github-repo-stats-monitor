@@ -5,6 +5,7 @@ import { getRepositoryUrl } from '../shared/repository-url.js';
 import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
+import { getFullRefreshStatus } from '../shared/refresh-status.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -763,42 +764,6 @@ async function handleSkippedRepositoryRefreshResult(refreshResult, repository) {
   setStatus(`Refresh could not start for ${repository}. Current saved data is shown.`, 'warning');
 }
 
-function formatRepositoryRefreshSummary(refreshResult) {
-  const skippedCount = Array.isArray(refreshResult?.skippedRepositories) ? refreshResult.skippedRepositories.length : 0;
-  const refreshedCount = Number.isFinite(Number(refreshResult?.refreshedRepositoryCount))
-    ? Number(refreshResult.refreshedRepositoryCount)
-    : Array.isArray(refreshResult?.results) ? refreshResult.results.length : 0;
-
-  if (skippedCount === 0) {
-    return '';
-  }
-
-  if (refreshedCount === 0) {
-    return 'All repositories skipped due to recent data found.';
-  }
-
-  return `Refreshed ${refreshedCount} ${refreshedCount === 1 ? 'repository' : 'repositories'}. ${skippedCount} skipped due to recent data found.`;
-}
-
-
-async function claimDashboardActivity() {
-  const response = await chrome.runtime.sendMessage({ action: 'activity.claim', surface: 'dashboard' });
-  if (response?.ok && response.result?.pendingActivity) {
-    currentPendingActivity = response.result.pendingActivity;
-  }
-}
-
-async function reloadSavedRefreshData() {
-  [currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([
-    getLatestStats(),
-    getAccountStats(),
-    getPendingActivity(),
-    getViewedBaselines(),
-  ]);
-  await claimDashboardActivity();
-  renderRepositories();
-}
-
 async function refreshRepositoryStats() {
   if (isRefreshing || refreshingRepository) return;
 
@@ -826,21 +791,8 @@ async function refreshRepositoryStats() {
       }
       await claimDashboardActivity();
 
-      const failureCount = refreshResult.results.filter(({ stats }) => stats.error || stats.trafficError || stats.clonesError || stats.referrersError).length;
-      const successCount = refreshResult.results.length - failureCount;
-
-      const refreshSummary = formatRepositoryRefreshSummary(refreshResult);
-      const accountFailed = Boolean(refreshResult.accountAttempted && !refreshResult.accountRefreshed);
-      const accountOnlySuccess = refreshResult.accountRefreshed && refreshResult.results.length === 0;
-      if (failureCount === 0 && !accountFailed) {
-        setStatus(refreshSummary || (accountOnlySuccess
-          ? `Account followers refreshed: ${formatRefreshTime(refreshResult.accountFetchedAt || refreshResult.fetchedAt)}`
-          : `Last successful refresh: ${formatRefreshTime(refreshResult.fetchedAt)}`), 'success');
-      } else if (successCount > 0 || (refreshResult.accountRefreshed && failureCount > 0)) {
-        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with partial errors. Last saved values are shown where available.`, 'warning');
-      } else {
-        setStatus(`${refreshSummary ? `${refreshSummary} ` : ''}Refresh finished with errors. Last saved values are shown where available.`, 'error');
-      }
+      const refreshStatus = getFullRefreshStatus(refreshResult, { formatTime: formatRefreshTime });
+      setStatus(refreshStatus.message, refreshStatus.status);
     }
   } catch (error) {
     setStatus(error.message === 'No repositories configured. Open Settings and add at least one repository.'

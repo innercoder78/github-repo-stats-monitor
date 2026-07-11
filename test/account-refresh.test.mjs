@@ -115,3 +115,98 @@ storageData.notificationBaselines = { account: { login: 'old', followers: 1, upd
 await syncNotificationBaselinesFromManualRefresh({ accountStats: { login: 'new', followers: 9, fetchedAt: 'new-time' }, accountRefreshed: true, fetchedAt: 'new-time' });
 assert.equal(storageData.notificationBaselines.account.login, 'new', 'login change establishes new baseline');
 assert.equal(storageData.notificationBaselines.account.updatedAt, 'new-time');
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flush() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+reset();
+api.__resetGitHubRequestLimiterForTest();
+const pendingRequests = [];
+globalThis.fetch = (url) => {
+  const safeUrl = String(url);
+  if (safeUrl.includes('/traffic/views')) return Promise.resolve(response({ count: 1, uniques: 1, views: [] }));
+  if (safeUrl.includes('/traffic/clones')) return Promise.resolve(response({ count: 1, uniques: 1, clones: [] }));
+  if (safeUrl.includes('/traffic/popular/referrers')) return Promise.resolve(response([]));
+  const request = deferred();
+  pendingRequests.push({ url: safeUrl, request });
+  return request.promise;
+};
+const concurrentRefresh = refreshStatsCache(
+  { githubToken: 'token', repositories: ['owner/repo'], notifications: { trackedStats: { accountFollowers: true } } },
+  {},
+  { source: 'dashboard', skipFullRefreshCoordination: true, accountStats: { login: 'me', followers: 1, fetchedAt: 'old' } },
+);
+await flush();
+assert.ok(pendingRequests.some(({ url }) => url === 'https://api.github.com/user'), 'account request starts before repositories finish');
+assert.ok(pendingRequests.some(({ url }) => url.includes('/repos/owner/repo')), 'repository request starts before account finishes');
+pendingRequests.find(({ url }) => url === 'https://api.github.com/user').request.resolve(response({ login: 'me', followers: 2 }));
+await flush();
+for (const entry of [...pendingRequests]) {
+  if (entry.url.includes('/repos/owner/repo') && !entry.url.includes('/traffic/')) {
+    entry.request.resolve(response({ stargazers_count: 1, forks_count: 1, subscribers_count: 1 }));
+  }
+}
+await flush();
+const concurrentResult = await concurrentRefresh;
+assert.equal(concurrentResult.accountRefreshed, true, 'account success is preserved alongside repository success');
+assert.equal(concurrentResult.results[0].stats.error, '');
+
+reset();
+storageData.fullRefreshCoordination = { completedRepositoryRefreshes: { 'owner/repo': { repository: 'owner/repo', completedAt: '2026-01-01T00:00:00.000Z' } } };
+storageData.accountStats = { login: 'me', followers: 1, fetchedAt: 'old-account' };
+api.__resetGitHubRequestLimiterForTest();
+globalThis.fetch = async () => response({ login: 'me', followers: 4 });
+let appliedChanges;
+result = await refreshStatsCache(
+  { githubToken: 'token', repositories: ['owner/repo'], notifications: { trackedStats: { accountFollowers: true }, badgeEnabled: false } },
+  { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' } },
+  {
+    source: 'quick-summary',
+    skipFullRefreshCoordination: true,
+    accountStats: storageData.accountStats,
+    detectActivity: true,
+    applyPendingActivityChanges: async (changes) => { appliedChanges = changes; return changes; },
+  },
+);
+assert.equal(result.results.length, 0, 'all repositories were reused');
+assert.equal(appliedChanges.detectedChanges.account[0].delta, 3, 'all-reused account success still produces follower activity');
+assert.equal(appliedChanges.detectedChanges.repositories['owner/repo'], undefined, 'all-reused account activity is independent of repositories');
+assert.equal(appliedChanges.detectedChanges.account[0].checkedAt, result.accountFetchedAt, 'account pending activity uses account completion time');
+
+reset();
+storageData.accountStats = { login: 'old-login', followers: 8, fetchedAt: 'old-account-time' };
+storageData.notificationBaselines = { account: { login: 'old-login', followers: 8, updatedAt: 'old-baseline' }, repositories: {}, updatedAt: 'old-baseline' };
+await syncNotificationBaselinesFromManualRefresh({
+  accountStats: { login: 'old-login', followers: 12, fetchedAt: 'old-account-time' },
+  accountRefreshed: false,
+  fetchedAt: 'current-refresh',
+});
+assert.equal(storageData.notificationBaselines.account.followers, 8, 'failed current account request does not use older cached fetchedAt to update baseline');
+assert.equal(storageData.notificationBaselines.account.updatedAt, 'old-baseline');
+
+reset();
+api.__resetGitHubRequestLimiterForTest();
+globalThis.fetch = async (url) => {
+  if (String(url) === 'https://api.github.com/user') return response({ login: 'me', followers: 7 });
+  return response({ message: 'repo failed' }, false);
+};
+result = await refreshStatsCache(
+  { githubToken: 'token', repositories: ['owner/repo'], notifications: { trackedStats: { accountFollowers: true } } },
+  {},
+  { source: 'dashboard', skipFullRefreshCoordination: true, accountStats: { login: 'me', followers: 1, fetchedAt: 'old' } },
+);
+assert.equal(result.accountRefreshed, true, 'account success is preserved when repository requests fail');
+assert.equal(result.accountStats.followers, 7);
+assert.ok(result.results[0].stats.error, 'repository failure is preserved when account succeeds');

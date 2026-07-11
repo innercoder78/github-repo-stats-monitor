@@ -171,7 +171,7 @@ export function recordAccountActivityDelta(pendingActivity, delta, detectedChang
   }
 
   if (detectedChanges) {
-    detectedChanges.account.push({ delta, label: ACTIVITY_DELTA_LABELS.followersDelta });
+    detectedChanges.account.push({ delta, label: ACTIVITY_DELTA_LABELS.followersDelta, checkedAt });
   }
 
   addToSurfaceQueues(pendingActivity, (queue) => queueAccountDelta(queue, delta, checkedAt));
