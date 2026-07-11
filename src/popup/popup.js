@@ -231,7 +231,7 @@ function getBaselineDelta(baseline, key, currentValue) {
 
 function getQuickSummaryPendingDeltas() {
   return currentSettings.repositories.reduce((totals, repository) => {
-    const activity = (currentPendingActivity.quickSummary?.inFlight || currentPendingActivity.quickSummary?.queued || {}).repositories?.[repository];
+    const activity = (currentPendingActivity.quickSummary?.inFlight || {}).repositories?.[repository];
 
     totals.starsDelta += Number(activity?.starsDelta) || 0;
     totals.forksDelta += Number(activity?.forksDelta) || 0;
@@ -257,7 +257,7 @@ function getQuickSummaryViewedDeltas() {
 }
 
 function getQuickSummaryPendingAccountDelta() {
-  return Number((currentPendingActivity.quickSummary?.inFlight || currentPendingActivity.quickSummary?.queued || {}).account?.followersDelta) || 0;
+  return Number((currentPendingActivity.quickSummary?.inFlight || {}).account?.followersDelta) || 0;
 }
 
 function getPreferredQuickSummaryDelta(pendingDelta, viewedDelta) {
@@ -305,7 +305,7 @@ function getQuickSummaryDisplayedReview(consideredRepositories, displayedAccount
 async function markQuickSummaryActivityShown(consideredRepositories, displayedAccountActivity) {
   const token = getQuickSummaryDeliveryToken();
   const displayedActivity = {
-    account: displayedAccountActivity,
+    account: displayedAccountActivity ? { ...((currentPendingActivity.quickSummary?.inFlight || {}).account || {}) } : null,
     repositories: {},
   };
   consideredRepositories.forEach((repository) => {

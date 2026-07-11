@@ -1,6 +1,6 @@
 import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTrafficClones, fetchRepositoryTrafficReferrers, fetchRepositoryTrafficViews } from './github-api.js';
-import { getNotificationBaselines, getPendingActivity, normalizeAccountStats, normalizeRepositoryName, saveAccountStats, mergeLatestStats, saveNotificationBaselines, savePendingActivity, saveQuickSummaryStatus } from './storage.js';
-import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats, mergeBadgeActivity } from './activity.js';
+import { getNotificationBaselines, normalizeAccountStats, normalizeRepositoryName, saveAccountStats, mergeLatestStats, saveNotificationBaselines, saveQuickSummaryStatus } from './storage.js';
+import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats } from './activity.js';
 import { runTrackedGitHubActivity } from './github-activity.js';
 
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
@@ -506,8 +506,7 @@ async function refreshAccountStats(githubToken, previousAccountStats) {
 }
 
 async function detectRefreshActivity(settings, previousLatestStats, nextLatestStats, previousAccountStats, nextAccountStats, fetchedAt, repositories, options) {
-  const existingPendingActivity = await getPendingActivity();
-  const nextPendingActivity = createEmptyPendingActivity(existingPendingActivity);
+  const detectedActivity = createEmptyPendingActivity();
   const newPendingChanges = createEmptyPendingChanges();
   const pendingChanged = detectPendingActivityFromStats(
     settings,
@@ -515,21 +514,25 @@ async function detectRefreshActivity(settings, previousLatestStats, nextLatestSt
     nextLatestStats,
     previousAccountStats,
     nextAccountStats,
-    nextPendingActivity,
+    detectedActivity,
     fetchedAt,
     repositories,
     newPendingChanges,
   );
 
   if (!pendingChanged) {
-    return existingPendingActivity;
+    return null;
   }
 
-  if (settings.notifications?.badgeEnabled && !options.skipBadgeActivity) {
-    mergeBadgeActivity(nextPendingActivity, newPendingChanges, fetchedAt);
+  if (typeof options.applyPendingActivityChanges === 'function') {
+    return options.applyPendingActivityChanges({
+      detectedChanges: newPendingChanges,
+      checkedAt: fetchedAt,
+      includeBadgeActivity: Boolean(settings.notifications?.badgeEnabled && !options.skipBadgeActivity),
+    });
   }
 
-  return savePendingActivity(nextPendingActivity);
+  return detectedActivity;
 }
 
 async function refreshRepositoryStats(repository, githubToken, previousStats) {

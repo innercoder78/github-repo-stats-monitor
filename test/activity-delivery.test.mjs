@@ -143,4 +143,32 @@ assert.equal(activity.quickSummary.inFlight.repositories['owner/repo'].starsDelt
 acknowledgePendingActivityForSurface(activity, 'quick-summary', invalidPartial.token, { repositories: { 'owner/repo': { starsDelta: 2 } } });
 assert.equal(activity.quickSummary.inFlight, null);
 
+
+activity = createEmptyPendingActivity();
+recordAccountActivityDelta(activity, 4, null, 't1');
+activity.badgeActivity = { account: true, repositories: {}, updatedAt: 'badge' };
+const accountClaim = claimPendingActivityForSurface(activity, 'dashboard', new Date('2026-01-01T00:00:00.000Z'));
+acknowledgePendingActivityForSurface(activity, 'dashboard', accountClaim.token, { account: { followersDelta: 3 } });
+assert.equal(activity.dashboard.inFlight.account.followersDelta, 4);
+assert.equal(activity.badgeActivity.account, true);
+acknowledgePendingActivityForSurface(activity, 'dashboard', accountClaim.token, { account: true });
+assert.equal(activity.dashboard.inFlight.account.followersDelta, 4);
+acknowledgePendingActivityForSurface(activity, 'dashboard', accountClaim.token, { account: {} });
+assert.equal(activity.dashboard.inFlight.account.followersDelta, 4);
+acknowledgePendingActivityForSurface(activity, 'dashboard', accountClaim.token, { account: { followersDelta: 4 } });
+assert.equal(activity.dashboard.inFlight, null);
+assert.equal(activity.badgeActivity.account, false);
+assert.equal(acknowledgePendingActivityForSurface(activity, 'dashboard', accountClaim.token, { account: { followersDelta: 4 } }).acknowledged, false);
+assert.equal(acknowledgePendingActivityForSurface(activity, 'dashboard', 'stale', { account: { followersDelta: 4 } }).acknowledged, false);
+
+activity = createEmptyPendingActivity();
+recordRepositoryActivityDelta(activity, 'owner/repo', 'starsDelta', 5, 'Star', null, 't1');
+activity.badgeActivity = { account: false, repositories: { 'owner/repo': true, 'owner/other': true }, updatedAt: 'badge' };
+const badgeClaim = claimPendingActivityForSurface(activity, 'quick-summary', new Date('2026-01-01T00:00:00.000Z'));
+acknowledgePendingActivityForSurface(activity, 'quick-summary', badgeClaim.token, { repositories: { 'owner/repo': { starsDelta: 4 } } });
+assert.equal(activity.badgeActivity.repositories['owner/repo'], true);
+acknowledgePendingActivityForSurface(activity, 'quick-summary', badgeClaim.token, { repositories: { 'owner/repo': { starsDelta: 5 } } });
+assert.equal(activity.badgeActivity.repositories['owner/repo'], undefined);
+assert.equal(activity.badgeActivity.repositories['owner/other'], true);
+
 console.log('activity delivery tests passed');

@@ -335,20 +335,27 @@ export function claimPendingActivityForSurface(pendingActivity, surface, now = n
 }
 
 function acknowledgeAccountActivity(remaining, displayed) {
-  if (!displayed || !Number(remaining.account?.followersDelta)) {
-    return;
+  const remainingAmount = Number(remaining.account?.followersDelta) || 0;
+  const displayedAmount = Number(displayed?.followersDelta);
+
+  if (remainingAmount !== 0 && Number.isFinite(displayedAmount) && displayedAmount === remainingAmount) {
+    remaining.account = {};
+    return true;
   }
 
-  remaining.account = {};
+  return false;
 }
 
 function acknowledgeRepositoryMetric(remainingRepositoryActivity, displayedRepositoryActivity, deltaKey) {
   const remainingAmount = Number(remainingRepositoryActivity[deltaKey]) || 0;
-  const displayedAmount = Number(displayedRepositoryActivity?.[deltaKey]) || 0;
+  const displayedAmount = Number(displayedRepositoryActivity?.[deltaKey]);
 
-  if (remainingAmount !== 0 && displayedAmount === remainingAmount) {
+  if (remainingAmount !== 0 && Number.isFinite(displayedAmount) && displayedAmount === remainingAmount) {
     delete remainingRepositoryActivity[deltaKey];
+    return true;
   }
+
+  return false;
 }
 
 function acknowledgeRepositoryActivity(remaining, repository, displayedRepositoryActivity) {
@@ -358,13 +365,16 @@ function acknowledgeRepositoryActivity(remaining, repository, displayedRepositor
     return;
   }
 
+  let acknowledgedMetric = false;
   REPOSITORY_ACTIVITY_STATS.forEach(({ deltaKey }) => {
-    acknowledgeRepositoryMetric(remainingRepositoryActivity, displayedRepositoryActivity, deltaKey);
+    acknowledgedMetric = acknowledgeRepositoryMetric(remainingRepositoryActivity, displayedRepositoryActivity, deltaKey) || acknowledgedMetric;
   });
 
   if (getRepositoryActivityDeltas(remainingRepositoryActivity).length === 0) {
     delete remaining.repositories[repository];
   }
+
+  return acknowledgedMetric;
 }
 
 function getReviewedBadgeRepositories(displayedRepositories, inFlightRepositories) {
@@ -382,13 +392,14 @@ export function acknowledgePendingActivityForSurface(pendingActivity, surface, t
   const remaining = cloneActivityQueue(surfaceState.inFlight);
   const displayedRepositories = displayed.repositories && typeof displayed.repositories === 'object' ? displayed.repositories : {};
   const reviewedBadgeLocations = {
-    account: Boolean(displayed.account && Number(surfaceState.inFlight.account?.followersDelta)),
-    repositories: getReviewedBadgeRepositories(displayedRepositories, surfaceState.inFlight.repositories),
+    account: acknowledgeAccountActivity(remaining, displayed.account),
+    repositories: [],
   };
 
-  acknowledgeAccountActivity(remaining, displayed.account);
   Object.entries(displayedRepositories).forEach(([repository, displayedRepositoryActivity]) => {
-    acknowledgeRepositoryActivity(remaining, repository, displayedRepositoryActivity);
+    if (acknowledgeRepositoryActivity(remaining, repository, displayedRepositoryActivity)) {
+      reviewedBadgeLocations.repositories.push(repository);
+    }
   });
 
   surfaceState.inFlight = queueHasActivity(remaining)

@@ -398,7 +398,7 @@ function setSummaryValue(valueElement, value, delta = 0) {
 }
 
 function getRepositoryPendingDeltaMap(repository) {
-  const activity = (currentPendingActivity.dashboard?.inFlight || currentPendingActivity.dashboard?.queued || {}).repositories?.[repository];
+  const activity = (currentPendingActivity.dashboard?.inFlight || {}).repositories?.[repository];
   const deltas = {
     stars: { delta: Number(activity?.starsDelta) || 0, label: ACTIVITY_DELTA_LABELS.starsDelta },
     forks: { delta: Number(activity?.forksDelta) || 0, label: ACTIVITY_DELTA_LABELS.forksDelta },
@@ -458,7 +458,7 @@ function getAccountFollowersDelta() {
 }
 
 function getVisibleAccountFollowersDelta() {
-  const pendingDelta = Number((currentPendingActivity.dashboard?.inFlight || currentPendingActivity.dashboard?.queued || {}).account?.followersDelta) || 0;
+  const pendingDelta = Number((currentPendingActivity.dashboard?.inFlight || {}).account?.followersDelta) || 0;
   return pendingDelta !== 0 ? pendingDelta : getAccountFollowersDelta();
 }
 
@@ -495,7 +495,10 @@ function getDashboardDisplayedReview(renderedRepositories, displayedAccount) {
 async function markDashboardActivityShown(renderedRepositories, displayedAccountActivity) {
   if (renderedRepositories.size === 0 && !displayedAccountActivity) return;
   const token = getDashboardDeliveryToken();
-  const displayedActivity = { account: displayedAccountActivity, repositories: {} };
+  const displayedActivity = {
+    account: displayedAccountActivity ? { ...((currentPendingActivity.dashboard?.inFlight || {}).account || {}) } : null,
+    repositories: {},
+  };
   renderedRepositories.forEach((repository) => {
     const activity = currentPendingActivity.dashboard?.inFlight?.repositories?.[repository];
     if (activity) displayedActivity.repositories[repository] = activity;
@@ -891,6 +894,7 @@ async function initializeDashboard() {
   try {
     [currentSettings, currentLatestStats, currentAccountStats, currentPendingActivity, currentViewedBaselines] = await Promise.all([getSettings(), getLatestStats(), getAccountStats(), getPendingActivity(), getViewedBaselines()]);
     applyAppearance(currentSettings.appearance);
+    await claimDashboardActivity();
     renderRepositories();
 
     if (currentSettings.repositories.length === 0) {

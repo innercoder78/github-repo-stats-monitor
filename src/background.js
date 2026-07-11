@@ -183,6 +183,20 @@ function sendRefreshProgress(operation, progress) {
   });
 }
 
+
+async function applyManualRefreshPendingActivity({ detectedChanges, checkedAt, includeBadgeActivity }) {
+  return runPendingActivityMutation(async () => {
+    const pendingActivity = createEmptyPendingActivity(await getPendingActivity());
+    applyDetectedChangesToPendingActivity(pendingActivity, detectedChanges, checkedAt);
+    pendingActivity.updatedAt = checkedAt;
+    if (includeBadgeActivity) {
+      mergeBadgeActivity(pendingActivity, detectedChanges, checkedAt);
+    }
+    const saved = await saveActivityState({ pendingActivity });
+    return saved.pendingActivity;
+  });
+}
+
 async function executeFullRefresh(source) {
   const admission = await beginRefreshOperation({ type: 'full', source });
   if (!admission.admitted) {
@@ -199,6 +213,7 @@ async function executeFullRefresh(source) {
         detectActivity: true,
         skipBadgeActivity: true,
         skipFullRefreshCoordination: true,
+        applyPendingActivityChanges: applyManualRefreshPendingActivity,
         onProgress(progress) {
           sendRefreshProgress(operation, progress);
         },
@@ -235,6 +250,7 @@ async function executeRepositoryRefresh(repository) {
       const refreshResult = await refreshRepositoryStatsCache(settings, latestStats, normalizedRepository, {
         detectActivity: true,
         skipBadgeActivity: true,
+        applyPendingActivityChanges: applyManualRefreshPendingActivity,
       });
       await syncNotificationBaselinesFromManualRefresh({
         results: [refreshResult.result],
@@ -341,7 +357,8 @@ function isValidActivitySurface(surface) {
 
 
 function normalizeDisplayedReview(displayedReview = {}) {
-  const reviewedAt = typeof displayedReview.reviewedAt === 'string' ? displayedReview.reviewedAt : new Date().toISOString();
+  const parsedReviewedAt = Date.parse(displayedReview.reviewedAt || '');
+  const reviewedAt = Number.isFinite(parsedReviewedAt) ? new Date(parsedReviewedAt).toISOString() : new Date().toISOString();
   const account = {};
   const repositories = {};
 
@@ -380,6 +397,9 @@ function updateSurfaceViewedBaselines(viewedBaselines, surface, displayedReview)
   const surfaceKey = surface === 'quick-summary' ? 'quickSummary' : 'dashboard';
   const normalizedReview = normalizeDisplayedReview(displayedReview);
   const nextViewedBaselines = normalizeViewedBaselines(viewedBaselines);
+  if (Object.keys(normalizedReview.account).length === 0 && Object.keys(normalizedReview.repositories).length === 0) {
+    return nextViewedBaselines;
+  }
   const surfaceBaselines = {
     ...(nextViewedBaselines[surfaceKey] || {}),
     account: { ...(nextViewedBaselines[surfaceKey]?.account || {}) },
@@ -950,7 +970,7 @@ function applyDetectedChangesToPendingActivity(pendingActivity, detectedChanges,
     deltas.forEach(({ delta, label }) => {
       const deltaKey = label === REPOSITORY_DELTA_LABELS.forksDelta
         ? 'forksDelta'
-        : label === REPOSITORY_DELTA_LABELS.repoWatchersDelta || label === 'Repo Watcher'
+        : label === REPOSITORY_DELTA_LABELS.repoWatchersDelta || label === 'Repo Watcher' || label === 'Watcher'
           ? 'repoWatchersDelta'
           : 'starsDelta';
       changed = recordRepositoryDelta(pendingActivity, repository, deltaKey, delta, label, null, checkedAt) || changed;
