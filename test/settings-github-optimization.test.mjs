@@ -118,4 +118,103 @@ globalThis.fetch = async () => response({ items: [] });
 await assert.rejects(() => fetchAuthenticatedRepositories('token'), /unexpected response format/i);
 
 __resetGitHubRequestLimiterForTest();
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((res) => { resolve = res; });
+  return { promise, resolve };
+}
+
+calls = [];
+globalThis.fetch = async (url) => {
+  calls.push(String(url));
+  if (String(url).endsWith('/user')) return response({ login: 'octo', followers: 1 });
+  return response({});
+};
+result = await executeConnection(['owner/traffic']);
+assert.equal(calls.some((url) => url.includes('/traffic/views')), true, 'metadata success requests traffic views');
+assert.equal(calls.some((url) => url.includes('/traffic/clones')), true, 'metadata success requests traffic clones');
+assert.equal(calls.some((url) => url.includes('/traffic/popular/referrers')), true, 'metadata success requests referrers');
+
+__resetGitHubRequestLimiterForTest();
+calls = [];
+let activeRaw = 0;
+let maxRaw = 0;
+let activeMetadata = 0;
+let maxMetadata = 0;
+const metadataRequests = [];
+globalThis.fetch = (url) => {
+  const safeUrl = String(url);
+  calls.push(safeUrl);
+  activeRaw += 1;
+  maxRaw = Math.max(maxRaw, activeRaw);
+  if (safeUrl.endsWith('/user')) {
+    activeRaw -= 1;
+    return Promise.resolve(response({ login: 'octo', followers: 1 }));
+  }
+  if (safeUrl.includes('/repos/') && !safeUrl.includes('/traffic/')) {
+    activeMetadata += 1;
+    maxMetadata = Math.max(maxMetadata, activeMetadata);
+    const request = deferred();
+    metadataRequests.push({ url: safeUrl, request });
+    return request.promise.then((value) => { activeRaw -= 1; activeMetadata -= 1; return value; });
+  }
+  activeRaw -= 1;
+  return Promise.resolve(response({}));
+};
+const manyConnection = executeConnection(Array.from({ length: 8 }, (_, i) => `owner/repo-${i}`));
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(maxMetadata, 4, 'no more than four repository metadata tasks are active');
+assert.equal(maxRaw, 4, 'raw GitHub request concurrency never exceeds four');
+for (let resolvedCount = 0; resolvedCount < 8; resolvedCount += 1) {
+  while (metadataRequests.length === 0) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  metadataRequests.pop().request.resolve(response({}));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+result = await manyConnection;
+assert.deepEqual(result.map((item) => item.repository), Array.from({ length: 8 }, (_, i) => `owner/repo-${i}`), 'out-of-order completion preserves input order');
+
+storageWrites.length = 0;
+calls = [];
+globalThis.fetch = async (url) => {
+  calls.push(String(url));
+  if (String(url).endsWith('/user')) return response({ login: 'octo', followers: 1 });
+  return response({ message: 'nope' }, { ok: false, status: 404 });
+};
+await executeConnection(['owner/fails-readonly']);
+assert.equal(storageWrites.length, 0, 'failed connection test is read-only');
+
+calls = [];
+globalThis.fetch = async (url) => {
+  calls.push(String(url));
+  if (calls.length === 1) return response(Array.from({ length: 100 }, (_, i) => ({ full_name: `a/repo-${i}` })), { link: '<https://api.github.com/user/repos?page=2>; rel="next"' });
+  return response(Array.from({ length: 100 }, (_, i) => ({ full_name: `b/repo-${i}` })));
+};
+result = await fetchAuthenticatedRepositories('token');
+assert.equal(result.length, 200);
+assert.equal(calls.length, 2, 'exactly 200 repositories with one next link makes two requests');
+
+calls = [];
+globalThis.fetch = async () => response([], { link: '<https://api.github.com/orgs/example/repos?page=2>; rel="next"' });
+await assert.rejects(() => fetchAuthenticatedRepositories('token'), /unsafe pagination/i);
+
+calls = [];
+globalThis.fetch = async () => response([
+  { full_name: 'Owner/Dupe', private: true, visibility: 'private', archived: true, fork: false, html_url: 'https://github.com/Owner/Dupe' },
+  { full_name: 'owner/dupe', private: false, visibility: 'public', archived: false, fork: true, html_url: 'https://github.com/owner/dupe' },
+]);
+result = await fetchAuthenticatedRepositories('token');
+assert.equal(result.length, 1, 'case-insensitive duplicates returned once');
+assert.equal(result[0].fullName, 'Owner/Dupe', 'first duplicate keeps its name');
+assert.equal(result[0].private, true, 'first duplicate keeps attributes');
+
+calls = [];
+globalThis.fetch = async () => {
+  calls.push('page');
+  return response([], { link: '<https://api.github.com/user/repos?page=2>; rel="next"' });
+};
+await assert.rejects(() => fetchAuthenticatedRepositories('token'), /repeated/i);
+assert.equal(calls.length, 2, 'pagination cycle stops quickly');
 console.log('settings github optimization tests passed');

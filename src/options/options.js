@@ -449,7 +449,7 @@ function updateImportSelectionState(shouldShowLimitMessage = true) {
   }
 
   const updatedSelectedCount = getSelectedImportedRepositories().length;
-  addImportedRepositoriesButton.disabled = updatedSelectedCount === 0 || updatedSelectedCount > remainingSlots;
+  addImportedRepositoriesButton.disabled = isTestingConnection || updatedSelectedCount === 0 || updatedSelectedCount > remainingSlots;
 }
 
 function createImportAttribute(label, value) {
@@ -540,6 +540,13 @@ function removeOnlyEmptyRepositoryRowBeforeImport() {
 }
 
 function handleAddImportedRepositories() {
+  const wasTestingConnection = isTestingConnection;
+  if (wasTestingConnection) {
+    isTestingConnection = false;
+    invalidateSettingsGitHubResults({ clearTest: true });
+    setSettingsGitHubButtonsBusy('test', false);
+  }
+
   const selectedNames = getSelectedImportedRepositories();
   if (selectedNames.length === 0) {
     return;
@@ -576,7 +583,7 @@ function handleAddImportedRepositories() {
 
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
-  clearTestResults();
+  invalidateSettingsGitHubResults({ clearTest: true });
   setMessage(importMessage, `Added ${addedCount} ${addedCount === 1 ? 'repository' : 'repositories'}. Review the list, then click Save Settings.`, 'success');
   updateRepositoryControls();
   updateImportSelectionState(false);
@@ -728,6 +735,7 @@ function setSettingsGitHubButtonsBusy(type, busy) {
   testConnectionButton.disabled = busy || isImportingRepositories;
   if (type === 'import') importRepositoriesButton.textContent = busy ? 'Loading…' : 'Import from GitHub';
   if (type === 'test') testConnectionButton.textContent = busy ? 'Testing…' : 'Test connection';
+  updateImportSelectionState(false);
 }
 
 async function handleConnectionTest() {
