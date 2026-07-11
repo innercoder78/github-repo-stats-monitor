@@ -317,13 +317,30 @@ async function executeRepositoryImport(payload) {
 
 function serializeSettledEndpointResult(result) {
   return result.status === 'fulfilled'
-    ? { ok: true }
-    : { ok: false, message: result.reason?.message || 'Unable to complete this GitHub request.' };
+    ? { status: 'success', ok: true }
+    : { status: 'error', ok: false, message: result.reason?.message || 'Unable to complete this GitHub request.' };
+}
+
+function createSkippedEndpointResult(message = 'Not tested because repository data could not be accessed.') {
+  return { status: 'skipped', ok: false, skipped: true, message };
 }
 
 async function testRepositoryConnection(repository, token) {
-  const [metadataResult, trafficResult, clonesResult, referrersResult] = await Promise.allSettled([
-    fetchRepositoryMetadata(repository, token),
+  const metadataResult = await Promise.allSettled([fetchRepositoryMetadata(repository, token)]).then(([result]) => result);
+  const metadata = serializeSettledEndpointResult(metadataResult);
+
+  if (!metadata.ok) {
+    const skipped = createSkippedEndpointResult();
+    return {
+      repository,
+      metadata,
+      traffic: skipped,
+      clones: skipped,
+      referrers: skipped,
+    };
+  }
+
+  const [trafficResult, clonesResult, referrersResult] = await Promise.allSettled([
     fetchRepositoryTrafficViews(repository, token),
     fetchRepositoryTrafficClones(repository, token),
     fetchRepositoryTrafficReferrers(repository, token),
@@ -331,17 +348,44 @@ async function testRepositoryConnection(repository, token) {
 
   return {
     repository,
-    metadata: serializeSettledEndpointResult(metadataResult),
+    metadata,
     traffic: serializeSettledEndpointResult(trafficResult),
     clones: serializeSettledEndpointResult(clonesResult),
     referrers: serializeSettledEndpointResult(referrersResult),
   };
 }
 
+async function runRepositoryConnectionWorkerPool(repositories, token, workerCount = 4) {
+  const results = new Array(repositories.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < repositories.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = await testRepositoryConnection(repositories[index], token);
+      } catch (error) {
+        results[index] = {
+          repository: repositories[index],
+          metadata: { status: 'error', ok: false, message: error?.message || 'Unable to complete this GitHub request.' },
+          traffic: createSkippedEndpointResult(),
+          clones: createSkippedEndpointResult(),
+          referrers: createSkippedEndpointResult(),
+        };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(workerCount, repositories.length) }, worker));
+  return results;
+}
+
 async function executeConnectionTest(payload) {
   const token = validateTokenPayload(payload, 'Enter a GitHub token before testing the connection.');
   const repositories = validateRepositoryListPayload(payload);
-  return Promise.all(repositories.map((repository) => testRepositoryConnection(repository, token)));
+  await fetchAuthenticatedAccount(token);
+  return runRepositoryConnectionWorkerPool(repositories, token, 4);
 }
 
 

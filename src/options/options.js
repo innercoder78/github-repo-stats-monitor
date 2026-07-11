@@ -59,6 +59,8 @@ let isTestingConnection = false;
 let isImportingRepositories = false;
 let importedRepositories = [];
 let currentVersionCheckStatus = null;
+let settingsGitHubOperationId = 0;
+let activeSettingsGitHubOperation = null;
 
 applySavedAppearance();
 
@@ -214,6 +216,7 @@ function updateRepositoryControls() {
 }
 
 function updateAddButtonState() {
+  invalidateSettingsGitHubResults({ clearImport: true, clearTest: true });
   updateRepositoryControls();
 }
 
@@ -239,7 +242,10 @@ function createRepositoryRow(value = '', shouldFocus = false) {
   input.type = 'text';
   input.placeholder = 'owner/repo or https://github.com/owner/repo';
   input.value = value;
-  input.addEventListener('input', updateImportSelectionState);
+  input.addEventListener('input', () => {
+    invalidateSettingsGitHubResults({ clearTest: true });
+    updateImportSelectionState();
+  });
 
   const controls = document.createElement('div');
   controls.className = 'repository-controls';
@@ -258,7 +264,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     repositoryList.insertBefore(row, previousRow);
     setMessage(repoMessage, '', '');
     setMessage(statusMessage, '', '');
-    clearTestResults();
+    invalidateSettingsGitHubResults({ clearTest: true });
     updateRepositoryControls();
     updateImportSelectionState();
     focusMovedRow(row, moveUpButton);
@@ -278,7 +284,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     repositoryList.insertBefore(nextRow, row);
     setMessage(repoMessage, '', '');
     setMessage(statusMessage, '', '');
-    clearTestResults();
+    invalidateSettingsGitHubResults({ clearTest: true });
     updateRepositoryControls();
     updateImportSelectionState();
     focusMovedRow(row, moveDownButton);
@@ -300,7 +306,7 @@ function createRepositoryRow(value = '', shouldFocus = false) {
     }
     setMessage(repoMessage, '', '');
     setMessage(statusMessage, '', '');
-    clearTestResults();
+    invalidateSettingsGitHubResults({ clearTest: true });
     updateRepositoryControls();
     updateImportSelectionState();
   });
@@ -443,7 +449,7 @@ function updateImportSelectionState(shouldShowLimitMessage = true) {
   }
 
   const updatedSelectedCount = getSelectedImportedRepositories().length;
-  addImportedRepositoriesButton.disabled = updatedSelectedCount === 0 || updatedSelectedCount > remainingSlots;
+  addImportedRepositoriesButton.disabled = isTestingConnection || updatedSelectedCount === 0 || updatedSelectedCount > remainingSlots;
 }
 
 function createImportAttribute(label, value) {
@@ -516,9 +522,11 @@ function renderImportedRepository(repository, monitoredRepositories) {
 function renderImportedRepositories(repositories) {
   importResults.textContent = '';
   const monitoredRepositories = getVisibleRepositoryNames();
+  const fragment = document.createDocumentFragment();
   repositories.forEach((repository) => {
-    importResults.append(renderImportedRepository(repository, monitoredRepositories));
+    fragment.append(renderImportedRepository(repository, monitoredRepositories));
   });
+  importResults.append(fragment);
   updateImportSelectionState();
 }
 
@@ -532,6 +540,13 @@ function removeOnlyEmptyRepositoryRowBeforeImport() {
 }
 
 function handleAddImportedRepositories() {
+  const wasTestingConnection = isTestingConnection;
+  if (wasTestingConnection) {
+    isTestingConnection = false;
+    invalidateSettingsGitHubResults({ clearTest: true });
+    setSettingsGitHubButtonsBusy('test', false);
+  }
+
   const selectedNames = getSelectedImportedRepositories();
   if (selectedNames.length === 0) {
     return;
@@ -568,14 +583,14 @@ function handleAddImportedRepositories() {
 
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
-  clearTestResults();
+  invalidateSettingsGitHubResults({ clearTest: true });
   setMessage(importMessage, `Added ${addedCount} ${addedCount === 1 ? 'repository' : 'repositories'}. Review the list, then click Save Settings.`, 'success');
   updateRepositoryControls();
   updateImportSelectionState(false);
 }
 
 async function handleRepositoryImport() {
-  if (isImportingRepositories) {
+  if (isImportingRepositories || isTestingConnection) {
     return;
   }
 
@@ -594,12 +609,13 @@ async function handleRepositoryImport() {
   }
 
   isImportingRepositories = true;
-  importRepositoriesButton.disabled = true;
-  importRepositoriesButton.textContent = 'Loading…';
+  const operation = beginSettingsGitHubOperation('import', { token });
+  setSettingsGitHubButtonsBusy('import', true);
   setMessage(importMessage, 'Loading repositories from GitHub…', '');
 
   try {
     const repositories = await sendBackgroundGitHubRequest(SETTINGS_GITHUB_ACTIONS.IMPORT_REPOSITORIES, { token });
+    if (!isCurrentSettingsGitHubOperation(operation)) return;
     if (repositories.length === 0) {
       setMessage(importMessage, 'No repositories were returned for this token.', '');
       return;
@@ -608,13 +624,18 @@ async function handleRepositoryImport() {
     importedRepositories = repositories;
     renderImportedRepositories(importedRepositories);
     setMessage(importMessage, `${repositories.length} repositories returned. Select repositories to add to Settings.`, 'success');
-    updateImportSelectionState();
   } catch (error) {
-    setMessage(importMessage, getSafeErrorMessage(error), 'error');
+    if (isCurrentSettingsGitHubOperation(operation)) {
+      setMessage(importMessage, getSafeErrorMessage(error), 'error');
+    }
   } finally {
     isImportingRepositories = false;
-    importRepositoriesButton.disabled = false;
-    importRepositoriesButton.textContent = 'Import from GitHub';
+    if (isCurrentSettingsGitHubOperation(operation)) {
+      activeSettingsGitHubOperation = null;
+      setSettingsGitHubButtonsBusy('import', false);
+    } else if (!activeSettingsGitHubOperation) {
+      setSettingsGitHubButtonsBusy('import', false);
+    }
   }
 }
 
@@ -644,8 +665,15 @@ function createRepositoryNameElement(repository) {
 
 function createStatusLine(label, result) {
   const line = document.createElement('p');
-  line.className = `test-result-status ${result.ok ? 'success' : 'error'}`;
-  line.textContent = result.ok ? `${label}: OK` : `${label}: Error - ${result.message}`;
+  const status = result?.status || (result?.ok ? 'success' : 'error');
+  line.className = `test-result-status ${status === 'success' ? 'success' : 'error'}`;
+  if (status === 'success') {
+    line.textContent = `${label}: OK`;
+  } else if (status === 'skipped') {
+    line.textContent = `${label}: Not tested - ${result.message}`;
+  } else {
+    line.textContent = `${label}: Error - ${result.message}`;
+  }
   return line;
 }
 
@@ -660,11 +688,58 @@ function renderTestResult(result) {
     createStatusLine('Traffic clones', result.clones),
     createStatusLine('Referrers data', result.referrers),
   );
-  testResults.append(card);
+  return card;
+}
+
+function renderTestResults(results) {
+  testResults.textContent = '';
+  const fragment = document.createDocumentFragment();
+  results.forEach((result) => fragment.append(renderTestResult(result)));
+  testResults.append(fragment);
+}
+
+function hasTestResultFailure(result) {
+  return !result.metadata.ok
+    || result.traffic.status === 'error'
+    || result.clones.status === 'error'
+    || result.referrers.status === 'error';
+}
+
+function beginSettingsGitHubOperation(type, snapshot) {
+  settingsGitHubOperationId += 1;
+  activeSettingsGitHubOperation = { id: settingsGitHubOperationId, type, snapshot };
+  return activeSettingsGitHubOperation;
+}
+
+function isCurrentSettingsGitHubOperation(operation) {
+  return activeSettingsGitHubOperation?.id === operation.id;
+}
+
+function invalidateSettingsGitHubResults({ clearImport = false, clearTest = false } = {}) {
+  settingsGitHubOperationId += 1;
+  activeSettingsGitHubOperation = null;
+  if (clearImport) {
+    importedRepositories = [];
+    importResults.textContent = '';
+    addImportedRepositoriesButton.disabled = true;
+    setMessage(importMessage, '', '');
+  }
+  if (clearTest) {
+    clearTestResults();
+    setMessage(testMessage, '', '');
+  }
+}
+
+function setSettingsGitHubButtonsBusy(type, busy) {
+  importRepositoriesButton.disabled = busy || isTestingConnection;
+  testConnectionButton.disabled = busy || isImportingRepositories;
+  if (type === 'import') importRepositoriesButton.textContent = busy ? 'Loading…' : 'Import from GitHub';
+  if (type === 'test') testConnectionButton.textContent = busy ? 'Testing…' : 'Test connection';
+  updateImportSelectionState(false);
 }
 
 async function handleConnectionTest() {
-  if (isTestingConnection) {
+  if (isTestingConnection || isImportingRepositories) {
     return;
   }
 
@@ -690,16 +765,16 @@ async function handleConnectionTest() {
   }
 
   isTestingConnection = true;
-  testConnectionButton.disabled = true;
-  testConnectionButton.textContent = 'Testing…';
+  const operation = beginSettingsGitHubOperation('test', { token, repositories: [...validation.repositories] });
+  setSettingsGitHubButtonsBusy('test', true);
   setMessage(testMessage, 'Testing connection…', '');
 
   try {
     const results = await sendBackgroundGitHubRequest(SETTINGS_GITHUB_ACTIONS.TEST_CONNECTION, { token, repositories: validation.repositories });
+    if (!isCurrentSettingsGitHubOperation(operation)) return;
 
-    testResults.textContent = '';
-    results.forEach(renderTestResult);
-    const hasFailure = results.some((result) => !result.metadata.ok || !result.traffic.ok || !result.clones.ok || !result.referrers.ok);
+    renderTestResults(results);
+    const hasFailure = results.some(hasTestResultFailure);
     setMessage(
       testMessage,
       hasFailure
@@ -708,11 +783,17 @@ async function handleConnectionTest() {
       hasFailure ? 'error' : 'success',
     );
   } catch (error) {
-    setMessage(testMessage, getSafeErrorMessage(error), 'error');
+    if (isCurrentSettingsGitHubOperation(operation)) {
+      setMessage(testMessage, getSafeErrorMessage(error), 'error');
+    }
   } finally {
     isTestingConnection = false;
-    testConnectionButton.disabled = false;
-    testConnectionButton.textContent = 'Test connection';
+    if (isCurrentSettingsGitHubOperation(operation)) {
+      activeSettingsGitHubOperation = null;
+      setSettingsGitHubButtonsBusy('test', false);
+    } else if (!activeSettingsGitHubOperation) {
+      setSettingsGitHubButtonsBusy('test', false);
+    }
   }
 }
 
@@ -751,7 +832,7 @@ async function resetSettings() {
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   setMessage(notificationMessage, '', '');
-  clearTestResults();
+  invalidateSettingsGitHubResults({ clearImport: true, clearTest: true });
   clearImportResults();
 
   try {
@@ -784,7 +865,7 @@ tokenInput.addEventListener('input', updateAddButtonState);
 addRepositoryButton.addEventListener('click', () => {
   addRepositoryRow('', true);
   setMessage(statusMessage, '', '');
-  clearTestResults();
+  invalidateSettingsGitHubResults({ clearTest: true });
   updateImportSelectionState();
 });
 
@@ -821,7 +902,7 @@ form.addEventListener('submit', async (event) => {
   setMessage(repoMessage, '', '');
   setMessage(statusMessage, '', '');
   setMessage(notificationMessage, '', '');
-  clearTestResults();
+  invalidateSettingsGitHubResults({ clearImport: true, clearTest: true });
   clearImportResults();
 
   const notificationValidation = validateNotifications();
