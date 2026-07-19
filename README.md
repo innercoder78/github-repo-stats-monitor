@@ -6,7 +6,7 @@ It is designed for manual review, optional background checks, a cleaner card-bas
 
 ## Current Version
 
-3.1.1
+3.2
 
 ## How to download
 
@@ -123,6 +123,8 @@ The extension saves them internally as `owner/repo`.
 
 Repositories can also be imported from GitHub. **Import from GitHub** lists repositories that the token can access. Imported repositories are selected first, then added to the Settings repository list. They are not saved until **Save Settings** is clicked.
 
+Import follows GitHub's available next-page links, avoids unnecessary empty-page requests, removes duplicate repository names, and lists the returned repositories in sorted order. Import and **Test Connection** cannot run at the same time. If you change the token or repository list while either operation is in progress, the older result is ignored.
+
 You can configure up to 20 repositories. The order of repositories in Settings determines the order shown on the Dashboard. You can remove repositories, reorder them, and reset all locally stored extension data from Settings.
 
 Use the **Display Preferences** settings to choose date and time formatting. Use the **Appearance** setting to choose **Light Mode** or **Dark Mode**.
@@ -141,6 +143,8 @@ Administration: Read-only
 
 Account Followers are fetched for the authenticated token's account.
 
+Each full refresh checks the authenticated account independently, even when recently saved repository data can be reused. A successful account check confirms the GitHub login and follower count before saving them. If it cannot complete, the last successfully saved account values remain available, and refresh feedback identifies account problems separately when appropriate. Switching to a different authenticated GitHub account starts a new account baseline, so the first check for that account does not create a false follower-change alert or activity indicator.
+
 The token is stored locally in Chrome extension storage. It is not hard-coded into the extension, and it is not shown outside the password field. The token is used only for GitHub API requests made by the extension.
 
 ## Manual Refresh Behavior
@@ -149,11 +153,11 @@ Manual refreshes update saved data when you choose to refresh.
 
 The Dashboard reads saved values when opened and does not refresh automatically on open. Use the full **Refresh Now** action when you want to update Dashboard data. A full Dashboard refresh shows progress as repositories complete. Dashboard repository cards also have a per-repository **Refresh** button. A per-repository refresh updates only that repository.
 
-The Quick Summary popup reads saved values when opened. It can also refresh saved repository stats, and the popup shows progress while repositories refresh.
+The Quick Summary popup reads saved values when opened. It can also refresh saved repository and account stats, and the popup shows progress while repositories refresh. A successful refresh returns the popup to its normal **Manual refresh** and **Background check** status lines.
 
-Full refresh and per-repository refresh do not run at the same time. Manual and automatic full refreshes avoid running less than about 60 seconds apart. If a repository was refreshed very recently, a full refresh may use that fresh saved data instead of fetching that same repository again.
+Quick Summary refreshes, Dashboard full refreshes, Dashboard per-repository refreshes, and automatic background checks are coordinated through the extension's background service worker, so conflicting refreshes do not run at the same time. Manual and automatic full refreshes avoid running less than about 60 seconds apart. If a repository was refreshed very recently, a full refresh may reuse that saved data instead of requesting the repository again.
 
-If some data cannot be refreshed, the extension shows last saved values where available.
+Refresh feedback clearly distinguishes successful, partially successful, failed, and recently reused results. If an individual GitHub endpoint cannot refresh, the extension preserves and shows last saved values where available.
 
 GitHub traffic-related data follows GitHub's traffic window, currently the recent traffic period GitHub exposes. Views, Clones, and Referring Sites are limited by what GitHub returns for repository traffic.
 
@@ -165,13 +169,25 @@ Alerts can be sent by system notification, badge count on the extension icon, or
 
 Background checks compare saved baselines against newly fetched values. The Quick Summary and Dashboard show net accumulated pending tracked gains and losses from badge and notification checks as green/red activity pills. Views and Clones do not have activity pills.
 
-Opening Quick Summary first does not prevent the Dashboard from showing the same pending activity later, and opening the Dashboard first does not prevent the Quick Summary from showing the same pending activity later. Pending activity is cleared only after the relevant activity has been shown in both places. Badge activity is still cleared or reduced when reviewed.
+Quick Summary and Dashboard keep independent activity delivery histories. Reviewing activity in one does not prevent the other from showing the same relevant activity later. New activity found while an earlier delivery is being reviewed is preserved. Badge activity is separate from both view histories and can still be cleared or reduced when reviewed.
 
-These are periodic checks on an interval, not real-time updates. If a background check is due during the manual-refresh quiet window, it retries shortly after that quiet window instead of skipping a full interval.
+These are periodic checks on an interval, not real-time updates. If a background check is due during the manual-refresh quiet window, it retries shortly after that quiet window instead of skipping a full interval. Temporary GitHub failures or a GitHub rate-limit quiet window can also be retried without changing your normal recurring background-check interval.
+
+Removing a repository clears only the data associated with that repository. Changing the GitHub token clears account-specific activity and account baselines while preserving repository-specific statistics and repository activity.
+
+## GitHub Request Reliability
+
+The extension coordinates GitHub API requests across its features, with no more than four raw requests active at once. Safe temporary failures on GET requests may be retried up to three total attempts. Authentication and permission problems, missing repositories, rate limits, and cancelled requests are not treated as temporary retries.
+
+When GitHub reports a rate limit, the extension pauses requests for the available GitHub-provided reset or retry period. Background checks and new-version checks can try again after temporary failures or that quiet window. Saved refresh and check timestamps represent successful completion times, not when a request started.
+
+## Import from GitHub and Test Connection
+
+**Test Connection** checks the authenticated account once before checking the configured repositories. If authentication fails, it does not make repository requests. For each repository, it checks repository access first; if that is unavailable, traffic views, clones, and referrers are not requested and appear as **Not tested**. Repository checks use limited parallel work while keeping results in the configured repository order.
 
 ## New-Version Reminder
 
-The extension can show a new-version reminder when a newer version is available. The reminder appears in Quick Summary and Settings and opens the latest GitHub release page. Version 3.1.1 fixes a stale update-reminder display after upgrading.
+The extension can show a new-version reminder when a newer GitHub release is available. The reminder appears in Quick Summary and Settings and opens the latest GitHub release page.
 
 The new-version reminder is manual. It does not install updates and does not update the extension. It only opens the latest GitHub release so you can update manually.
 
@@ -208,4 +224,3 @@ Here is the Dashboard, in both Dark Mode and Light Mode (you can toggle Dark or 
 And here is the Quick Summary that lets you see the combined stats of all repos at a glance:
 
 <img width="372" height="630" alt="Quick Summary" src="https://github.com/user-attachments/assets/99c3dacb-4c7f-48cb-89ad-6edca0c35a86" />
-
