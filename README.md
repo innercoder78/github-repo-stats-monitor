@@ -123,7 +123,7 @@ The extension saves them internally as `owner/repo`.
 
 Repositories can also be imported from GitHub. **Import from GitHub** lists repositories that the token can access. Imported repositories are selected first, then added to the Settings repository list. They are not saved until **Save Settings** is clicked.
 
-Import follows GitHub's available next-page links, avoids unnecessary empty-page requests, removes duplicate repository names, and lists the returned repositories in sorted order. Import and **Test Connection** cannot run at the same time. If you change the token or repository list while either operation is in progress, the older result is ignored.
+Import follows GitHub's available next-page links, avoids unnecessary empty-page requests, removes duplicate repository names, and lists the returned repositories in sorted order. Import and **Test Connection** cannot run at the same time. Changing the token ignores older Import and Test Connection results. Changing, adding, removing, or reordering repositories ignores an older Test Connection result. Saving or resetting Settings ignores older results from either operation.
 
 You can configure up to 20 repositories. The order of repositories in Settings determines the order shown on the Dashboard. You can remove repositories, reorder them, and reset all locally stored extension data from Settings.
 
@@ -179,7 +179,7 @@ Removing a repository clears only the data associated with that repository. Chan
 
 The extension coordinates GitHub API requests across its features, with no more than four raw requests active at once. Safe temporary failures on GET requests may be retried up to three total attempts. Authentication and permission problems, missing repositories, rate limits, and cancelled requests are not treated as temporary retries.
 
-When GitHub reports a rate limit, the extension pauses requests for the available GitHub-provided reset or retry period. Background checks and new-version checks can try again after temporary failures or that quiet window. Saved refresh and check timestamps represent successful completion times, not when a request started.
+GitHub rate-limit responses can establish a quiet window using GitHub-provided retry or reset timing. Automatic background checks and new-version checks wait or retry after temporary failures or that quiet window without changing their normal recurring intervals. Saved refresh and check timestamps represent successful completion times, not when a request started.
 
 ## Import from GitHub and Test Connection
 
