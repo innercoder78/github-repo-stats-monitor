@@ -225,7 +225,6 @@ export async function runExclusiveUserVisibleGitHubRequest(source, requestTask) 
         lastManualRequestCompletedAt: completedAt,
         lastManualRequestCompletedBy: source,
       });
-      await saveQuickSummaryStatus({ manualRefreshAt: completedAt });
     }
     return { skipped: false, result };
   } finally {
@@ -295,22 +294,20 @@ export async function runExclusiveRepositoryRefresh(repository, requestTask) {
 
     if (latestRepositoryRefreshes[normalizedRepository]?.token === token) {
       delete latestRepositoryRefreshes[normalizedRepository];
+      const complete = result?.complete !== false;
       await saveRefreshCoordination({
         ...latestCoordination,
         repositoryRefreshes: latestRepositoryRefreshes,
-        completedRepositoryRefreshes: {
-          ...getRecentCompletedRepositoryRefreshes(latestCoordination),
-          [normalizedRepository]: {
-            repository: normalizedRepository,
-            source,
-            completedAt,
-          },
-        },
+        completedRepositoryRefreshes: complete
+          ? {
+              ...getRecentCompletedRepositoryRefreshes(latestCoordination),
+              [normalizedRepository]: { repository: normalizedRepository, source, completedAt },
+            }
+          : getRecentCompletedRepositoryRefreshes(latestCoordination),
         lastRepositoryRequestCompletedAt: completedAt,
         lastRepositoryRequestCompletedBy: source,
         lastRepositoryRequestCompletedRepository: normalizedRepository,
       });
-      await saveQuickSummaryStatus({ manualRefreshAt: completedAt });
     }
 
     return { skipped: false, result };
@@ -337,16 +334,12 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
     return { skipped: true, reason: 'completed-recently', source: coordination.lastCompletedBy || '' };
   }
 
-  if (manual && isFreshTimestamp(coordination.lastManualRequestCompletedAt)) {
-    return { skipped: true, reason: 'completed-recently', source: coordination.lastManualRequestCompletedBy || '' };
-  }
-
   if (isLockActive(coordination)) {
     const runningSource = coordination.running.source || '';
 
     if (manual) {
       await waitForRunningFullRefresh();
-      return { skipped: true, reason: 'completed-recently', source: runningSource };
+      return runExclusiveFullRefresh(source, refreshTask);
     }
 
     return { skipped: true, reason: 'running', source: runningSource };
@@ -371,18 +364,19 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   try {
     const result = await runTrackedGitHubActivity(source, refreshTask);
     const completedAt = new Date().toISOString();
+    const complete = result?.complete !== false;
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {
       await saveRefreshCoordination({
         ...latestCoordination,
         running: null,
-        lastCompletedAt: completedAt,
-        lastCompletedBy: source,
-        lastManualCompletedAt: manual ? completedAt : latestCoordination.lastManualCompletedAt || '',
+        lastCompletedAt: complete ? completedAt : latestCoordination.lastCompletedAt || '',
+        lastCompletedBy: complete ? source : latestCoordination.lastCompletedBy || '',
+        lastManualCompletedAt: manual && complete ? completedAt : latestCoordination.lastManualCompletedAt || '',
         lastManualRequestCompletedAt: manual ? completedAt : latestCoordination.lastManualRequestCompletedAt || '',
         lastManualRequestCompletedBy: manual ? source : latestCoordination.lastManualRequestCompletedBy || '',
       });
-      if (manual) {
+      if (manual && complete) {
         await saveQuickSummaryStatus({ manualRefreshAt: completedAt });
       }
     }
@@ -694,6 +688,10 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     });
   }
 
+  const complete = accountResult.refreshed
+    && results.length + skippedRepositories.length === repositories.length
+    && results.every(({ stats }) => !stats.error && !stats.trafficError && !stats.clonesError && !stats.referrersError);
+
   return {
     startedAt,
     fetchedAt: completedAt,
@@ -707,6 +705,7 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     accountStats: accountResult.accountStats,
     accountError: accountResult.error,
     pendingActivity,
+    complete,
   };
 }
 
@@ -737,6 +736,7 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
     : null;
 
   const savedLatestStats = await mergeLatestStats({ [repository]: result.stats }, { configuredOnly: true });
+  const complete = !result.stats.error && !result.stats.trafficError && !result.stats.clonesError && !result.stats.referrersError;
 
   return {
     startedAt,
@@ -745,5 +745,6 @@ export async function refreshRepositoryStatsCache(settings, currentLatestStats, 
     result,
     latestStats: savedLatestStats,
     pendingActivity,
+    complete,
   };
 }

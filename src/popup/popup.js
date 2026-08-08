@@ -1,6 +1,7 @@
 import {
   getAccountStats,
   getLatestStats,
+  getLastBackgroundCheckAt,
   getNotificationBaselines,
   getPendingActivity,
   getQuickSummaryStatus,
@@ -43,6 +44,7 @@ let currentPendingActivity = {
 };
 let currentNotificationBaselines = { account: {}, repositories: {}, initialized: false, updatedAt: '' };
 let currentQuickSummaryStatus = { manualRefreshAt: '' };
+let currentLastBackgroundCheckAt = '';
 let currentViewedBaselines = { account: {}, repositories: {}, updatedAt: '' };
 let currentVersionCheckStatus = null;
 
@@ -105,12 +107,12 @@ function formatCheckedAt(timestamp) {
   return formatDisplayTimestamp(timestamp, currentSettings.displayPreferences, 'compact') || 'Not yet';
 }
 
-function formatBackgroundCheckStatus(settings, baselines) {
+function formatBackgroundCheckStatus(settings, lastBackgroundCheckAt) {
   if (!settings.notifications?.backgroundChecksEnabled) {
     return 'Off';
   }
 
-  return formatCheckedAt(baselines.updatedAt);
+  return formatCheckedAt(lastBackgroundCheckAt);
 }
 
 function renderPopupStatusLines(lines) {
@@ -137,7 +139,7 @@ function renderUpdateCard() {
 function renderLastCheckedStatus() {
   renderPopupStatusLines([
     `Manual refresh: ${formatCheckedAt(currentQuickSummaryStatus.manualRefreshAt)}`,
-    `Background check: ${formatBackgroundCheckStatus(currentSettings, currentNotificationBaselines)}`,
+    `Background check: ${formatBackgroundCheckStatus(currentSettings, currentLastBackgroundCheckAt)}`,
   ]);
 }
 
@@ -422,6 +424,7 @@ async function renderSettingsSummary() {
       currentPendingActivity,
       currentNotificationBaselines,
       currentQuickSummaryStatus,
+      currentLastBackgroundCheckAt,
       currentViewedBaselines,
       currentVersionCheckStatus,
     ] = await Promise.all([
@@ -431,6 +434,7 @@ async function renderSettingsSummary() {
       getPendingActivity(),
       getNotificationBaselines(),
       getQuickSummaryStatus(),
+      getLastBackgroundCheckAt(),
       getViewedBaselines(),
       getVersionCheckStatus(),
     ]);
@@ -461,6 +465,7 @@ async function reloadSavedRefreshData() {
   ]);
   await claimQuickSummaryActivity();
   currentQuickSummaryStatus = await getQuickSummaryStatus();
+  currentLastBackgroundCheckAt = await getLastBackgroundCheckAt();
   renderStatsSummary(currentSettings, currentLatestStats);
   if (!renderSetupGuidanceStatus(currentSettings)) {
     renderLastCheckedStatus();

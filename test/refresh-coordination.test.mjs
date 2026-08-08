@@ -92,6 +92,7 @@ const {
   __refreshCoordinationTest,
 } = await import('../src/background.js');
 const { runExclusiveFullRefresh } = await import('../src/shared/refresh-stats.js');
+const api = await import('../src/shared/github-api.js');
 const { mergeLatestStats, mutateLatestStats, patchLatestStats, removeUnconfiguredLatestStats } = await import('../src/shared/storage.js');
 
 function resetState() {
@@ -470,6 +471,9 @@ globalThis.fetch = async (url) => {
     return { ok: true, headers: { get: () => null }, json: async () => ({ login: 'owner', followers: 2 }) };
   }
   fakeNow = RealDate.parse('2026-07-10T10:00:09.000Z');
+  if (value.includes('/traffic/views')) return { ok: true, headers: { get: () => null }, json: async () => ({ count: 10, uniques: 5, views: [] }) };
+  if (value.includes('/traffic/clones')) return { ok: true, headers: { get: () => null }, json: async () => ({ count: 4, uniques: 2, clones: [] }) };
+  if (value.includes('/traffic/popular/referrers')) return { ok: true, headers: { get: () => null }, json: async () => [] };
   return { ok: true, headers: { get: () => null }, json: async () => ({ stargazers_count: 3, forks_count: 0, subscribers_count: 0 }) };
 };
 onStorageSet = (values) => {
@@ -485,9 +489,9 @@ chrome.action.setBadgeText = originalSetBadgeText;
 chrome.notifications.create = originalNotificationCreate;
 globalThis.Date = RealDate;
 assert.equal(backgroundResult.skipped, false);
-assert.equal(storageData.accountStats.fetchedAt, '2026-07-10T10:00:05.000Z', 'automatic account timestamp uses account completion');
+assert.equal(storageData.accountStats.fetchedAt, '2026-07-10T10:00:09.000Z', 'automatic account timestamp uses request completion');
 assert.equal(storageData.latestStats['owner/repo'].fetchedAt, '2026-07-10T10:00:09.000Z', 'automatic repository timestamp uses metadata completion');
-assert.equal(storageData.notificationBaselines.account.updatedAt, '2026-07-10T10:00:05.000Z');
+assert.equal(storageData.notificationBaselines.account.updatedAt, '2026-07-10T10:00:09.000Z');
 assert.equal(storageData.notificationBaselines.repositories['owner/repo'].updatedAt, '2026-07-10T10:00:09.000Z');
 assert.equal(storageData.notificationBaselines.updatedAt, '2026-07-10T10:00:09.000Z', 'overall baselines updatedAt uses latest endpoint completion, not check start');
 assert.equal(storageData.lastBackgroundCheckAt, '2026-07-10T10:00:13.000Z', 'background completion is after baseline, pending, badge, and notification work');
@@ -508,6 +512,7 @@ function configureRefreshRegressionState() {
 
 function installRefreshEndpointMocks() {
   fetchCalls = [];
+  api.__resetGitHubRequestLimiterForTest();
   globalThis.fetch = async (url) => {
     const value = String(url);
     fetchCalls.push(value);
@@ -528,19 +533,26 @@ function assertAllTrafficEndpointsRequested(message) {
 resetState();
 configureRefreshRegressionState();
 installRefreshEndpointMocks();
-const metadataOnlyCheck = await __refreshCoordinationTest.runBackgroundCheck();
-assert.equal(metadataOnlyCheck.skipped, false);
-assert.equal(fetchCalls.some((url) => url.includes('/traffic/')), false, 'background check remains metadata-only');
-assert.equal(storageData.fullRefreshCoordination?.lastCompletedAt, undefined, 'background check does not establish full-refresh freshness');
+const fullBackgroundCheck = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(fullBackgroundCheck.skipped, false);
+assertAllTrafficEndpointsRequested('background full refresh requests traffic');
+assert.equal(fetchCalls.some((url) => url.endsWith('/user')), true, 'background full refresh requests the authenticated account');
+assert.equal(storageData.latestStats['owner/repo'].views, 10);
+assert.equal(storageData.latestStats['owner/repo'].clones, 4);
+assert.deepEqual(storageData.latestStats['owner/repo'].referrers, []);
+for (const timestampField of ['fetchedAt', 'trafficFetchedAt', 'clonesFetchedAt', 'referrersFetchedAt']) {
+  assert.ok(storageData.latestStats['owner/repo'][timestampField], `background full refresh saves ${timestampField}`);
+}
+assert.ok(storageData.fullRefreshCoordination?.lastCompletedAt, 'successful background check establishes full-refresh freshness');
 assert.equal(storageData.githubActivityStatus.lastFinishedSource, 'background', 'background requests retain GitHub activity tracking');
 fetchCalls = [];
 const manualAfterBackground = await __refreshCoordinationTest.executeFullRefresh('dashboard');
-assert.notEqual(manualAfterBackground.reason, 'completed-recently');
-assertAllTrafficEndpointsRequested('manual full refresh immediately after background check requests traffic');
+assert.equal(manualAfterBackground.reason, 'completed-recently');
+assert.equal(fetchCalls.length, 0, 'manual full refresh safely reuses a complete recent background refresh');
 const repeatedFullRefresh = await __refreshCoordinationTest.executeFullRefresh('quick-summary');
 assert.equal(repeatedFullRefresh.skipped, true, 'genuine full-refresh freshness is still reused');
 assert.equal(repeatedFullRefresh.reason, 'completed-recently');
-assert.equal(repeatedFullRefresh.source, 'dashboard');
+assert.equal(repeatedFullRefresh.source, 'background');
 
 resetState();
 configureRefreshRegressionState();
@@ -548,8 +560,8 @@ installRefreshEndpointMocks();
 await __refreshCoordinationTest.runBackgroundCheck();
 fetchCalls = [];
 const repositoryAfterBackground = await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
-assert.notEqual(repositoryAfterBackground.reason, 'completed-recently');
-assertAllTrafficEndpointsRequested('repository refresh immediately after background check requests traffic');
+assert.equal(repositoryAfterBackground.reason, 'completed-recently');
+assert.equal(fetchCalls.length, 0, 'repository refresh reuses a complete recent background refresh');
 
 resetState();
 configureRefreshRegressionState();
@@ -564,3 +576,64 @@ await __refreshCoordinationTest.finishRefreshOperation(activeBackground.operatio
 const manualAfterActiveBackground = await __refreshCoordinationTest.executeFullRefresh('dashboard');
 assert.notEqual(manualAfterActiveBackground.reason, 'completed-recently');
 assertAllTrafficEndpointsRequested('manual refresh runs as soon as active background operation finishes');
+
+resetState();
+configureRefreshRegressionState();
+const oldBackgroundCheckAt = '2026-01-01T00:00:00.000Z';
+const oldViewsAt = '2026-01-01T01:00:00.000Z';
+storageData.lastBackgroundCheckAt = oldBackgroundCheckAt;
+storageData.latestStats = {
+  'owner/repo': {
+    repository: 'owner/repo', stars: 1, forks: 1, subscribers: 1,
+    views: 8, uniqueVisitors: 4, trafficFetchedAt: oldViewsAt,
+    clones: 2, clonesFetchedAt: oldViewsAt,
+    referrers: [{ referrer: 'cached.example', count: 1, uniques: 1 }], referrersFetchedAt: oldViewsAt,
+  },
+};
+installRefreshEndpointMocks();
+const successfulFetch = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  if (String(url).includes('/traffic/views')) {
+    fetchCalls.push(String(url));
+    return { ok: false, status: 404, headers: { get: () => null }, json: async () => ({ message: 'views unavailable' }) };
+  }
+  return successfulFetch(url);
+};
+const partialBackground = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(partialBackground.complete, false, 'a failed required endpoint makes the automatic refresh partial');
+assert.equal(storageData.latestStats['owner/repo'].views, 8, 'partial background refresh preserves cached traffic');
+assert.equal(storageData.latestStats['owner/repo'].trafficFetchedAt, oldViewsAt, 'partial background refresh preserves the successful traffic timestamp');
+assert.ok(storageData.latestStats['owner/repo'].trafficError, 'partial background refresh retains the endpoint error');
+assert.notEqual(storageData.latestStats['owner/repo'].clonesFetchedAt, oldViewsAt, 'other successful endpoint timestamps advance');
+assert.equal(storageData.lastBackgroundCheckAt, oldBackgroundCheckAt, 'partial background refresh does not advance the successful background timestamp');
+assert.equal(storageData.fullRefreshCoordination.lastCompletedAt || '', '', 'partial background refresh does not establish reusable freshness');
+
+installRefreshEndpointMocks();
+const retryAfterPartialBackground = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.equal(retryAfterPartialBackground.skipped, undefined, 'manual refresh immediately retries after partial background work');
+assertAllTrafficEndpointsRequested('manual retry after partial background refresh');
+assert.equal(storageData.lastBackgroundCheckAt, oldBackgroundCheckAt, 'manual refresh does not advance the dedicated background timestamp');
+
+resetState();
+configureRefreshRegressionState();
+storageData.quickSummaryStatus = { manualRefreshAt: '2025-12-31T00:00:00.000Z' };
+installRefreshEndpointMocks();
+const successfulManualFetch = globalThis.fetch;
+globalThis.fetch = async (url) => String(url).includes('/traffic/clones')
+  ? (fetchCalls.push(String(url)), { ok: false, status: 404, headers: { get: () => null }, json: async () => ({ message: 'clones unavailable' }) })
+  : successfulManualFetch(url);
+const partialManual = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.equal(partialManual.complete, false);
+assert.equal(storageData.quickSummaryStatus.manualRefreshAt, '2025-12-31T00:00:00.000Z', 'partial manual refresh preserves the last successful full manual timestamp');
+assert.equal(storageData.fullRefreshCoordination.lastCompletedAt || '', '', 'partial manual refresh is not reusable');
+installRefreshEndpointMocks();
+const successfulManualRetry = await __refreshCoordinationTest.executeFullRefresh('quick-summary');
+assert.equal(successfulManualRetry.complete, true, 'manual retry executes immediately after a partial full refresh');
+assert.notEqual(storageData.quickSummaryStatus.manualRefreshAt, '2025-12-31T00:00:00.000Z', 'successful full manual refresh advances its timestamp');
+
+const manualTimestamp = storageData.quickSummaryStatus.manualRefreshAt;
+storageData.fullRefreshCoordination.lastCompletedAt = '';
+storageData.fullRefreshCoordination.lastManualRequestCompletedAt = '';
+installRefreshEndpointMocks();
+await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
+assert.equal(storageData.quickSummaryStatus.manualRefreshAt, manualTimestamp, 'per-repository refresh does not advance the global manual timestamp');
