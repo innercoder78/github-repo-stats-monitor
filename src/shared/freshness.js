@@ -45,3 +45,14 @@ export function getAggregateFreshness(repositories, latestStats, category) {
     total: repositories.length,
   };
 }
+
+export function getConservativeFreshness(repositories, latestStats, categories, additionalTimestamps = []) {
+  const timestamps = categories
+    .map((category) => getAggregateFreshness(repositories, latestStats, category).timestamp)
+    .concat(additionalTimestamps)
+    .filter(hasTimestamp);
+
+  return timestamps.length > 0
+    ? timestamps.reduce((oldest, timestamp) => (Date.parse(timestamp) < Date.parse(oldest) ? timestamp : oldest))
+    : '';
+}

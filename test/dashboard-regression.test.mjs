@@ -6,8 +6,8 @@ const messages = [];
 const storageData = {
   githubToken: 'token',
   repositories: ['owner/repo'],
-  latestStats: { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 2, subscribers: 3, views: 0, uniqueVisitors: 0, clones: 0, referrers: [], fetchedAt: '2026-08-08T04:36:00.000Z', trafficFetchedAt: '2026-07-25T04:31:00.000Z', clonesFetchedAt: '2026-08-01T03:00:00.000Z', referrersFetchedAt: '2026-07-20T02:00:00.000Z', trafficError: 'new traffic request failed', clonesError: 'new clone request failed', referrersError: 'new referrers request failed' } },
-  accountStats: { login: 'me', followers: 5, fetchedAt: '2026-01-01T00:00:00.000Z' },
+  latestStats: { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 2, subscribers: 3, views: 0, uniqueVisitors: 0, clones: 0, referrers: [], fetchedAt: '2026-08-08T14:59:00.000Z', trafficFetchedAt: '2026-08-08T14:45:00.000Z', clonesFetchedAt: '2026-08-08T14:45:00.000Z', referrersFetchedAt: '2026-08-08T14:45:00.000Z', trafficError: 'new traffic request failed', clonesError: 'new clone request failed', referrersError: 'new referrers request failed' } },
+  accountStats: { login: 'me', followers: 5, fetchedAt: '2026-08-08T14:59:00.000Z' },
   pendingActivity: { quickSummary: { queued: { account: {}, repositories: {}, updatedAt: '' }, inFlight: null }, dashboard: { queued: { account: {}, repositories: {}, updatedAt: '' }, inFlight: null }, badgeActivity: { account: false, repositories: {}, updatedAt: '' }, updatedAt: '' },
   viewedBaselines: { quickSummary: { account: {}, repositories: {}, updatedAt: '' }, dashboard: { account: {}, repositories: {}, updatedAt: '' }, updatedAt: '' },
 };
@@ -104,16 +104,14 @@ function descendantText(node) {
 }
 
 const cardText = descendantText(element('repo-grid'));
-assert.match(cardText, /Metadata: 08\/08\/2026 4:36 AM/, 'repository card visibly shows metadata freshness');
-assert.match(cardText, /Views: 07\/25\/2026 4:31 AM/, 'repository card preserves older Views freshness');
-assert.match(cardText, /Clones: 08\/01\/2026 3:00 AM/, 'repository card preserves distinct Clones freshness');
-assert.match(cardText, /Referrers: 07\/20\/2026 2:00 AM/, 'repository card preserves Referrers freshness');
+assert.match(cardText, /Data as of: 08\/08\/2026 2:45 PM/, 'repository card shows one timestamp using its oldest successful category');
+assert.doesNotMatch(cardText, /Metadata:|Views:|Clones:|Referrers:|2:59 PM/, 'repository card does not visibly show category freshness details or newer metadata time');
 assert.match(cardText, /Traffic data error: new traffic request failed/, 'cached traffic warning remains visible');
 assert.match(cardText, /Clone data error: new clone request failed/, 'cached clone warning remains visible');
 assert.match(cardText, /Showing last saved referring sites because the latest referrers request failed/, 'cached Referrers warning remains visible');
 assert.equal(descendantText(element('total-views')), '0', 'successful zero Views is rendered as cached data');
 assert.equal(descendantText(element('total-clones')), '0', 'successful zero Clones is rendered as cached data');
-assert.match(element('summary-freshness').textContent, /Views: 07\/25\/2026 4:31 AM/, 'summary uses traffic freshness rather than newer metadata');
+assert.equal(element('summary-freshness').textContent, 'Data as of: 08/08/2026 2:45 PM', 'summary does not advance past older traffic when Followers and metadata are newer');
 
 const initialClaimCount = messages.filter((message) => message.action === 'activity.claim').length;
 await element('refresh-now').listeners.click();

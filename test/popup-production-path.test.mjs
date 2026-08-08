@@ -100,13 +100,13 @@ function resetStorage() {
 }
 
 function repoStats(stars) {
-  return { repository: 'owner/repo', stars, forks: 7, subscribers: 11, views: 13, uniqueVisitors: 5, clones: 17, fetchedAt: '2026-07-11T12:00:00.000Z', trafficFetchedAt: '2026-07-01T08:00:00.000Z', clonesFetchedAt: '2026-07-05T09:30:00.000Z' };
+  return { repository: 'owner/repo', stars, forks: 7, subscribers: 11, views: 13, uniqueVisitors: 5, clones: 17, fetchedAt: '2026-08-08T14:45:00.000Z', trafficFetchedAt: '2026-08-08T14:45:00.000Z', clonesFetchedAt: '2026-08-08T14:45:00.000Z' };
 }
 
 function successfulResult(overrides = {}) {
   const latestStats = { 'owner/repo': repoStats(42) };
-  const accountStats = { login: 'me', followers: 99, fetchedAt: '2026-07-11T12:00:00.000Z' };
-  return { latestStats, accountStats, fetchedAt: '2026-07-11T12:00:00.000Z', accountFetchedAt: '2026-07-11T12:00:00.000Z', accountAttempted: true, accountRefreshed: true, results: [{ repository: 'owner/repo', stats: latestStats['owner/repo'] }], refreshedRepositoryCount: 1, skippedRepositories: [], pendingActivity: defaultPendingActivity(), ...overrides };
+  const accountStats = { login: 'me', followers: 99, fetchedAt: '2026-08-08T14:59:00.000Z' };
+  return { latestStats, accountStats, fetchedAt: '2026-08-08T14:59:00.000Z', accountFetchedAt: '2026-08-08T14:59:00.000Z', accountAttempted: true, accountRefreshed: true, results: [{ repository: 'owner/repo', stats: latestStats['owner/repo'] }], refreshedRepositoryCount: 1, skippedRepositories: [], pendingActivity: defaultPendingActivity(), ...overrides };
 }
 
 function queueRefresh(response) { refreshResponses.push(response); }
@@ -143,7 +143,7 @@ globalThis.chrome = {
         if (next?.result) {
           storageData.latestStats = clone(next.result.latestStats || storageData.latestStats);
           storageData.accountStats = clone(next.result.accountStats || storageData.accountStats);
-          storageData.quickSummaryStatus = { manualRefreshAt: next.result.fetchedAt || '2026-07-11T12:00:00.000Z' };
+          storageData.quickSummaryStatus = { manualRefreshAt: next.result.fetchedAt || '2026-08-08T14:59:00.000Z' };
           storageData.pendingActivity = clone(next.result.pendingActivity || storageData.pendingActivity);
         }
         return Promise.resolve(next);
@@ -172,15 +172,13 @@ assert.equal(element('account-followers').textContent, '99', 'refreshed account 
 assert.ok(messages.some((message) => message.action === 'refreshStats.full' && message.source === 'quick-summary'), 'refresh button sends full refresh request');
 assert.equal(
   statusText(),
-  'Manual refresh: 07/11 12:00\nBackground check: 06/01 10:00',
+  'Manual refresh: 08/08 14:59\nBackground check: 06/01 10:00',
   'ordinary success reloads manual-refresh status and shows background-check status line',
 );
 assert.equal(element('refresh-stats').disabled, false, 'refresh button restored after success');
 assert.equal(element('refresh-stats').textContent, 'Refresh', 'refresh button label restored after success');
-assert.match(element('last-updated').textContent, /Followers: 2026\/07\/11 12:00/, 'Quick Summary uses the account Followers timestamp');
-assert.match(element('last-updated').textContent, /Metadata: 2026\/07\/11 12:00 · 1\/2 repositories/, 'Quick Summary shows metadata coverage');
-assert.match(element('last-updated').textContent, /Views: 2026\/07\/01 08:00 · 1\/2 repositories/, 'Quick Summary keeps older traffic freshness after metadata update');
-assert.match(element('last-updated').textContent, /Clones: 2026\/07\/05 09:30 · 1\/2 repositories/, 'Quick Summary shows independent clone freshness and partial coverage');
+assert.equal(element('last-updated').textContent, 'Data as of: 2026/08/08 14:45', 'Quick Summary shows one timestamp using the oldest contributor');
+assert.doesNotMatch(element('last-updated').textContent, /Followers:|Metadata:|Views:|Clones:|repositories/, 'Quick Summary omits category freshness and coverage details');
 
 queueRefresh({ ok: true, result: successfulResult({ results: [], refreshedRepositoryCount: 0, skippedRepositories: ['owner/repo'] }) });
 await clickRefresh();

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getAggregateFreshness, hasFreshnessCategoryData } from '../src/shared/freshness.js';
+import { getAggregateFreshness, getConservativeFreshness, hasFreshnessCategoryData } from '../src/shared/freshness.js';
 
 const repositories = ['one/repo', 'two/repo', 'three/repo'];
 const latestStats = {
@@ -39,5 +39,17 @@ assert.deepEqual(getAggregateFreshness(repositories, latestStats, 'referrers'), 
 assert.deepEqual(getAggregateFreshness(repositories, {}, 'views'), {
   timestamp: '', contributing: 0, total: 3,
 }, 'missing category has no borrowed timestamp');
+
+assert.equal(
+  getConservativeFreshness(['one/repo'], latestStats, ['metadata', 'views', 'clones', 'referrers']),
+  '2026-07-20T02:00:00.000Z',
+  'repository freshness uses the oldest valid successful category, including empty Referrers and zero traffic',
+);
+assert.equal(
+  getConservativeFreshness(repositories, latestStats, ['metadata', 'views', 'clones'], ['2026-08-08T14:59:00.000Z']),
+  '2026-07-15T00:00:00.000Z',
+  'summary freshness does not borrow a newer metadata or Followers timestamp when traffic is older',
+);
+assert.equal(getConservativeFreshness(repositories, {}, ['metadata', 'views', 'clones']), '', 'missing saved data has no general timestamp');
 
 console.log('freshness tests passed');
