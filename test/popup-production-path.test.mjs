@@ -85,7 +85,7 @@ function defaultPendingActivity() {
 function resetStorage() {
   storageData = {
     githubToken: 'token',
-    repositories: ['owner/repo'],
+    repositories: ['owner/repo', 'owner/missing'],
     appearance: 'light',
     notifications: { backgroundChecksEnabled: true },
     displayPreferences: { dateFormat: 'yyyy/mm/dd', timeFormat: '24-hour' },
@@ -100,7 +100,7 @@ function resetStorage() {
 }
 
 function repoStats(stars) {
-  return { repository: 'owner/repo', stars, forks: 7, subscribers: 11, views: 13, uniqueVisitors: 5, clones: 17, fetchedAt: '2026-07-11T12:00:00.000Z', trafficFetchedAt: '2026-07-11T12:00:00.000Z', clonesFetchedAt: '2026-07-11T12:00:00.000Z' };
+  return { repository: 'owner/repo', stars, forks: 7, subscribers: 11, views: 13, uniqueVisitors: 5, clones: 17, fetchedAt: '2026-07-11T12:00:00.000Z', trafficFetchedAt: '2026-07-01T08:00:00.000Z', clonesFetchedAt: '2026-07-05T09:30:00.000Z' };
 }
 
 function successfulResult(overrides = {}) {
@@ -177,6 +177,10 @@ assert.equal(
 );
 assert.equal(element('refresh-stats').disabled, false, 'refresh button restored after success');
 assert.equal(element('refresh-stats').textContent, 'Refresh', 'refresh button label restored after success');
+assert.match(element('last-updated').textContent, /Followers: 2026\/07\/11 12:00/, 'Quick Summary uses the account Followers timestamp');
+assert.match(element('last-updated').textContent, /Metadata: 2026\/07\/11 12:00 · 1\/2 repositories/, 'Quick Summary shows metadata coverage');
+assert.match(element('last-updated').textContent, /Views: 2026\/07\/01 08:00 · 1\/2 repositories/, 'Quick Summary keeps older traffic freshness after metadata update');
+assert.match(element('last-updated').textContent, /Clones: 2026\/07\/05 09:30 · 1\/2 repositories/, 'Quick Summary shows independent clone freshness and partial coverage');
 
 queueRefresh({ ok: true, result: successfulResult({ results: [], refreshedRepositoryCount: 0, skippedRepositories: ['owner/repo'] }) });
 await clickRefresh();
