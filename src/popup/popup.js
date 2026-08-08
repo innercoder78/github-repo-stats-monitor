@@ -14,7 +14,7 @@ import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
 import { getFullRefreshStatus } from '../shared/refresh-status.js';
-import { getAggregateFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
+import { getConservativeFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -156,22 +156,16 @@ function renderSetupGuidanceStatus(settings) {
 }
 
 function formatLastUpdated(latestStats, repositories) {
-  const repositoryFreshness = [
-    ['Metadata', 'metadata'],
-    ['Views', 'views'],
-    ['Clones', 'clones'],
-  ].map(([label, category]) => {
-    const freshness = getAggregateFreshness(repositories, latestStats, category);
-    const time = freshness.timestamp
-      ? formatDisplayTimestamp(freshness.timestamp, currentSettings.displayPreferences, 'full')
-      : 'Not refreshed yet';
-    const coverage = freshness.contributing < freshness.total ? ` · ${freshness.contributing}/${freshness.total} repositories` : '';
-    return `${label}: ${time}${coverage}`;
-  });
-  const accountTime = hasFetchedAccountStats(currentAccountStats)
-    ? formatDisplayTimestamp(currentAccountStats.fetchedAt, currentSettings.displayPreferences, 'full')
+  const timestamp = getConservativeFreshness(
+    repositories,
+    latestStats,
+    ['metadata', 'views', 'clones'],
+    hasFetchedAccountStats(currentAccountStats) ? [currentAccountStats.fetchedAt] : [],
+  );
+  const time = timestamp
+    ? formatDisplayTimestamp(timestamp, currentSettings.displayPreferences, 'full')
     : 'Not refreshed yet';
-  return [`Followers: ${accountTime}`, ...repositoryFreshness].join('\n');
+  return `Data as of: ${time}`;
 }
 
 function setRefreshButtonState() {

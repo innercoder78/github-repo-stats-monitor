@@ -6,7 +6,7 @@ import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 import { getFullRefreshStatus } from '../shared/refresh-status.js';
-import { getAggregateFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
+import { getConservativeFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -120,7 +120,7 @@ function formatSavedDataStatus() {
   if (!hasSavedData) {
     return 'Showing saved data. No saved refresh has completed yet. Click Refresh to update.';
   }
-  return 'Showing saved data. Freshness is shown by category on each card. Click Refresh to update.';
+  return 'Showing saved data. Click Refresh to update.';
 }
 
 function formatFetchedSummary(stats) {
@@ -134,7 +134,11 @@ function formatFetchedSummary(stats) {
     ['Clones', clonesFetchedAt],
     ['Referrers', referrersFetchedAt],
   ].map(([label, date]) => `${label}: ${date ? formatCompactRefreshTime(date) : 'Not refreshed yet'}`);
-  return { visible: parts.join(' · '), detailed: parts.join('. ') };
+  const timestamp = getConservativeFreshness(['repository'], { repository: stats }, ['metadata', 'views', 'clones', 'referrers']);
+  return {
+    visible: `Data as of: ${timestamp ? formatCompactRefreshTime(timestamp) : 'Not refreshed yet'}`,
+    detailed: parts.join('. '),
+  };
 }
 
 function setStatus(message, type = '') {
@@ -198,13 +202,6 @@ function hasCachedClones(stats) {
 
 function hasCachedReferrers(stats) {
   return hasFreshnessCategoryData(stats, 'referrers');
-}
-
-function formatAggregateFreshness(label, category) {
-  const freshness = getAggregateFreshness(currentSettings.repositories, currentLatestStats, category);
-  const time = freshness.timestamp ? formatRefreshTime(freshness.timestamp) : 'Not refreshed yet';
-  const coverage = freshness.contributing < freshness.total ? ` · ${freshness.contributing}/${freshness.total} repositories` : '';
-  return `${label}: ${time}${coverage}`;
 }
 
 function createMetric(label, value = '—', iconName = '', activityDelta = null) {
@@ -524,7 +521,7 @@ function createRepositoryIdentity(repository, stats) {
   fetched.className = 'repo-fetched-line';
   const fetchedSummary = formatFetchedSummary(stats);
   fetched.title = fetchedSummary.detailed;
-  fetched.setAttribute('aria-label', fetchedSummary.detailed);
+  fetched.setAttribute('aria-label', fetchedSummary.visible);
   const dot = document.createElement('span');
   dot.className = 'repo-fetched-dot';
   dot.setAttribute('aria-hidden', 'true');
@@ -644,12 +641,13 @@ function renderSummary() {
   setSummaryValue(summaryValues.watchers, totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—', summaryDeltas.watchers);
   setSummaryValue(summaryValues.views, totals.trafficCount > 0 ? formatNumber(totals.views) : '—');
   setSummaryValue(summaryValues.clones, totals.clonesCount > 0 ? formatNumber(totals.clones) : '—');
-  summaryFreshness.textContent = [
-    `Account Followers: ${hasFetchedAccountStats(currentAccountStats) ? formatRefreshTime(currentAccountStats.fetchedAt) : 'Not refreshed yet'}`,
-    formatAggregateFreshness('Metadata', 'metadata'),
-    formatAggregateFreshness('Views', 'views'),
-    formatAggregateFreshness('Clones', 'clones'),
-  ].join(' · ');
+  const summaryTimestamp = getConservativeFreshness(
+    currentSettings.repositories,
+    currentLatestStats,
+    ['metadata', 'views', 'clones'],
+    hasFetchedAccountStats(currentAccountStats) ? [currentAccountStats.fetchedAt] : [],
+  );
+  summaryFreshness.textContent = `Data as of: ${summaryTimestamp ? formatRefreshTime(summaryTimestamp) : 'Not refreshed yet'}`;
 
   const accountMetric = summaryValues.accountFollowers.closest('.metric');
   accountMetric?.classList.remove('activity-highlight');
