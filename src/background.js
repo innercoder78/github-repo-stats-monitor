@@ -577,6 +577,7 @@ export const __backgroundGitHubMessageTest = {
 export const __refreshCoordinationTest = {
   beginRefreshOperation,
   finishRefreshOperation,
+  executeFullRefresh,
   executeRepositoryRefresh,
   runBackgroundCheck,
   scheduleBackgroundCheckAlarm,
@@ -1194,12 +1195,8 @@ async function runBackgroundCheck() {
     return { skipped: true, reason: 'github-quiet-window', retryAfterMs: githubQuietRemainingMs };
   }
 
-  const coordinatedCheck = await runExclusiveFullRefresh('background', runBackgroundCheckNow);
-  if (coordinatedCheck.skipped) {
-    return { skipped: true, reason: coordinatedCheck.reason || 'running' };
-  }
-
-  return { skipped: false, fetchedAt: coordinatedCheck.result?.fetchedAt || '' };
+  const result = await runTrackedGitHubActivity('background', runBackgroundCheckNow);
+  return { skipped: false, fetchedAt: result?.fetchedAt || '' };
 }
 
 async function runBackgroundCheckNow() {
