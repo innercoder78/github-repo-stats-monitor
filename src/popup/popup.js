@@ -14,6 +14,7 @@ import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
 import { getFullRefreshStatus } from '../shared/refresh-status.js';
+import { getAggregateFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -89,20 +90,15 @@ function formatRefreshProgressMessage(progress) {
 }
 
 function hasCachedMetadata(stats) {
-  return Boolean(stats?.fetchedAt)
-    && Number.isFinite(stats.stars)
-    && Number.isFinite(stats.forks)
-    && Number.isFinite(stats.subscribers);
+  return hasFreshnessCategoryData(stats, 'metadata');
 }
 
 function hasCachedTraffic(stats) {
-  return Boolean(stats?.trafficFetchedAt)
-    && Number.isFinite(stats.views)
-    && Number.isFinite(stats.uniqueVisitors);
+  return hasFreshnessCategoryData(stats, 'views');
 }
 
 function hasCachedClones(stats) {
-  return Boolean(stats?.clonesFetchedAt) && Number.isFinite(stats.clones);
+  return hasFreshnessCategoryData(stats, 'clones');
 }
 
 function formatCheckedAt(timestamp) {
@@ -160,23 +156,22 @@ function renderSetupGuidanceStatus(settings) {
 }
 
 function formatLastUpdated(latestStats, repositories) {
-  const timestamps = repositories
-    .flatMap((repository) => {
-      const stats = latestStats[repository];
-      return [
-        hasCachedMetadata(stats) ? stats.fetchedAt : '',
-        hasCachedTraffic(stats) ? stats.trafficFetchedAt : '',
-        hasCachedClones(stats) ? stats.clonesFetchedAt : '',
-      ];
-    })
-    .filter(Boolean)
-    .sort();
-
-  if (timestamps.length === 0) {
-    return 'Last updated: Not refreshed yet';
-  }
-
-  return `Last updated: ${formatDisplayTimestamp(timestamps[timestamps.length - 1], currentSettings.displayPreferences, 'full')}`;
+  const repositoryFreshness = [
+    ['Metadata', 'metadata'],
+    ['Views', 'views'],
+    ['Clones', 'clones'],
+  ].map(([label, category]) => {
+    const freshness = getAggregateFreshness(repositories, latestStats, category);
+    const time = freshness.timestamp
+      ? formatDisplayTimestamp(freshness.timestamp, currentSettings.displayPreferences, 'full')
+      : 'Not refreshed yet';
+    const coverage = freshness.contributing < freshness.total ? ` · ${freshness.contributing}/${freshness.total} repositories` : '';
+    return `${label}: ${time}${coverage}`;
+  });
+  const accountTime = hasFetchedAccountStats(currentAccountStats)
+    ? formatDisplayTimestamp(currentAccountStats.fetchedAt, currentSettings.displayPreferences, 'full')
+    : 'Not refreshed yet';
+  return [`Followers: ${accountTime}`, ...repositoryFreshness].join('\n');
 }
 
 function setRefreshButtonState() {

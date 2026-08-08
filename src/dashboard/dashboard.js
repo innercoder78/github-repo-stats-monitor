@@ -6,6 +6,7 @@ import { openQuickSummary } from '../shared/quick-summary.js';
 import { applyAppearance, applySavedAppearance } from '../shared/appearance.js';
 import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/display-format.js';
 import { getFullRefreshStatus } from '../shared/refresh-status.js';
+import { getAggregateFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
 
 const repoGrid = document.getElementById('repo-grid');
 const emptyState = document.getElementById('empty-state');
@@ -17,6 +18,7 @@ const refreshButton = document.getElementById('refresh-now');
 const openQuickSummaryButton = document.getElementById('open-quick-summary');
 const closeDashboardButton = document.getElementById('close-dashboard');
 const quickSummaryMessage = document.getElementById('quick-summary-message');
+const summaryFreshness = document.getElementById('summary-freshness');
 const summaryValues = {
   views: document.getElementById('total-views'),
   stars: document.getElementById('total-stars'),
@@ -110,54 +112,29 @@ function formatCompactRefreshTime(date) {
   return formatDisplayTimestamp(date, currentSettings.displayPreferences, 'full');
 }
 
-function getLatestDashboardRefreshDate() {
-  const candidates = [
-    currentAccountStats?.fetchedAt,
-    ...Object.values(currentLatestStats || {}).flatMap((stats) => [
-      stats?.fetchedAt,
-      stats?.trafficFetchedAt,
-      stats?.clonesFetchedAt,
-      stats?.referrersFetchedAt,
-    ]),
-  ]
-    .map(getValidDate)
-    .filter(Boolean);
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  return candidates.reduce((latest, date) => (date > latest ? date : latest), candidates[0]);
-}
-
 function formatSavedDataStatus() {
-  const latestRefreshDate = getLatestDashboardRefreshDate();
+  const hasSavedData = Boolean(getValidDate(currentAccountStats?.fetchedAt))
+    || Object.values(currentLatestStats || {}).some((stats) => ['metadata', 'views', 'clones', 'referrers']
+      .some((category) => hasFreshnessCategoryData(stats, category)));
 
-  if (!latestRefreshDate) {
+  if (!hasSavedData) {
     return 'Showing saved data. No saved refresh has completed yet. Click Refresh to update.';
   }
-
-  return `Showing saved data. Last refreshed: ${formatRefreshTime(latestRefreshDate)}. Click Refresh to update.`;
+  return 'Showing saved data. Freshness is shown by category on each card. Click Refresh to update.';
 }
 
 function formatFetchedSummary(stats) {
-  const metadataFetchedAt = getValidDate(stats?.fetchedAt);
-  const trafficFetchedAt = getValidDate(stats?.trafficFetchedAt);
-  const clonesFetchedAt = getValidDate(stats?.clonesFetchedAt);
-  const referrersFetchedAt = getValidDate(stats?.referrersFetchedAt);
-  const fetchedDates = [metadataFetchedAt, trafficFetchedAt, clonesFetchedAt, referrersFetchedAt].filter(Boolean);
-  const latestFetchedAt = fetchedDates.length > 0
-    ? fetchedDates.reduce((latest, date) => (date > latest ? date : latest), fetchedDates[0])
-    : null;
-
-  const metadataTime = metadataFetchedAt ? formatRefreshTime(metadataFetchedAt) : '—';
-  const trafficTime = trafficFetchedAt ? formatRefreshTime(trafficFetchedAt) : '—';
-  const clonesTime = clonesFetchedAt ? formatRefreshTime(clonesFetchedAt) : '—';
-  const referrersTime = referrersFetchedAt ? formatRefreshTime(referrersFetchedAt) : '—';
-  const detailed = `Metadata fetched: ${metadataTime} · Traffic fetched: ${trafficTime} · Clones fetched: ${clonesTime} · Referrers fetched: ${referrersTime}`;
-  const visible = latestFetchedAt ? `Data from ${formatCompactRefreshTime(latestFetchedAt)}` : 'Data from —';
-
-  return { visible, detailed };
+  const metadataFetchedAt = hasFreshnessCategoryData(stats, 'metadata') ? getValidDate(stats.fetchedAt) : null;
+  const trafficFetchedAt = hasFreshnessCategoryData(stats, 'views') ? getValidDate(stats.trafficFetchedAt) : null;
+  const clonesFetchedAt = hasFreshnessCategoryData(stats, 'clones') ? getValidDate(stats.clonesFetchedAt) : null;
+  const referrersFetchedAt = hasFreshnessCategoryData(stats, 'referrers') ? getValidDate(stats.referrersFetchedAt) : null;
+  const parts = [
+    ['Metadata', metadataFetchedAt],
+    ['Views', trafficFetchedAt],
+    ['Clones', clonesFetchedAt],
+    ['Referrers', referrersFetchedAt],
+  ].map(([label, date]) => `${label}: ${date ? formatCompactRefreshTime(date) : 'Not refreshed yet'}`);
+  return { visible: parts.join(' · '), detailed: parts.join('. ') };
 }
 
 function setStatus(message, type = '') {
@@ -208,24 +185,26 @@ function hideNotice() {
 }
 
 function hasCachedMetadata(stats) {
-  return Boolean(stats?.fetchedAt)
-    && Number.isFinite(stats.stars)
-    && Number.isFinite(stats.forks)
-    && Number.isFinite(stats.subscribers);
+  return hasFreshnessCategoryData(stats, 'metadata');
 }
 
 function hasCachedTraffic(stats) {
-  return Boolean(stats?.trafficFetchedAt)
-    && Number.isFinite(stats.views)
-    && Number.isFinite(stats.uniqueVisitors);
+  return hasFreshnessCategoryData(stats, 'views');
 }
 
 function hasCachedClones(stats) {
-  return Boolean(stats?.clonesFetchedAt) && Number.isFinite(stats.clones);
+  return hasFreshnessCategoryData(stats, 'clones');
 }
 
 function hasCachedReferrers(stats) {
-  return Boolean(stats?.referrersFetchedAt) && Array.isArray(stats.referrers);
+  return hasFreshnessCategoryData(stats, 'referrers');
+}
+
+function formatAggregateFreshness(label, category) {
+  const freshness = getAggregateFreshness(currentSettings.repositories, currentLatestStats, category);
+  const time = freshness.timestamp ? formatRefreshTime(freshness.timestamp) : 'Not refreshed yet';
+  const coverage = freshness.contributing < freshness.total ? ` · ${freshness.contributing}/${freshness.total} repositories` : '';
+  return `${label}: ${time}${coverage}`;
 }
 
 function createMetric(label, value = '—', iconName = '', activityDelta = null) {
@@ -665,6 +644,12 @@ function renderSummary() {
   setSummaryValue(summaryValues.watchers, totals.metadataCount > 0 ? formatNumber(totals.watchers) : '—', summaryDeltas.watchers);
   setSummaryValue(summaryValues.views, totals.trafficCount > 0 ? formatNumber(totals.views) : '—');
   setSummaryValue(summaryValues.clones, totals.clonesCount > 0 ? formatNumber(totals.clones) : '—');
+  summaryFreshness.textContent = [
+    `Account Followers: ${hasFetchedAccountStats(currentAccountStats) ? formatRefreshTime(currentAccountStats.fetchedAt) : 'Not refreshed yet'}`,
+    formatAggregateFreshness('Metadata', 'metadata'),
+    formatAggregateFreshness('Views', 'views'),
+    formatAggregateFreshness('Clones', 'clones'),
+  ].join(' · ');
 
   const accountMetric = summaryValues.accountFollowers.closest('.metric');
   accountMetric?.classList.remove('activity-highlight');
