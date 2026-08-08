@@ -492,3 +492,75 @@ assert.equal(storageData.notificationBaselines.repositories['owner/repo'].update
 assert.equal(storageData.notificationBaselines.updatedAt, '2026-07-10T10:00:09.000Z', 'overall baselines updatedAt uses latest endpoint completion, not check start');
 assert.equal(storageData.lastBackgroundCheckAt, '2026-07-10T10:00:13.000Z', 'background completion is after baseline, pending, badge, and notification work');
 assert.equal(backgroundResult.fetchedAt, storageData.lastBackgroundCheckAt, 'returned background fetchedAt equals final completion timestamp');
+
+function configureRefreshRegressionState() {
+  storageData.githubToken = 'token';
+  storageData.repositories = ['owner/repo'];
+  storageData.notifications = {
+    backgroundChecksEnabled: true,
+    systemNotificationsEnabled: false,
+    badgeEnabled: false,
+    checkIntervalMinutes: 30,
+    trackedStats: { stars: true, forks: true, repoWatchers: true, accountFollowers: true },
+  };
+  storageData.notificationBaselines = { initialized: false, account: {}, repositories: {}, updatedAt: '' };
+}
+
+function installRefreshEndpointMocks() {
+  fetchCalls = [];
+  globalThis.fetch = async (url) => {
+    const value = String(url);
+    fetchCalls.push(value);
+    if (value.endsWith('/user')) return { ok: true, headers: { get: () => null }, json: async () => ({ login: 'owner', followers: 2 }) };
+    if (value.includes('/traffic/views')) return { ok: true, headers: { get: () => null }, json: async () => ({ count: 10, uniques: 5, views: [] }) };
+    if (value.includes('/traffic/clones')) return { ok: true, headers: { get: () => null }, json: async () => ({ count: 4, uniques: 2, clones: [] }) };
+    if (value.includes('/traffic/popular/referrers')) return { ok: true, headers: { get: () => null }, json: async () => ([]) };
+    return { ok: true, headers: { get: () => null }, json: async () => ({ stargazers_count: 3, forks_count: 1, subscribers_count: 2 }) };
+  };
+}
+
+function assertAllTrafficEndpointsRequested(message) {
+  assert.equal(fetchCalls.some((url) => url.includes('/traffic/views')), true, `${message}: views`);
+  assert.equal(fetchCalls.some((url) => url.includes('/traffic/clones')), true, `${message}: clones`);
+  assert.equal(fetchCalls.some((url) => url.includes('/traffic/popular/referrers')), true, `${message}: referrers`);
+}
+
+resetState();
+configureRefreshRegressionState();
+installRefreshEndpointMocks();
+const metadataOnlyCheck = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(metadataOnlyCheck.skipped, false);
+assert.equal(fetchCalls.some((url) => url.includes('/traffic/')), false, 'background check remains metadata-only');
+assert.equal(storageData.fullRefreshCoordination?.lastCompletedAt, undefined, 'background check does not establish full-refresh freshness');
+assert.equal(storageData.githubActivityStatus.lastFinishedSource, 'background', 'background requests retain GitHub activity tracking');
+fetchCalls = [];
+const manualAfterBackground = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.notEqual(manualAfterBackground.reason, 'completed-recently');
+assertAllTrafficEndpointsRequested('manual full refresh immediately after background check requests traffic');
+const repeatedFullRefresh = await __refreshCoordinationTest.executeFullRefresh('quick-summary');
+assert.equal(repeatedFullRefresh.skipped, true, 'genuine full-refresh freshness is still reused');
+assert.equal(repeatedFullRefresh.reason, 'completed-recently');
+assert.equal(repeatedFullRefresh.source, 'dashboard');
+
+resetState();
+configureRefreshRegressionState();
+installRefreshEndpointMocks();
+await __refreshCoordinationTest.runBackgroundCheck();
+fetchCalls = [];
+const repositoryAfterBackground = await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
+assert.notEqual(repositoryAfterBackground.reason, 'completed-recently');
+assertAllTrafficEndpointsRequested('repository refresh immediately after background check requests traffic');
+
+resetState();
+configureRefreshRegressionState();
+installRefreshEndpointMocks();
+const activeBackground = await __refreshCoordinationTest.beginRefreshOperation({ type: 'background', source: 'background' });
+assert.equal(activeBackground.admitted, true);
+const manualDuringBackground = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.equal(manualDuringBackground.skipped, true);
+assert.equal(manualDuringBackground.reason, 'running');
+assert.equal(fetchCalls.length, 0, 'manual refresh does not overlap an active background operation');
+await __refreshCoordinationTest.finishRefreshOperation(activeBackground.operation);
+const manualAfterActiveBackground = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.notEqual(manualAfterActiveBackground.reason, 'completed-recently');
+assertAllTrafficEndpointsRequested('manual refresh runs as soon as active background operation finishes');
