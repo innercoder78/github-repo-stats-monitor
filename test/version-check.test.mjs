@@ -222,7 +222,7 @@ storageData.fullRefreshCoordination = {
 };
 const manualAfterBackgroundFresh = await runExclusiveFullRefresh('dashboard', async () => {
   fullRefreshRunCount += 1;
-  return { fetchedAt: new Date().toISOString() };
+  return { fetchedAt: new Date().toISOString(), complete: true };
 });
 assert.equal(manualAfterBackgroundFresh.skipped, true);
 assert.equal(manualAfterBackgroundFresh.reason, 'completed-recently');
@@ -235,7 +235,7 @@ storageData.fullRefreshCoordination = {
 };
 const manualAfterBackgroundExpired = await runExclusiveFullRefresh('dashboard', async () => {
   fullRefreshRunCount += 1;
-  return { fetchedAt: new Date().toISOString() };
+  return { fetchedAt: new Date().toISOString(), complete: true };
 });
 assert.equal(manualAfterBackgroundExpired.skipped, false);
 assert.equal(fullRefreshRunCount, 1);
@@ -244,7 +244,7 @@ assert.ok(await getManualRefreshQuietWindowRemainingMs() > 45 * 1000);
 
 const manualAfterManualFresh = await runExclusiveFullRefresh('quick-summary', async () => {
   fullRefreshRunCount += 1;
-  return { fetchedAt: new Date().toISOString() };
+  return { fetchedAt: new Date().toISOString(), complete: true };
 });
 assert.equal(manualAfterManualFresh.skipped, true);
 assert.equal(manualAfterManualFresh.reason, 'completed-recently');
@@ -254,7 +254,7 @@ assert.equal(fullRefreshRunCount, 1);
 storageData.fullRefreshCoordination = {};
 storageData[GITHUB_ACTIVITY_KEY] = {};
 storageSetCount = 0;
-const repoARefresh = await runExclusiveRepositoryRefresh('Owner/Repo-A', async () => ({ fetchedAt: '2026-06-25T13:00:00.000Z', repository: 'owner/repo-a' }));
+const repoARefresh = await runExclusiveRepositoryRefresh('Owner/Repo-A', async () => ({ fetchedAt: '2026-06-25T13:00:00.000Z', repository: 'owner/repo-a', complete: true }));
 assert.equal(repoARefresh.skipped, false);
 assert.equal(await wasManualGitHubRequestRecentlyCompleted(), false);
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt || '', '');
@@ -263,7 +263,7 @@ status = await getGitHubActivityStatus();
 assert.equal(status.active, false);
 assert.equal(status.lastFinishedSource, 'dashboard-repository');
 
-const repoBRefresh = await runExclusiveRepositoryRefresh('owner/repo-b', async () => ({ fetchedAt: '2026-06-25T13:00:01.000Z', repository: 'owner/repo-b' }));
+const repoBRefresh = await runExclusiveRepositoryRefresh('owner/repo-b', async () => ({ fetchedAt: '2026-06-25T13:00:01.000Z', repository: 'owner/repo-b', complete: true }));
 assert.equal(repoBRefresh.skipped, false);
 assert.equal(storageData.fullRefreshCoordination.lastRepositoryRequestCompletedRepository, 'owner/repo-b');
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedAt || '', '');
@@ -320,7 +320,7 @@ assert.equal(allSkippedRepositoryRefresh.accountRefreshed, true);
 
 let releaseRepoA;
 const runningRepoA = runExclusiveRepositoryRefresh('owner/repo-a', () => new Promise((resolve) => {
-  releaseRepoA = () => resolve({ fetchedAt: '2026-06-25T13:00:02.000Z', repository: 'owner/repo-a' });
+  releaseRepoA = () => resolve({ fetchedAt: '2026-06-25T13:00:02.000Z', repository: 'owner/repo-a', complete: true });
 }));
 await new Promise((resolve) => setTimeout(resolve, 0));
 const duplicateRepoA = await runExclusiveRepositoryRefresh('owner/repo-a', async () => ({ fetchedAt: '2026-06-25T13:00:03.000Z' }));
@@ -329,7 +329,7 @@ assert.equal(duplicateRepoA.reason, 'running');
 releaseRepoA();
 assert.equal((await runningRepoA).skipped, false);
 
-const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', async () => ({ fetchedAt: '2026-06-25T13:00:04.000Z' }));
+const fullRefreshAfterRepository = await runExclusiveFullRefresh('dashboard', async () => ({ fetchedAt: '2026-06-25T13:00:04.000Z', complete: true }));
 assert.equal(fullRefreshAfterRepository.skipped, false);
 assert.ok(Date.parse(storageData.fullRefreshCoordination.lastManualRequestCompletedAt) > Date.parse('2026-06-25T13:00:04.000Z'));
 assert.equal(storageData.fullRefreshCoordination.lastManualRequestCompletedBy, 'dashboard');

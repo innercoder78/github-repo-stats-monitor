@@ -767,6 +767,14 @@ function canRunBackgroundChecks(settings) {
     return false;
   }
 
+  if (!hasEnabledTrackedStat(notifications.trackedStats)) {
+    return false;
+  }
+
+  if (!hasEnabledAlertMethod(notifications)) {
+    return false;
+  }
+
   if (!settings?.githubToken) {
     return false;
   }
@@ -1198,7 +1206,7 @@ async function runBackgroundCheckNow() {
     settings = await getSettings();
   } catch (error) {
     console.warn('Unable to read settings for background checks.', error);
-    return;
+    return { complete: false };
   }
 
   if (!canRunBackgroundChecks(settings)) {
@@ -1217,6 +1225,7 @@ async function runBackgroundCheckNow() {
   const refreshResult = await refreshStatsCache(settings, latestStats, {
     source: 'background',
     accountStats,
+    allowEmptyRepositories: true,
     skipFullRefreshCoordination: true,
   });
   const baselines = {

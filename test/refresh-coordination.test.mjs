@@ -8,6 +8,8 @@ let storageGetErrorKey = null;
 let fetchCalls = [];
 let storageSetCount = 0;
 let onStorageSet = null;
+const notificationCalls = [];
+const badgeTextCalls = [];
 
 function clone(value) {
   return value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value;
@@ -73,11 +75,11 @@ globalThis.chrome = {
     onAlarm: { addListener() {} },
   },
   action: {
-    setBadgeText: () => Promise.resolve(),
+    setBadgeText: (options) => { badgeTextCalls.push(options); return Promise.resolve(); },
     setBadgeBackgroundColor: () => Promise.resolve(),
   },
   notifications: {
-    create: (id, options, callback) => { callback?.(); return Promise.resolve(); },
+    create: (id, options, callback) => { notificationCalls.push({ id, options }); callback?.(); return Promise.resolve(); },
   },
 };
 
@@ -104,6 +106,8 @@ function resetState() {
   fetchCalls = [];
   storageSetCount = 0;
   onStorageSet = null;
+  notificationCalls.length = 0;
+  badgeTextCalls.length = 0;
   __refreshCoordinationTest.clearActiveRefreshOperationForTest();
 }
 
@@ -193,7 +197,7 @@ assert.deepEqual(alarms.get(BACKGROUND_CHECK_ALARM_NAME), { delayInMinutes: 30, 
 resetState();
 let releaseFullRefresh;
 const runningFullRefresh = runExclusiveFullRefresh('dashboard', () => new Promise((resolve) => {
-  releaseFullRefresh = () => resolve({ fetchedAt: new Date().toISOString() });
+  releaseFullRefresh = () => resolve({ fetchedAt: new Date().toISOString(), complete: true });
 }));
 await new Promise((resolve) => setTimeout(resolve, 0));
 const repositoryRefreshWhileFullRunning = __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
@@ -502,7 +506,7 @@ function configureRefreshRegressionState() {
   storageData.repositories = ['owner/repo'];
   storageData.notifications = {
     backgroundChecksEnabled: true,
-    systemNotificationsEnabled: false,
+    systemNotificationsEnabled: true,
     badgeEnabled: false,
     checkIntervalMinutes: 30,
     trackedStats: { stars: true, forks: true, repoWatchers: true, accountFollowers: true },
@@ -637,3 +641,114 @@ storageData.fullRefreshCoordination.lastManualRequestCompletedAt = '';
 installRefreshEndpointMocks();
 await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
 assert.equal(storageData.quickSummaryStatus.manualRefreshAt, manualTimestamp, 'per-repository refresh does not advance the global manual timestamp');
+
+resetState();
+storageGetError = new Error('settings read failed');
+storageGetErrorKey = 'githubToken';
+const failedSettingsBackground = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(failedSettingsBackground.complete, false, 'settings read failure returns an explicitly incomplete result');
+assert.equal(storageData.fullRefreshCoordination.lastCompletedAt || '', '', 'settings read failure cannot establish reusable freshness');
+assert.equal(storageData.lastBackgroundCheckAt, undefined, 'settings read failure cannot establish a successful background timestamp');
+storageGetError = null;
+storageGetErrorKey = null;
+configureRefreshRegressionState();
+installRefreshEndpointMocks();
+const manualAfterSettingsFailure = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.notEqual(manualAfterSettingsFailure.reason, 'completed-recently', 'manual refresh runs after failed background settings read');
+assertAllTrafficEndpointsRequested('manual refresh after settings read failure');
+
+resetState();
+configureRefreshRegressionState();
+installRefreshEndpointMocks();
+await __refreshCoordinationTest.runBackgroundCheck();
+const preexistingSuccessfulCompletion = storageData.fullRefreshCoordination.lastCompletedAt;
+assert.ok(preexistingSuccessfulCompletion, 'test starts with recent reusable full freshness');
+storageData.githubActivityStatus = {};
+const completeFetchBeforePartial = globalThis.fetch;
+globalThis.fetch = async (url) => String(url).includes('/traffic/views')
+  ? (fetchCalls.push(String(url)), { ok: false, status: 404, headers: { get: () => null }, json: async () => ({ message: 'views unavailable' }) })
+  : completeFetchBeforePartial(url);
+const newerPartialBackground = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(newerPartialBackground.complete, false);
+assert.equal(storageData.fullRefreshCoordination.lastCompletedAt, '', 'newer partial full refresh invalidates earlier reusable freshness');
+installRefreshEndpointMocks();
+const manualAfterNewerPartial = await __refreshCoordinationTest.executeFullRefresh('quick-summary');
+assert.notEqual(manualAfterNewerPartial.reason, 'completed-recently');
+assertAllTrafficEndpointsRequested('manual refresh retries endpoint after newer partial invalidates older success');
+
+resetState();
+configureRefreshRegressionState();
+storageData.repositories = ['owner/repo', 'owner/other'];
+installRefreshEndpointMocks();
+await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
+assert.ok(storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/repo'], 'successful repository refresh records reusable completion');
+storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/other'] = {
+  repository: 'owner/other', source: 'dashboard-repository', completedAt: new Date().toISOString(),
+};
+const repositorySuccessFetch = globalThis.fetch;
+globalThis.fetch = async (url) => String(url).includes('/repos/owner/repo/traffic/clones')
+  ? (fetchCalls.push(String(url)), { ok: false, status: 404, headers: { get: () => null }, json: async () => ({ message: 'clones unavailable' }) })
+  : repositorySuccessFetch(url);
+await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
+assert.equal(storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/repo'], undefined, 'partial repository refresh removes its older reusable completion');
+assert.ok(storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/other'], 'partial repository refresh preserves unrelated completion entries');
+installRefreshEndpointMocks();
+const fullAfterPartialRepository = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.equal(fullAfterPartialRepository.skippedRepositories.includes('owner/repo'), false);
+assert.equal(fetchCalls.some((url) => url.includes('/repos/owner/repo/traffic/clones')), true, 'full refresh retries repository traffic after partial repository refresh');
+
+resetState();
+storageData.githubToken = 'token';
+storageData.repositories = [];
+storageData.notifications = {
+  backgroundChecksEnabled: true,
+  systemNotificationsEnabled: true,
+  badgeEnabled: false,
+  checkIntervalMinutes: 30,
+  trackedStats: { stars: false, forks: false, repoWatchers: false, accountFollowers: true },
+};
+storageData.notificationBaselines = { initialized: false, account: {}, repositories: {}, updatedAt: '' };
+api.__resetGitHubRequestLimiterForTest();
+fetchCalls = [];
+globalThis.fetch = async (url) => {
+  fetchCalls.push(String(url));
+  assert.equal(String(url), 'https://api.github.com/user');
+  return { ok: true, headers: { get: () => null }, json: async () => ({ login: 'owner', followers: 5 }) };
+};
+const accountOnlyBackground = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(accountOnlyBackground.complete, true, 'account-only automatic refresh is complete for an empty repository configuration');
+assert.deepEqual(fetchCalls, ['https://api.github.com/user']);
+assert.equal(storageData.accountStats.followers, 5);
+assert.equal(storageData.notificationBaselines.account.followers, 5);
+assert.ok(storageData.lastBackgroundCheckAt, 'account-only success advances the dedicated background timestamp');
+
+resetState();
+configureRefreshRegressionState();
+storageData.notifications.badgeEnabled = true;
+storageData.latestStats = {
+  'owner/repo': {
+    repository: 'owner/repo', stars: 3, forks: 1, subscribers: 2,
+    views: 1, uniqueVisitors: 1, clones: 1,
+    referrers: [{ referrer: 'old.example', count: 1, uniques: 1 }],
+    fetchedAt: 'old', trafficFetchedAt: 'old', clonesFetchedAt: 'old', referrersFetchedAt: 'old',
+  },
+};
+storageData.accountStats = { login: 'owner', followers: 2, fetchedAt: 'old' };
+storageData.notificationBaselines = {
+  initialized: true,
+  account: { login: 'owner', followers: 2, updatedAt: 'old' },
+  repositories: { 'owner/repo': { repository: 'owner/repo', stars: 3, forks: 1, repoWatchers: 2, updatedAt: 'old' } },
+  updatedAt: 'old',
+};
+installRefreshEndpointMocks();
+const trafficMock = globalThis.fetch;
+globalThis.fetch = async (url) => String(url).includes('/traffic/popular/referrers')
+  ? (fetchCalls.push(String(url)), { ok: true, headers: { get: () => null }, json: async () => [{ referrer: 'new.example', count: 9, uniques: 4 }] })
+  : trafficMock(url);
+await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(storageData.latestStats['owner/repo'].views, 10, 'changed views are saved');
+assert.equal(storageData.latestStats['owner/repo'].clones, 4, 'changed clones are saved');
+assert.deepEqual(storageData.latestStats['owner/repo'].referrers, [{ referrer: 'new.example', count: 9, uniques: 4 }], 'changed referrers are saved');
+assert.equal(notificationCalls.length, 0, 'traffic-only changes create no system notification');
+assert.equal(storageData.pendingActivity, undefined, 'traffic-only changes create no Quick Summary or Dashboard activity');
+assert.equal(badgeTextCalls.length, 0, 'traffic-only changes create no badge activity');

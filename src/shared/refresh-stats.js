@@ -294,19 +294,23 @@ export async function runExclusiveRepositoryRefresh(repository, requestTask) {
 
     if (latestRepositoryRefreshes[normalizedRepository]?.token === token) {
       delete latestRepositoryRefreshes[normalizedRepository];
-      const complete = result?.complete !== false;
+      const complete = result?.complete === true;
+      const completedRepositoryRefreshes = getRecentCompletedRepositoryRefreshes(latestCoordination);
+      if (!complete) {
+        delete completedRepositoryRefreshes[normalizedRepository];
+      }
       await saveRefreshCoordination({
         ...latestCoordination,
         repositoryRefreshes: latestRepositoryRefreshes,
         completedRepositoryRefreshes: complete
           ? {
-              ...getRecentCompletedRepositoryRefreshes(latestCoordination),
+              ...completedRepositoryRefreshes,
               [normalizedRepository]: { repository: normalizedRepository, source, completedAt },
             }
-          : getRecentCompletedRepositoryRefreshes(latestCoordination),
-        lastRepositoryRequestCompletedAt: completedAt,
-        lastRepositoryRequestCompletedBy: source,
-        lastRepositoryRequestCompletedRepository: normalizedRepository,
+          : completedRepositoryRefreshes,
+        lastRepositoryRequestCompletedAt: complete ? completedAt : '',
+        lastRepositoryRequestCompletedBy: complete ? source : '',
+        lastRepositoryRequestCompletedRepository: complete ? normalizedRepository : '',
       });
     }
 
@@ -347,6 +351,10 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
 
   await saveRefreshCoordination({
     ...coordination,
+    // Admitting a newer full-data attempt immediately retires any older reusable
+    // success. Only an explicit complete result below can establish freshness.
+    lastCompletedAt: '',
+    lastCompletedBy: '',
     running: {
       token,
       source,
@@ -364,14 +372,14 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
   try {
     const result = await runTrackedGitHubActivity(source, refreshTask);
     const completedAt = new Date().toISOString();
-    const complete = result?.complete !== false;
+    const complete = result?.complete === true;
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {
       await saveRefreshCoordination({
         ...latestCoordination,
         running: null,
-        lastCompletedAt: complete ? completedAt : latestCoordination.lastCompletedAt || '',
-        lastCompletedBy: complete ? source : latestCoordination.lastCompletedBy || '',
+        lastCompletedAt: complete ? completedAt : '',
+        lastCompletedBy: complete ? source : '',
         lastManualCompletedAt: manual && complete ? completedAt : latestCoordination.lastManualCompletedAt || '',
         lastManualRequestCompletedAt: manual ? completedAt : latestCoordination.lastManualRequestCompletedAt || '',
         lastManualRequestCompletedBy: manual ? source : latestCoordination.lastManualRequestCompletedBy || '',
@@ -472,7 +480,7 @@ function notifyProgress(onProgress, progress) {
   }
 }
 
-function getRefreshInputs(settings) {
+function getRefreshInputs(settings, { allowEmptyRepositories = false } = {}) {
   const githubToken = typeof settings?.githubToken === 'string' ? settings.githubToken : '';
   const repositories = Array.isArray(settings?.repositories) ? settings.repositories : [];
 
@@ -480,7 +488,7 @@ function getRefreshInputs(settings) {
     throw new Error('No token saved. Open Settings and add a GitHub token to refresh stats.');
   }
 
-  if (repositories.length === 0) {
+  if (!allowEmptyRepositories && repositories.length === 0) {
     throw new Error('No repositories configured. Open Settings and add at least one repository.');
   }
 
@@ -622,7 +630,9 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
     return coordinatedRefresh.result;
   }
 
-  const { githubToken, repositories } = getRefreshInputs(settings);
+  const { githubToken, repositories } = getRefreshInputs(settings, {
+    allowEmptyRepositories: options.allowEmptyRepositories === true,
+  });
   const onProgress = options && typeof options === 'object' ? options.onProgress : undefined;
   const previousAccountStats = options && typeof options === 'object' ? options.accountStats : undefined;
 
