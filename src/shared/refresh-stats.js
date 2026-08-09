@@ -124,6 +124,15 @@ function getRecentCompletedRepositoryRefreshes(coordination, freshnessMs = FULL_
   return recentRefreshes;
 }
 
+function getIncompleteAttemptedRepositories(result) {
+  const results = Array.isArray(result?.results) ? result.results : [];
+  return new Set(results.flatMap(({ repository, stats }) => {
+    const normalizedRepository = normalizeRepositoryName(repository || stats?.repository);
+    const incomplete = stats?.error || stats?.trafficError || stats?.clonesError || stats?.referrersError;
+    return normalizedRepository && incomplete ? [normalizedRepository] : [];
+  }));
+}
+
 function wait(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -375,9 +384,18 @@ export async function runExclusiveFullRefresh(source, refreshTask) {
     const complete = result?.complete === true;
     const latestCoordination = await getRefreshCoordination();
     if (latestCoordination.running?.token === token) {
+      const incompleteRepositories = getIncompleteAttemptedRepositories(result);
+      const completedRepositoryRefreshes = getRecentCompletedRepositoryRefreshes(latestCoordination);
+      incompleteRepositories.forEach((repository) => delete completedRepositoryRefreshes[repository]);
+      const legacyRepository = normalizeRepositoryName(latestCoordination.lastRepositoryRequestCompletedRepository);
+      const invalidateLegacyRepository = incompleteRepositories.has(legacyRepository);
       await saveRefreshCoordination({
         ...latestCoordination,
         running: null,
+        completedRepositoryRefreshes,
+        lastRepositoryRequestCompletedAt: invalidateLegacyRepository ? '' : latestCoordination.lastRepositoryRequestCompletedAt || '',
+        lastRepositoryRequestCompletedBy: invalidateLegacyRepository ? '' : latestCoordination.lastRepositoryRequestCompletedBy || '',
+        lastRepositoryRequestCompletedRepository: invalidateLegacyRepository ? '' : legacyRepository,
         lastCompletedAt: complete ? completedAt : '',
         lastCompletedBy: complete ? source : '',
         lastManualCompletedAt: manual && complete ? completedAt : latestCoordination.lastManualCompletedAt || '',

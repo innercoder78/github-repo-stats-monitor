@@ -698,6 +698,36 @@ assert.equal(fullAfterPartialRepository.skippedRepositories.includes('owner/repo
 assert.equal(fetchCalls.some((url) => url.includes('/repos/owner/repo/traffic/clones')), true, 'full refresh retries repository traffic after partial repository refresh');
 
 resetState();
+configureRefreshRegressionState();
+installRefreshEndpointMocks();
+await __refreshCoordinationTest.executeRepositoryRefresh('owner/repo');
+const repositoryCompletionBeforeBackground = storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/repo'];
+assert.ok(repositoryCompletionBeforeBackground, 'cross-operation test starts with recent repository-specific freshness');
+const cachedTrafficTimestampBeforeBackground = storageData.latestStats['owner/repo'].trafficFetchedAt;
+storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/other'] = {
+  repository: 'owner/other', source: 'dashboard-repository', completedAt: new Date().toISOString(),
+};
+storageData.githubActivityStatus = {};
+const completeRepositoryFetch = globalThis.fetch;
+globalThis.fetch = async (url) => String(url).includes('/repos/owner/repo/traffic/views')
+  ? (fetchCalls.push(String(url)), { ok: false, status: 404, headers: { get: () => null }, json: async () => ({ message: 'views unavailable' }) })
+  : completeRepositoryFetch(url);
+const partialBackgroundAfterRepositorySuccess = await __refreshCoordinationTest.runBackgroundCheck();
+assert.equal(partialBackgroundAfterRepositorySuccess.complete, false, 'newer background endpoint failure makes the full refresh partial');
+assert.equal(storageData.latestStats['owner/repo'].views, 10, 'newer background failure preserves cached repository views');
+assert.equal(storageData.latestStats['owner/repo'].trafficFetchedAt, cachedTrafficTimestampBeforeBackground, 'newer background failure preserves the prior traffic timestamp');
+assert.ok(storageData.latestStats['owner/repo'].trafficError, 'newer background failure preserves its endpoint error');
+assert.equal(storageData.fullRefreshCoordination.lastCompletedAt, '', 'newer partial background keeps global freshness invalid');
+assert.equal(storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/repo'], undefined, 'newer partial background invalidates older repository-specific freshness');
+assert.ok(storageData.fullRefreshCoordination.completedRepositoryRefreshes['owner/other'], 'newer partial background preserves unrelated repository freshness');
+assert.equal(storageData.fullRefreshCoordination.lastRepositoryRequestCompletedRepository, '', 'legacy repository freshness cannot resurrect the failed repository');
+installRefreshEndpointMocks();
+const manualAfterCrossOperationFailure = await __refreshCoordinationTest.executeFullRefresh('dashboard');
+assert.equal(manualAfterCrossOperationFailure.skippedRepositories.includes('owner/repo'), false, 'manual retry does not skip the repository with newer failure evidence');
+assert.equal(fetchCalls.some((url) => url.endsWith('/repos/owner/repo')), true, 'manual retry requests repository metadata');
+assertAllTrafficEndpointsRequested('manual retry after cross-operation repository invalidation');
+
+resetState();
 storageData.githubToken = 'token';
 storageData.repositories = [];
 storageData.notifications = {
