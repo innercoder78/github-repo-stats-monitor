@@ -13,7 +13,6 @@ import {
   normalizePendingActivity,
   normalizeRepositoryName,
   normalizeViewedBaselines,
-  patchLatestStats,
   removeUnconfiguredLatestStats,
   saveAccountStats,
   saveLastBackgroundCheckAt,
@@ -896,7 +895,7 @@ async function scheduleBackgroundCheckAlarm({ catchUpIfDue = false } = {}) {
     settings = await getSettings();
   } catch (error) {
     console.warn('Unable to read settings for background checks.', error);
-    return;
+    return { complete: false };
   }
 
   if (!canRunBackgroundChecks(settings)) {
@@ -1095,14 +1094,14 @@ function cleanupRepositoryStorage(baselines, pendingActivity, repositories) {
 }
 
 
-async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
+async function checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges, refreshedAccount = null) {
   if (!settings.notifications.trackedStats.accountFollowers) {
     return { checked: false, changed: false };
   }
 
   try {
-    const account = await fetchAuthenticatedAccount(settings.githubToken);
-    const completedAt = new Date().toISOString();
+    const account = refreshedAccount || await fetchAuthenticatedAccount(settings.githubToken);
+    const completedAt = account.fetchedAt || new Date().toISOString();
     if (!hasFetchedNumber(account.followers)) {
       return { checked: false, changed: false };
     }
@@ -1124,7 +1123,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
       followers,
       updatedAt: completedAt,
     };
-    await mergeFetchedAccountFollowersIntoCachedStats(account, completedAt);
+    if (!refreshedAccount) await mergeFetchedAccountFollowersIntoCachedStats(account, completedAt);
 
     return { checked: true, changed, completedAt };
   } catch (error) {
@@ -1133,14 +1132,14 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
   }
 }
 
-async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges) {
+async function checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges, refreshedStats = null) {
   if (!hasRepositoryStatEnabled(settings.notifications.trackedStats)) {
     return { checked: false, changed: false };
   }
 
   try {
-    const metadata = await fetchRepositoryMetadata(repository, settings.githubToken);
-    const completedAt = new Date().toISOString();
+    const metadata = refreshedStats || await fetchRepositoryMetadata(repository, settings.githubToken);
+    const completedAt = metadata.fetchedAt || new Date().toISOString();
     const previousBaseline = baselines.repositories[repository] || {};
     const nextBaseline = { ...previousBaseline, repository, updatedAt: completedAt };
     let changed = false;
@@ -1195,8 +1194,9 @@ async function runBackgroundCheck() {
     return { skipped: true, reason: 'github-quiet-window', retryAfterMs: githubQuietRemainingMs };
   }
 
-  const result = await runTrackedGitHubActivity('background', runBackgroundCheckNow);
-  return { skipped: false, fetchedAt: result?.fetchedAt || '' };
+  const coordinatedRefresh = await runExclusiveFullRefresh('background', runBackgroundCheckNow);
+  if (coordinatedRefresh.skipped) return coordinatedRefresh;
+  return { skipped: false, ...coordinatedRefresh.result };
 }
 
 async function runBackgroundCheckNow() {
@@ -1206,20 +1206,28 @@ async function runBackgroundCheckNow() {
     settings = await getSettings();
   } catch (error) {
     console.warn('Unable to read settings for background checks.', error);
-    return;
+    return { complete: false };
   }
 
   if (!canRunBackgroundChecks(settings)) {
     await updateBadgeFromBadgeActivity(settings, { account: false, repositories: {} });
     await scheduleBackgroundCheckAlarm();
-    return;
+    return { complete: false };
   }
 
   const checkedAt = new Date().toISOString();
-  const [existingBaselines, existingPendingActivity] = await Promise.all([
+  const [existingBaselines, existingPendingActivity, latestStats, accountStats] = await Promise.all([
     getNotificationBaselines(),
     getPendingActivity(),
+    getLatestStats(),
+    getAccountStats(),
   ]);
+  const refreshResult = await refreshStatsCache(settings, latestStats, {
+    source: 'background',
+    accountStats,
+    allowEmptyRepositories: true,
+    skipFullRefreshCoordination: true,
+  });
   const baselines = {
     ...existingBaselines,
     account: { ...existingBaselines.account },
@@ -1230,7 +1238,6 @@ async function runBackgroundCheckNow() {
   let pendingChanged = false;
   let hadSuccessfulCheck = false;
   let baselinesChanged = false;
-  const repositoryMetadataPatches = [];
   // Keep the raw deltas from this background check separate from the net pending
   // activity that Quick Summary and Dashboard display. A raw +1 should still
   // alert even when it cancels an older unresolved -1 in pending activity.
@@ -1240,24 +1247,23 @@ async function runBackgroundCheckNow() {
   baselinesChanged = cleanupResult.baselinesChanged || baselinesChanged;
   pendingChanged = cleanupResult.pendingActivityChanged || pendingChanged;
   const successfulEndpointCompletions = [];
-  const accountResult = await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+  const accountResult = refreshResult.accountRefreshed
+    ? await checkAccountFollowers(settings, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges, refreshResult.accountStats)
+    : { checked: false, changed: false };
   if (accountResult.completedAt) successfulEndpointCompletions.push(accountResult.completedAt);
   hadSuccessfulCheck = accountResult.checked || hadSuccessfulCheck;
   pendingChanged = accountResult.changed || pendingChanged;
 
   for (const repository of settings.repositories) {
-    const repositoryResult = await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges);
+    const refreshedRepository = refreshResult.results.find((result) => result.repository === repository);
+    const repositoryResult = refreshedRepository && !refreshedRepository.stats.error
+      ? await checkRepositoryStats(settings, repository, baselines, pendingActivity, checkedAt, shouldCompare, detectedChanges, refreshedRepository.stats)
+      : { checked: false, changed: false };
     if (repositoryResult.completedAt) successfulEndpointCompletions.push(repositoryResult.completedAt);
     hadSuccessfulCheck = repositoryResult.checked || hadSuccessfulCheck;
     pendingChanged = repositoryResult.changed || pendingChanged;
 
-    if (repositoryResult.metadataPatch) {
-      repositoryMetadataPatches.push(repositoryResult.metadataPatch);
-    }
-  }
-
-  if (repositoryMetadataPatches.length > 0) {
-    await patchLatestStats(Object.fromEntries(repositoryMetadataPatches.map(({ repository, updates }) => [repository, updates])), { configuredOnly: true });
+    // The shared full-refresh path has already persisted all repository fields.
   }
 
   const latestEndpointCompletedAt = successfulEndpointCompletions[successfulEndpointCompletions.length - 1] || '';
@@ -1303,11 +1309,11 @@ async function runBackgroundCheckNow() {
 
   const completedAt = new Date().toISOString();
 
-  if (hadSuccessfulCheck) {
+  if (refreshResult.complete) {
     await saveLastBackgroundCheckAt(completedAt);
   }
 
-  return { fetchedAt: completedAt };
+  return { ...refreshResult, fetchedAt: completedAt };
 }
 
 
