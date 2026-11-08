@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Development preview — Repository Summary</title>
+<style>
+  body { margin: 24px; background: #20252b; color: white; font: 16px system-ui; }
+  label, button, a { margin-right: 16px; }
+  a { color: #75dbff; }
+  img { display: block; width: min(600px, 100%); height: auto; margin-top: 20px; }
+  #status { min-height: 1.5em; }
+</style>
+<h1>Repository Summary: development preview</h1>
+<p>Fictional fixtures only. This page does not read extension storage or call GitHub.</p>
+<label>Fixture <select id="fixture">
+  <option value="reference">Reference-like fictional values</option>
+  <option value="zero">Legitimate zeros</option>
+  <option value="partial">Partial coverage, missing followers</option>
+  <option value="missing">No saved data</option>
+  <option value="long">Long username and large numbers</option>
+</select></label>
+<button id="render" type="button">Render preview</button>
+<a id="download" hidden download="fictional-repository-summary.png">Save fictional PNG</a>
+<p id="status" role="status"></p>
+<img id="preview" alt="Rendered fictional Repository Summary">
+<script type="module" src="./summary-image.js"></script>
+</html>
