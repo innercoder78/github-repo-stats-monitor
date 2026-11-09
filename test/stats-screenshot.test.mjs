@@ -1,3 +1,4 @@
+import { simulatedFooterIcon } from './helpers/summary-image-icon.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { initializeStatsScreenshot } from '../src/popup/stats-screenshot.js';
@@ -31,12 +32,12 @@ globalThis.clearTimeout = (timer) => {
   else originalClearTimeout(timer);
 };
 let saved, button, status, storageListener, pagehide, readError, readCount;
-let labels, canvases, created, revoked, anchors, requests, renderError, encodingError, clickError, urlError, onRead, fontReady;
+let labels, canvases, created, revoked, anchors, requests, renderError, iconError, encodingError, clickError, urlError, onRead, fontReady;
 const noop = () => {};
 function reset() {
   saved = fixture(); labels = []; canvases = []; created = []; revoked = []; anchors = []; requests = [];
   graceTimers = new Set(); readCount = 0;
-  readError = renderError = encodingError = clickError = urlError = false; onRead = null;
+  readError = renderError = iconError = encodingError = clickError = urlError = false; onRead = null;
   fontReady = Promise.resolve();
   button = { disabled: false, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, addEventListener(type, fn) { this[type] = fn; } };
   status = { hidden: true, textContent: '' };
@@ -71,6 +72,7 @@ function reset() {
     fonts: { get ready() { return fontReady; } },
     body: { append: (anchor) => { anchor.attached = true; } },
     createElement(tag) {
+      if (tag === 'img') return simulatedFooterIcon({ fail: iconError });
       if (tag === 'canvas') {
         const canvas = {
           getContext: () => renderError ? null : context,
@@ -107,7 +109,7 @@ assert.ok(labels.includes('37') && labels.includes('3') && labels.includes('7') 
 assert.ok(labels.includes('@fictional-user'));
 assert.ok(labels.some((label) => label.startsWith('Data as of:') && label.includes('2026/01/01')));
 assert.ok(!labels.some((label) => /fictional\/|private\/|token|9999|2000/.test(label)));
-assert.deepEqual(canvases.map(({ width, height }) => [width, height]), [[1200, 1600]]);
+assert.deepEqual(canvases.map(({ width, height }) => [width, height]), [[1080, 1440]]);
 assert.equal(anchors[0].download, 'repository-summary.png');
 assert.equal(anchors[0].attached, false);
 assert.equal(status.textContent, 'Download requested. Check Chrome Downloads.');
@@ -143,15 +145,15 @@ for (const mutate of [
   reset(); mutate(); await click(); assert.equal(requests.length, 0); assert.match(status.textContent, /Settings|unavailable|invalid/);
 }
 
-for (const kind of ['storage', 'render', 'encoding', 'url', 'click']) {
+for (const kind of ['storage', 'render', 'icon', 'encoding', 'url', 'click']) {
   reset();
-  readError = kind === 'storage'; renderError = kind === 'render'; encodingError = kind === 'encoding'; urlError = kind === 'url'; clickError = kind === 'click';
+  iconError = kind === 'icon'; readError = kind === 'storage'; renderError = kind === 'render'; encodingError = kind === 'encoding'; urlError = kind === 'url'; clickError = kind === 'click';
   await click();
   assert.equal(requests.length, 0);
   assert.match(status.textContent, /Unable/);
   assert.doesNotMatch(status.textContent, /internal|sensitive|Download requested/);
   assert.deepEqual(revoked, created, 'failed request releases its URL');
-  readError = renderError = encodingError = urlError = clickError = false;
+  readError = renderError = iconError = encodingError = urlError = clickError = false;
   await click(); assert.equal(requests.length, 1, 'failure permits retry');
 }
 

@@ -1,3 +1,4 @@
+import { simulatedFooterIcon } from './helpers/summary-image-icon.mjs';
 import assert from 'node:assert/strict';
 
 process.env.TZ = 'UTC';
@@ -220,7 +221,7 @@ const paint = { addColorStop() {} };
 const context = new Proxy({ measureText: () => ({ width: 100 }), createLinearGradient: () => paint, createRadialGradient: () => paint }, { get: (target, key) => target[key] || (() => {}) });
 globalThis.Path2D = class {};
 document.body = new Element('body');
-document.createElement = (tag) => tag === 'canvas' ? {
+document.createElement = (tag) => tag === 'img' ? simulatedFooterIcon() : tag === 'canvas' ? {
   getContext: () => context,
   toBlob: (callback) => callback(new Blob(['simulated PNG'], { type: 'image/png' })),
 } : originalCreateElement(tag);
