@@ -272,8 +272,18 @@ html[data-appearance="dark"] .actions > button:not(.popup-close) {
 
 .utility-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+  justify-content: space-between;
   margin-top: 2px;
+}
+
+#screenshot-status {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 button.popup-close {

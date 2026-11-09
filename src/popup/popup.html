@@ -78,8 +78,10 @@
         <button id="open-dashboard" type="button">Open Dashboard</button>
         <button id="open-settings" class="secondary" type="button">Settings</button>
         <div class="utility-actions">
+          <button id="stats-screenshot" class="popup-close" type="button" aria-describedby="screenshot-status">Stats Screenshot</button>
           <button id="close-popup" class="popup-close" type="button">Close</button>
         </div>
+        <p id="screenshot-status" role="status" aria-live="polite" hidden></p>
       </div>
     </main>
     <script type="module" src="popup.js"></script>

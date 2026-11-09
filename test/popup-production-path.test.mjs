@@ -164,6 +164,8 @@ resetStorage();
 await import(`../src/popup/popup.js?production=${Date.now()}`);
 await flush();
 
+assert.ok(!messages.some((message) => message.action === 'refreshStats.full'), 'opening Quick Summary does not refresh');
+
 queueRefresh({ ok: true, result: successfulResult() });
 await clickRefresh();
 assert.ok(!warnings.some((args) => args.some((arg) => arg instanceof ReferenceError)), 'successful refresh does not throw ReferenceError');
@@ -200,5 +202,42 @@ queueRefresh(new Error('network failed'));
 await clickRefresh();
 assert.equal(statusText(), 'Refresh failed. Last saved values are shown where available.', 'rejected background refresh displays generic refresh-failure message');
 assert.equal(element('refresh-stats').disabled, false, 'refresh button restored after rejected response');
+
+// Exercise the screenshot through the real popup binding, without allowing any
+// activity messages, storage changes or card rerendering during export.
+const { summaryImageAccountContext, summaryImageTokenHash } = await import('../src/shared/summary-image-account.js');
+storageData.summaryImageAccountContext = await summaryImageAccountContext(storageData.githubToken, storageData.accountStats);
+for (const stats of Object.values(storageData.latestStats)) stats.summaryImageTokenHash = await summaryImageTokenHash(storageData.githubToken);
+const messagesBeforeExport = clone(messages);
+const storageBeforeExport = clone(storageData);
+const originalCards = ids.filter((id) => id.startsWith('total-') || id === 'account-followers')
+  .map((id) => [id, element(id).textContent]);
+const refreshStatusBeforeExport = statusText();
+document.querySelectorAll = () => assert.fail('export must not clear activity pills or rerender Quick Summary');
+chrome.action.setBadgeText = () => assert.fail('export must not update the badge');
+const originalCreateElement = document.createElement;
+const paint = { addColorStop() {} };
+const context = new Proxy({ measureText: () => ({ width: 100 }), createLinearGradient: () => paint, createRadialGradient: () => paint }, { get: (target, key) => target[key] || (() => {}) });
+globalThis.Path2D = class {};
+document.body = new Element('body');
+document.createElement = (tag) => tag === 'canvas' ? {
+  getContext: () => context,
+  toBlob: (callback) => callback(new Blob(['simulated PNG'], { type: 'image/png' })),
+} : originalCreateElement(tag);
+let revokeTimer;
+const nativeSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms) => { const timer = nativeSetTimeout(fn, ms); if (ms === 60000) { revokeTimer = timer; timer.unref(); } return timer; };
+await element('stats-screenshot').click();
+assert.equal(element('screenshot-status').textContent, 'Download requested. Check Chrome Downloads.');
+assert.deepEqual(messages, messagesBeforeExport, 'export does not claim or acknowledge activity, refresh or send other messages');
+assert.deepEqual(storageData, storageBeforeExport, 'export preserves all saved data and activity baselines');
+assert.deepEqual(originalCards.map(([id]) => [id, element(id).textContent]), originalCards, 'export leaves existing statistic cards untouched');
+assert.equal(statusText(), refreshStatusBeforeExport, 'separate screenshot feedback preserves refresh feedback');
+clearTimeout(revokeTimer);
+globalThis.setTimeout = nativeSetTimeout;
+let closed = false;
+window.close = () => { closed = true; };
+await element('close-popup').click();
+assert.equal(closed, true, 'existing Close behavior remains bound');
 
 console.log('popup production path tests passed');

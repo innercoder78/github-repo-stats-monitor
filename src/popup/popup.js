@@ -16,6 +16,7 @@ import { formatDisplayTimestamp, getDefaultDisplayPreferences } from '../shared/
 import { getEffectiveVersionCheckStatus, openLatestReleasePage, shouldShowUpdateAvailable } from '../shared/version-check.js';
 import { getFullRefreshStatus } from '../shared/refresh-status.js';
 import { getConservativeFreshness, hasFreshnessCategoryData } from '../shared/freshness.js';
+import { initializeStatsScreenshot } from './stats-screenshot.js';
 
 const repositoryCount = document.getElementById('repository-count');
 const tokenStatus = document.getElementById('token-status');
@@ -49,6 +50,7 @@ let currentViewedBaselines = { account: {}, repositories: {}, updatedAt: '' };
 let currentVersionCheckStatus = null;
 
 applySavedAppearance();
+initializeStatsScreenshot();
 
 async function acknowledgeBadgeActivity() {
   try {

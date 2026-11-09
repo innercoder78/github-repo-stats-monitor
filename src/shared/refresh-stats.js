@@ -2,6 +2,7 @@ import { fetchAuthenticatedAccount, fetchRepositoryMetadata, fetchRepositoryTraf
 import { getNotificationBaselines, normalizeAccountStats, normalizeRepositoryName, saveAccountStats, mergeLatestStats, saveNotificationBaselines, saveQuickSummaryStatus } from './storage.js';
 import { createEmptyPendingActivity, createEmptyPendingChanges, detectPendingActivityFromStats } from './activity.js';
 import { runTrackedGitHubActivity } from './github-activity.js';
+import { summaryImageTokenHash } from './summary-image-account.js';
 
 const FULL_REFRESH_FRESHNESS_MS = 60 * 1000;
 const FULL_REFRESH_LOCK_STALE_MS = 5 * 60 * 1000;
@@ -524,7 +525,7 @@ async function refreshAccountStats(githubToken, previousAccountStats) {
       attempted: true,
       refreshed: true,
       fetchedAt,
-      accountStats: await saveAccountStats(nextStats),
+      accountStats: await saveAccountStats(nextStats, githubToken),
       error: '',
     };
   } catch (error) {
@@ -589,7 +590,11 @@ async function refreshRepositoryStats(repository, githubToken, previousStats) {
 
   try {
     const metadata = await fetchRepositoryMetadata(repository, githubToken);
-    Object.assign(stats, metadata, { fetchedAt: new Date().toISOString(), error: '' });
+    const fetchedAt = new Date().toISOString();
+    // Export-only context follows successful metadata, never a failed request
+    // or a successful traffic read. Hash failure must not fail normal refresh.
+    const tokenHash = await summaryImageTokenHash(githubToken).catch(() => null);
+    Object.assign(stats, metadata, { fetchedAt, error: '', summaryImageTokenHash: tokenHash });
   } catch (error) {
     stats.error = error.message;
   }

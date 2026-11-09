@@ -976,7 +976,7 @@ function hasFetchedNumber(value) {
   return Number.isFinite(Number(value));
 }
 
-async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt) {
+async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt, requestToken) {
   if (!hasFetchedNumber(account?.followers)) return null;
   const existingAccountStats = await getAccountStats();
   return saveAccountStats({
@@ -984,7 +984,7 @@ async function mergeFetchedAccountFollowersIntoCachedStats(account, checkedAt) {
     login: typeof account.login === 'string' ? account.login : existingAccountStats.login,
     followers: Number(account.followers),
     fetchedAt: checkedAt,
-  });
+  }, requestToken);
 }
 
 function createFetchedRepositoryMetadataStatsPatch(repository, metadata, checkedAt) {
@@ -1123,7 +1123,7 @@ async function checkAccountFollowers(settings, baselines, pendingActivity, check
       followers,
       updatedAt: completedAt,
     };
-    if (!refreshedAccount) await mergeFetchedAccountFollowersIntoCachedStats(account, completedAt);
+    if (!refreshedAccount) await mergeFetchedAccountFollowersIntoCachedStats(account, completedAt, settings.githubToken);
 
     return { checked: true, changed, completedAt };
   } catch (error) {
