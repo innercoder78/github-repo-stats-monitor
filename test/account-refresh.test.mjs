@@ -1,3 +1,5 @@
+import { summaryImageTokenHash } from '../src/shared/summary-image-account.js';
+const verifiedTokenHash = await summaryImageTokenHash('token');
 import assert from 'node:assert/strict';
 
 const storageData = {};
@@ -65,7 +67,7 @@ globalThis.fetch = async (url) => {
 };
 let result = await refreshStatsCache(
   { githubToken: 'token', repositories: ['owner/repo'], notifications: { trackedStats: { accountFollowers: true } } },
-  { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' } },
+  { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached', summaryImageTokenHash: verifiedTokenHash } },
   { source: 'quick-summary', skipFullRefreshCoordination: true, accountStats: storageData.accountStats },
 );
 assert.equal(fetchCalls.length, 1, 'all-recent full refresh still calls account once');
@@ -171,7 +173,7 @@ globalThis.fetch = async () => response({ login: 'me', followers: 4 });
 let appliedChanges;
 result = await refreshStatsCache(
   { githubToken: 'token', repositories: ['owner/repo'], notifications: { trackedStats: { accountFollowers: true }, badgeEnabled: false } },
-  { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' } },
+  { 'owner/repo': { repository: 'owner/repo', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached', summaryImageTokenHash: verifiedTokenHash } },
   {
     source: 'quick-summary',
     skipFullRefreshCoordination: true,
