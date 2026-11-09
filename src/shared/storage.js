@@ -222,6 +222,9 @@ function normalizeStatsEntry(repository, stats) {
     stars: normalizeNonNegativeNumber(stats?.stars),
     forks: normalizeNonNegativeNumber(stats?.forks),
     subscribers: normalizeNonNegativeNumber(stats?.subscribers),
+    ...(Object.hasOwn(stats || {}, 'summaryImageTokenHash') ? {
+      summaryImageTokenHash: /^[a-f0-9]{64}$/.test(stats.summaryImageTokenHash) ? stats.summaryImageTokenHash : null,
+    } : {}),
     views: Number.isFinite(Number(stats?.views)) ? Number(stats.views) : null,
     uniqueVisitors: Number.isFinite(Number(stats?.uniqueVisitors)) ? Number(stats.uniqueVisitors) : null,
     dailyViews,

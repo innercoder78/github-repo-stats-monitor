@@ -274,7 +274,7 @@ html[data-appearance="dark"] .actions > button:not(.popup-close) {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-top: 2px;
 }
 

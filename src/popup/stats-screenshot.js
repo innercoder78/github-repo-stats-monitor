@@ -1,6 +1,6 @@
 import { prepareSummaryImageData } from '../shared/summary-image-data.js';
 import { renderSummaryImagePng } from '../shared/summary-image.js';
-import { summaryImageAccountContext } from '../shared/summary-image-account.js';
+import { summaryImageAccountContext, summaryImageTokenHash, selectSummaryImageRepositories } from '../shared/summary-image-account.js';
 
 // Read raw values together: the general UI storage normalizers substitute zero for
 // missing numbers. Export must preserve the renderer's unavailable/zero distinction.
@@ -68,9 +68,9 @@ export function initializeStatsScreenshot() {
       const initialRevision = revision;
       failureMessage = 'Unable to read saved statistics. Please try again.';
       const snapshot = await readSnapshot();
-      // Legacy saved data predates provenance tracking and follows the existing
-      // account-reset contract. Every subsequent Settings token change atomically
-      // invalidates this marker; refreshed account saves bind it to their token.
+      // Never infer historical account ownership from the current settings.
+      // Legacy followers lack provenance and are unavailable in exports until
+      // refreshed, even when repository metadata is verified for this token.
       const context = snapshot.summaryImageAccountContext;
       if (context !== 'legacy' && snapshot.accountStats?.login) {
         failureMessage = 'Account settings changed. Use Refresh before exporting account statistics.';
@@ -80,8 +80,13 @@ export function initializeStatsScreenshot() {
           throw new Error(failureMessage);
         }
       }
-      failureMessage = 'Saved statistics are unavailable or invalid. Use Refresh, then try again.';
-      const data = prepareSummaryImageData(snapshot);
+      failureMessage = 'Saved statistics are unavailable, unverified or invalid. Use Refresh, then try again.';
+      const tokenHash = await summaryImageTokenHash(snapshot.githubToken);
+      const data = prepareSummaryImageData({
+        ...snapshot,
+        accountStats: context === 'legacy' ? null : snapshot.accountStats,
+        latestStats: selectSummaryImageRepositories(snapshot.latestStats, tokenHash),
+      });
       if (data.configuredRepositories === 0) {
         failureMessage = 'Add repositories in Settings before exporting a screenshot.';
         throw new Error(failureMessage);

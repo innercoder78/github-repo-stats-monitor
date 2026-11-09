@@ -205,6 +205,9 @@ assert.equal(element('refresh-stats').disabled, false, 'refresh button restored 
 
 // Exercise the screenshot through the real popup binding, without allowing any
 // activity messages, storage changes or card rerendering during export.
+const { summaryImageAccountContext, summaryImageTokenHash } = await import('../src/shared/summary-image-account.js');
+storageData.summaryImageAccountContext = await summaryImageAccountContext(storageData.githubToken, storageData.accountStats);
+for (const stats of Object.values(storageData.latestStats)) stats.summaryImageTokenHash = await summaryImageTokenHash(storageData.githubToken);
 const messagesBeforeExport = clone(messages);
 const storageBeforeExport = clone(storageData);
 const originalCards = ids.filter((id) => id.startsWith('total-') || id === 'account-followers')

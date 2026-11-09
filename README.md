@@ -48,13 +48,15 @@ Views and Clones are shown as saved totals based on GitHub traffic data. They do
 
 #### Stats Screenshot (development code, not yet a stable release)
 
-The Phase 2 development code adds **Stats Screenshot** at the bottom of Quick Summary, immediately left of **Close**. This describes the feature proposed for main; stable release 3.2 does not include it. Use the Releases page for stable availability.
+The Phase 2 development code adds **Stats Screenshot** at the far left of Quick Summary's bottom row, opposite **Close** at the far right. This describes the feature proposed for main; stable release 3.2 does not include it. Use the Releases page for stable availability.
 
 Click **Stats Screenshot** to export the latest saved statistics as a local **1200 × 1600 PNG (3:4)** named `repository-summary.png`. To update the values first, use the existing **Refresh** button and wait for it to finish, or use statistics already saved by optional background checks. Export itself makes no GitHub requests, has no refresh checkbox, and works offline with usable saved data. It does not clear activity pills or change activity baselines.
 
 The image includes the saved account username and followers, configured repository totals for stars, forks and watchers, and the configured repository count. Private repository names, repository URLs and tokens are not included. Its approved dark design is independent of the popup's Light/Dark Mode. Missing values remain unavailable rather than zero; partial repository coverage is indicated. “Data as of” is the oldest contributing saved timestamp, not the export time. Saved values can be old or retained from a failed refresh. If there are no configured repositories or no usable saved metrics, the popup explains the problem instead of exporting. Changes to saved data during generation cancel the export; account changes may require a manual Refresh first.
 
 Keep Quick Summary open while the PNG is generated and the download is requested. Closing the popup can interrupt export. Generation stays local, with no upload or new Chrome permissions. **“Download requested. Check Chrome Downloads.”** means a browser download was requested, not that Chrome accepted or completed it. The extension cannot observe later download failures or cancellation, and it uses Chrome's normal download destination.
+
+For account safety, screenshots include only repository metadata verified with the currently saved token. Values retained from another token, and older saved values without that verification, remain in Quick Summary and Dashboard but are omitted from the image totals and coverage. Legacy account values without verification are also omitted. Use **Refresh** to establish verified saved data; a recently reused refresh may require waiting for the next actual metadata refresh. If no verified metrics are available, export explains the problem. Verified cached data can still be exported offline with the same saved token, even after a later refresh error. Changing tokens requires fresh verification even if both tokens belong to the same account.
 
 ### Dashboard
 

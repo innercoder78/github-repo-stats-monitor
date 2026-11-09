@@ -1,18 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { initializeStatsScreenshot } from '../src/popup/stats-screenshot.js';
-import { summaryImageAccountContext } from '../src/shared/summary-image-account.js';
+import { summaryImageAccountContext, summaryImageTokenHash } from '../src/shared/summary-image-account.js';
 
 // Real controller + preparation + renderer; DOM, Canvas encoding and Chrome
 // storage are simulated. These tests cannot establish browser download behavior.
 const old = '2026-01-01T12:00:00Z';
 const recent = '2026-02-01T12:00:00Z';
+const fixtureHash = await summaryImageTokenHash('fictional-token');
 const fixture = () => ({
   githubToken: 'fictional-token', repositories: ['fictional/one', 'fictional/two'],
   accountStats: { login: 'fictional-user', followers: 0, fetchedAt: recent },
+  summaryImageAccountContext: { tokenHash: fixtureHash, login: 'fictional-user', fetchedAt: recent },
   latestStats: {
-    'fictional/one': { stars: 12, forks: 3, subscribers: 7, fetchedAt: recent },
-    'fictional/two': { stars: 0, forks: 0, subscribers: 0, fetchedAt: old, trafficFetchedAt: '2000-01-01' },
+    'fictional/one': { stars: 12, forks: 3, subscribers: 7, fetchedAt: recent, summaryImageTokenHash: fixtureHash },
+    'fictional/two': { stars: 0, forks: 0, subscribers: 0, fetchedAt: old, trafficFetchedAt: '2000-01-01', summaryImageTokenHash: fixtureHash },
     'private/ignored': { stars: 9999, forks: 9999, subscribers: 9999, fetchedAt: recent },
   },
   displayPreferences: { dateFormat: 'yyyy/mm/dd', timeFormat: '24-hour' },
@@ -118,7 +120,7 @@ assert.equal(graceTimers.size, 0);
 reset();
 delete saved.latestStats['fictional/two'];
 saved.accountStats = null;
-saved.githubToken = ''; // Offline saved-data export does not require a token.
+// Offline export keeps the saved token for local fingerprint comparison only.
 await click();
 assert.equal(requests.length, 1);
 assert.ok(labels.includes('Statistics available for 1 of 2 repositories'));
@@ -134,7 +136,7 @@ assert.ok(labels.includes('0') && labels.includes('—'));
 for (const mutate of [
   () => { saved.accountStats = null; saved.latestStats = {}; },
   () => { saved.accountStats.followers = undefined; saved.latestStats = {}; },
-  () => { saved.accountStats.fetchedAt = 'invalid'; saved.latestStats = {}; },
+  () => { saved.accountStats.fetchedAt = 'invalid'; saved.summaryImageAccountContext.fetchedAt = 'invalid'; saved.latestStats = {}; },
   () => { saved.repositories = []; },
   () => { saved.repositories = ['fictional/one', 'fictional/one']; },
 ]) {
@@ -233,7 +235,7 @@ assert.doesNotMatch(html, /Refresh stats\?|type="checkbox"/);
 assert.ok(html.indexOf('id="open-dashboard"') < html.indexOf('id="stats-screenshot"'));
 assert.ok(html.indexOf('id="open-settings"') < html.indexOf('id="stats-screenshot"'));
 const css = await readFile(new URL('../src/popup/popup.css', import.meta.url), 'utf8');
-assert.match(css, /\.utility-actions\s*\{[^}]*align-items: flex-start;[^}]*gap: 8px;[^}]*justify-content: flex-end;/);
+assert.match(css, /\.utility-actions\s*\{[^}]*align-items: flex-start;[^}]*gap: 8px;[^}]*justify-content: space-between;/);
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 assert.deepEqual(manifest.permissions, ['storage', 'alarms', 'notifications']);
 assert.equal(manifest.version, '3.2');
