@@ -1,3 +1,4 @@
+import { simulatedFooterIcon } from './helpers/summary-image-icon.mjs';
 import assert from 'node:assert/strict';
 import { refreshStatsCache, refreshRepositoryStatsCache } from '../src/shared/refresh-stats.js';
 import { getLatestStats, saveSettings, saveAccountStats } from '../src/shared/storage.js';
@@ -56,7 +57,7 @@ globalThis.window = { addEventListener() {} };
 globalThis.document = {
   getElementById: (id) => id === 'stats-screenshot' ? button : status,
   body: { append() {} },
-  createElement: (tag) => tag === 'canvas' ? { getContext: () => ctx, toBlob: (callback) => callback(new Blob(['simulated PNG'], { type: 'image/png' })) } : { click() { downloads += 1; }, remove() {} },
+  createElement: (tag) => tag === 'img' ? simulatedFooterIcon() : tag === 'canvas' ? { getContext: () => ctx, toBlob: (callback) => callback(new Blob(['simulated PNG'], { type: 'image/png' })) } : { click() { downloads += 1; }, remove() {} },
 };
 URL.createObjectURL = () => 'blob:fictional'; URL.revokeObjectURL = () => {};
 const nativeTimer = setTimeout;

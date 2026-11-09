@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 // Only the preview and its explicit modules are served, never arbitrary repository files.
 const root = new URL('../../', import.meta.url);
 const allowed = new Set([
+  '/assets/icons/icon-128.png',
   '/test/preview/summary-image.html', '/test/preview/summary-image.js',
   '/src/shared/summary-image.js', '/src/shared/summary-image-data.js', '/src/shared/display-format.js',
 ]);
@@ -13,9 +14,9 @@ createServer(async (request, response) => {
   try {
     const content = await readFile(new URL(pathname.slice(1), root));
     response.writeHead(200, {
-      'Content-Type': pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8',
+      'Content-Type': pathname.endsWith('.png') ? 'image/png' : pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src blob:; connect-src 'none'",
+      'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob:; connect-src 'none'",
     });
     response.end(content);
   } catch { response.writeHead(500); response.end('Preview file unavailable'); }

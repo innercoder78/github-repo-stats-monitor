@@ -26,7 +26,7 @@ async function render() {
     url = URL.createObjectURL(blob);
     document.getElementById('preview').src = url;
     download.href = url; download.hidden = false;
-    status.textContent = `1200 × 1600 PNG · ${blob.size.toLocaleString()} bytes · ${navigator.userAgent}`;
+    status.textContent = `1080 × 1440 PNG · ${blob.size.toLocaleString()} bytes · ${navigator.userAgent}`;
   } catch (error) { if (current === generation) status.textContent = `Preview failed: ${error.message}`; }
 }
 document.getElementById('render').addEventListener('click', render);

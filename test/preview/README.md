@@ -1,6 +1,6 @@
-# Stats Screenshot, Phase 1: PNG Renderer
+# Stats Screenshot: PNG Renderer and Preview
 
-Developer-only infrastructure; Quick Summary integration is **not included**. Nothing imports the renderer from production UI or the service worker. No permissions, repository limits, storage, refresh logic, notifications, or appearance settings change.
+The preview uses fictional fixtures only. Quick Summary uses the same renderer through its existing Stats Screenshot workflow. The branding update changes native PNG output to 1080 × 1440 without changing permissions, repository limits, storage, refresh logic, notifications, or appearance settings. Earlier phase-specific verification records below retain their historical dimensions.
 
 ## Preview
 
@@ -10,15 +10,15 @@ From the repository root, using an installed Node.js runtime:
 node test/preview/server.mjs
 ```
 
-Open `http://127.0.0.1:8765/test/preview/summary-image.html` in Chrome. Select each fictional fixture. The page encodes a PNG, displays the decoded image, and provides a development-only save link. The server binds to loopback and serves only five allowlisted preview/module files. Stop with Ctrl+C. No installation, build, extension loading, GitHub account, or token is needed. Do not open the HTML through `file://`, since ES module loading is restricted there.
+Open `http://127.0.0.1:8765/test/preview/summary-image.html` in Chrome. Select each fictional fixture. The page encodes a PNG, displays the decoded image, and provides a development-only save link. The server binds to loopback and serves only the five allowlisted preview/module files and the packaged footer icon. Stop with Ctrl+C. No installation, build, extension loading, GitHub account, or token is needed. Do not open the HTML through `file://`, since ES module loading is restricted there.
 
-Compare the resulting 1200 × 1600 image with the approved mockup, paying attention to card alignment, icon centering, blue borders, fitted text, freshness, warnings, waves, and footer. The fictional 48-repository fixture is deliberately reference-like; it does not change the extension's 20-repository limit. Generated PNGs are not committed or uploaded.
+Compare the resulting 1080 × 1440 image with the approved mockup, paying attention to card alignment, icon centering, blue borders, fitted text, freshness, warnings, waves, and footer. The fictional 48-repository fixture is deliberately reference-like; it does not change the extension's 20-repository limit. Generated PNGs are not committed or uploaded.
 
 ## API and input contract
 
 `src/shared/summary-image.js` exports:
 
-- `renderSummaryImage(data, { document } = {})`: asynchronously returns a new detached 1200 × 1600 canvas. Defaults to the current browser document, waits for local fonts, and rejects if a document or 2D context is unavailable.
+- `renderSummaryImage(data, { document, iconTimeoutMs = 15000 } = {})`: asynchronously returns a new detached native 1080 × 1440 canvas. Defaults to the current browser document, waits for local fonts and the packaged `assets/icons/icon-128.png`, and rejects if the document, 2D context, or icon is unavailable. The icon URL resolves relative to the renderer module, never the document base or user input. Load errors, invalid image dimensions, and the bounded load timeout reject export before PNG encoding; handlers and the timeout are cleaned up. The real icon is proportionally drawn in the footer. The header contains only the centered white/blue Repository Summary title.
 - `encodeSummaryImagePng(canvas, timeoutMs = 15000)`: returns a Promise of a nonempty `image/png` Blob; rejects null/wrong-type output, thrown errors, invalid dimensions, or an encoder timeout.
 - `renderSummaryImagePng(data, options)`: combines rendering and encoding, returning the Blob. The caller owns subsequent Blob URL creation/revocation. It does not initiate a download.
 - `SUMMARY_IMAGE_WIDTH` and `SUMMARY_IMAGE_HEIGHT`.
@@ -67,3 +67,20 @@ Two overlapping cubic-curve ribbons replace the previous wave polygons. Their cl
 Rendered all five existing fictional fixtures in the Windows Chromium in-app browser (user agent `Chrome/157.0.0.0`), saved their actual PNGs, and inspected them at original resolution against the approved conversation mockup. All five decode to 1200 × 1600. Normal, zero, missing, partial, and long-content exports remain legible with no observed clipping or unintended overlap. The normal export is 1,120,195 bytes; SHA-256 `b2825d57138008401165dbbc0f65d9bed780d64f36f10f7bfbc9a92e01e64a3b`. The local review artifact is named `PR135-refined-normal.png`; generated images are not committed.
 
 Fresh tests on Node v24.22.1: `node --test test/summary-image.test.mjs` passed; `node --test test/*.test.mjs` reported 15 passed and the same one pre-existing Dashboard locale/timezone failure (`11:45` versus hard-coded `2:45 PM`). No tests or unrelated application code were changed. Standalone Google Chrome, other browser/OS/font combinations, and production integration remain unverified. Pixel-identical fidelity is not claimed; the approved 3:4 adaptation and local-font limitations still apply.
+
+
+## Approved 1080 × 1440 branding update — November 9, 2026
+
+Preflight independently confirmed live/local main at `78656480c9a3bb12e125a528b5e10ad343a94099`, no open PRs, no commit statuses/check runs/workflow runs, and no reviews/comments/review threads on related PRs #136 and #137. No related screenshot issues were returned. The single local worktree was clean, with no stashes, untracked or ignored files.
+
+The renderer now draws directly onto a 1080 × 1440 canvas (3:4); no final resize occurs. GitHub header mark/wordmark/rules and footer signal bars are removed. The centered white/blue title, username pill, four-card order, stacked-layers repository card, rim lighting and blue waves follow the supplied approved mockup. The footer uses the unchanged actual icon asset at a proportional 84-pixel bounding size. Data preparation, account provenance, coverage warnings, timestamp formatting and oldest contributing timestamp remain unchanged; production still says **Data as of**.
+
+Validation on Windows / Node.js v24.22.1:
+
+- Targeted: `node --test test/summary-image.test.mjs test/stats-screenshot.test.mjs test/screenshot-account-transition.test.mjs test/popup-production-path.test.mjs test/account-refresh.test.mjs test/background-account.test.mjs test/activity-production-paths.test.mjs test/refresh-coordination.test.mjs` — **8 passed, 0 failed**.
+- Complete: `node --test test/*.test.mjs` — **17 passed, 1 failed**, 18 test files. The unchanged Dashboard locale/timezone assertion at `test/dashboard-regression.test.mjs:107` expects `2:45 PM` and receives `11:45`. No assertion was weakened.
+- Added coverage checks native dimensions, aspect ratio, header/card positions, loaded icon identity and asset path, delayed load before encoding, load error/invalid image/timeout/thrown assignment, handler cleanup, failed download suppression and retry. Existing zeros, missing/partial data, long usernames, large values, provenance, freshness, account-switch races and refresh tests remain. Canvas/Chrome tests are simulations.
+- Actual PNGs were generated, downloaded and visually inspected using the Chromium in-app browser (Chrome/157.0.0.0 on Windows), for reference-like, zero, missing, partial and long-value fictional fixtures. All five PNG headers report **1080 × 1440**. Title, text fit, card order, warning spacing, icon proportions and footer were compared with the supplied mockup; no unintended clipping or overlap was observed. Native number/date preferences intentionally differ from the illustrative mockup. Local Arial and Canvas-drawn gradients/icons/waves are an approximation, not a pixel-identical reproduction.
+- The final reference-like PNG is 967,881 bytes. Generated PNGs and the supplied mockup are not committed or uploaded.
+- **Real Chrome extension-popup/download completion remains unverified.** Browser inventory exposed only the in-app browser and MCP Apps. The actual browser PNG check uses the isolated localhost preview, not an installed extension. Other OS/font combinations remain unverified.
+- Complete diff and asset references reviewed; no new dependencies, permissions, external asset requests, telemetry, credentials or private repository data. Production changes are confined to `src/shared/summary-image.js`.
