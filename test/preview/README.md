@@ -43,7 +43,7 @@ Freshness is the oldest successful timestamp among exactly those contributors. U
 
 Callers providing the renderer's contract directly are responsible for truthful aggregates and conservative freshness; use the pure preparation helper for existing saved snapshots. The component requires a browser document with Canvas 2D, Path2D, roundRect, and toBlob. It is not a service-worker renderer.
 
-## Verification and known limitations
+## Initial verification and known limitations
 
 Base: `43b463839be16af9838459182e581d5fc9303879`. Live main matched and there were no open PRs during preflight. Existing local worktree was clean.
 
@@ -57,3 +57,13 @@ On 2026-11-08, Node v24.22.1:
 The actual PNG was rendered and visually inspected in Codex's Chromium-based in-app browser (user agent `Chrome/157.0.0.0`, Windows). Opened the preview, selected reference-like, partial, long, empty, and zero fixtures, and inspected cards plus the scrolled footer. All five encoded successfully; no text overlap or unexpected clipping was observed. The decoded image's natural dimensions were verified as 1200 × 1600. Saved the final reference-like fictional PNG locally (1,568,557 bytes). Reloading against the documented allowlisted server also succeeded. Standalone Google Chrome was not available through the connected browser inventory, so standalone Chrome verification remains outstanding. Tests with mocked Canvas establish contracts only, not visual fidelity.
 
 The design preserves the reference hierarchy, icon order, blue outlined cards and dividers, dark palette, waves, and footer. The taller 3:4 composition adds vertical spacing without stretching the reference. Differences include local Arial typography, hand-defined statistic icons, simpler glow/wave geometry, locale-dependent separators/date text, fictional username, and the required “Data as of” label. Large values and long usernames reduce font size. Pixel-identical reproduction, other operating-system font rendering, and all possible locale scripts are not guaranteed. Production integration and real account export are intentionally untested and reserved for Phase 2.
+
+## Final card and wave refinement verification — 2026-11-08
+
+The refinement changes only `card()` and `waves()` in the renderer, plus these notes. Card centers are now nearly black with subtle vertical gradients, shallow elliptical rim lighting, and softly tapered edge highlights. Reduced outer bloom avoids a uniform blue panel effect. Card geometry, text, icons, logo, and layout are unchanged.
+
+Two overlapping cubic-curve ribbons replace the previous wave polygons. Their closures are beyond the left/right canvas edges and only the continuous curves are stroked. The ambient radial fade covers the canvas instead of starting at a hard horizontal boundary, removing the visible cutoff. Gradient depth and restrained edge glow preserve separation from freshness/coverage text and the footer.
+
+Rendered all five existing fictional fixtures in the Windows Chromium in-app browser (user agent `Chrome/157.0.0.0`), saved their actual PNGs, and inspected them at original resolution against the approved conversation mockup. All five decode to 1200 × 1600. Normal, zero, missing, partial, and long-content exports remain legible with no observed clipping or unintended overlap. The normal export is 1,120,195 bytes; SHA-256 `b2825d57138008401165dbbc0f65d9bed780d64f36f10f7bfbc9a92e01e64a3b`. The local review artifact is named `PR135-refined-normal.png`; generated images are not committed.
+
+Fresh tests on Node v24.22.1: `node --test test/summary-image.test.mjs` passed; `node --test test/*.test.mjs` reported 15 passed and the same one pre-existing Dashboard locale/timezone failure (`11:45` versus hard-coded `2:45 PM`). No tests or unrelated application code were changed. Standalone Google Chrome, other browser/OS/font combinations, and production integration remain unverified. Pixel-identical fidelity is not claimed; the approved 3:4 adaptation and local-font limitations still apply.

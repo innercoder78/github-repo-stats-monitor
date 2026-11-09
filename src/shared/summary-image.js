@@ -31,19 +31,23 @@ function line(ctx, x, y, x2, y2, color = BLUE, width = 2) {
 function card(ctx, x, y, w, h, radius = 38) {
   ctx.save();
   ctx.beginPath(); ctx.roundRect(x, y, w, h, radius);
-  ctx.fillStyle = gradient(ctx, x, y, x + w * .6, y + h, [[0, '#05243b'], [.35, '#020c14'], [.7, '#010a11'], [1, '#03243e']]);
-  ctx.shadowColor = '#007fcc'; ctx.shadowBlur = 15; ctx.fill();
+  ctx.fillStyle = gradient(ctx, x, y, x, y + h, [[0, '#031321'], [.25, '#020a11'], [.65, '#01070c'], [1, '#02101b']]);
+  ctx.shadowColor = '#007fcc55'; ctx.shadowBlur = 10; ctx.fill();
   ctx.shadowBlur = 0;
   ctx.strokeStyle = gradient(ctx, x, y, x + w, y + h, [[0, '#49efff'], [.4, '#008cff'], [.75, '#00cfff'], [1, '#0867ff']]);
   ctx.lineWidth = 2; ctx.stroke();
   ctx.clip();
   for (const [cx, cy] of [[x + w * .25, y], [x + w * .7, y + h]]) {
     ctx.shadowBlur = 0;
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * .38);
-    glow.addColorStop(0, '#46d9ff66'); glow.addColorStop(.12, '#008fff33'); glow.addColorStop(1, '#008fff00');
-    ctx.fillStyle = glow; ctx.fillRect(x, y, w, h);
-    ctx.shadowColor = '#39cfff'; ctx.shadowBlur = 14;
-    line(ctx, cx - w * .12, cy, cx + w * .12, cy, '#a5faff', 3);
+    // A shallow elliptical wash keeps illumination at the rim, not behind the numbers.
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(w * .3, Math.min(54, h * .3));
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    glow.addColorStop(0, '#30bfff80'); glow.addColorStop(.25, '#008fff35'); glow.addColorStop(1, '#008fff00');
+    ctx.fillStyle = glow; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
+    const left = cx - w * .23, right = cx + w * .23;
+    const highlight = gradient(ctx, left, cy, right, cy, [[0, '#00aaff00'], [.35, '#38cfff88'], [.5, '#c3f8ff'], [.65, '#38cfff88'], [1, '#00aaff00']]);
+    ctx.shadowColor = '#139eff'; ctx.shadowBlur = 9;
+    line(ctx, left, cy, right, cy, highlight, 2.5);
   }
   ctx.restore();
 }
@@ -97,13 +101,23 @@ function github(ctx) {
 function waves(ctx) {
   ctx.save();
   const glow = ctx.createRadialGradient(850, 1370, 0, 850, 1370, 600);
-  glow.addColorStop(0, '#00366b88'); glow.addColorStop(1, '#001b3300'); ctx.fillStyle = glow; ctx.fillRect(0, 1140, 1200, 460);
-  for (const front of [false, true]) {
-    ctx.beginPath(); ctx.moveTo(0, front ? 1340 : 1405);
-    ctx.bezierCurveTo(420, front ? 1555 : 1580, 720, front ? 1450 : 1285, 1200, front ? 1295 : 1385);
-    ctx.lineTo(1200, 1390); ctx.bezierCurveTo(760, 1385, 510, 1560, 0, 1405); ctx.closePath();
-    ctx.fillStyle = gradient(ctx, 0, 1300, 0, 1480, [[0, '#0067dd'], [.65, '#004ca3bb'], [1, '#00cfff']]);
-    ctx.fill(); ctx.strokeStyle = front ? '#00cfff' : '#006dcf'; ctx.lineWidth = 2; ctx.stroke();
+  // Paint the radial fade across the canvas so its bounding box cannot leave a seam.
+  glow.addColorStop(0, '#00366b66'); glow.addColorStop(1, '#001b3300'); ctx.fillStyle = glow; ctx.fillRect(0, 0, 1200, 1600);
+  const ribbons = [
+    { top: [-40, 1320, 390, 1538, 790, 1400, 1240, 1386], bottom: [1240, 1430, 790, 1370, 390, 1560, -40, 1390], edge: '#008bff99' },
+    { top: [-40, 1390, 460, 1550, 790, 1450, 1240, 1280], bottom: [1240, 1375, 790, 1374, 460, 1550, -40, 1400], edge: '#00d9ff' },
+  ];
+  for (const { top, bottom, edge } of ribbons) {
+    ctx.beginPath(); ctx.moveTo(top[0], top[1]); ctx.bezierCurveTo(...top.slice(2));
+    ctx.lineTo(bottom[0], bottom[1]); ctx.bezierCurveTo(...bottom.slice(2)); ctx.closePath();
+    ctx.fillStyle = gradient(ctx, 0, 1280, 0, 1490, [[0, '#0089f5'], [.35, '#0058bdcc'], [.7, '#00326d99'], [1, '#00bfff']]);
+    ctx.fill();
+    // Stroke only the continuous curves. The ribbon closures remain outside the image.
+    ctx.beginPath(); ctx.moveTo(top[0], top[1]); ctx.bezierCurveTo(...top.slice(2));
+    ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.shadowColor = '#007dff'; ctx.shadowBlur = 7; ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.moveTo(bottom[0], bottom[1]); ctx.bezierCurveTo(...bottom.slice(2));
+    ctx.strokeStyle = '#0077dd88'; ctx.lineWidth = 1; ctx.stroke();
   }
   ctx.restore();
 }
