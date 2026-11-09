@@ -1,3 +1,5 @@
+import { summaryImageTokenHash } from '../src/shared/summary-image-account.js';
+const verifiedTokenHash = await summaryImageTokenHash('token');
 import assert from 'node:assert/strict';
 
 const storageData = {};
@@ -292,8 +294,8 @@ globalThis.fetch = async (url) => {
 const skippedRepositoryRefresh = await refreshStatsCache(
   { githubToken: 'token', repositories: ['owner/repo-a', 'owner/repo-b', 'owner/repo-c'] },
   {
-    'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' },
-    'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached' },
+    'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached', summaryImageTokenHash: verifiedTokenHash },
+    'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached', summaryImageTokenHash: verifiedTokenHash },
   },
   { source: 'dashboard', skipFullRefreshCoordination: true },
 );
@@ -308,8 +310,8 @@ fetchedUrls = [];
 const allSkippedRepositoryRefresh = await refreshStatsCache(
   { githubToken: 'token', repositories: ['owner/repo-a', 'owner/repo-b'] },
   {
-    'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached' },
-    'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached' },
+    'owner/repo-a': { repository: 'owner/repo-a', stars: 1, forks: 1, subscribers: 1, fetchedAt: 'cached', summaryImageTokenHash: verifiedTokenHash },
+    'owner/repo-b': { repository: 'owner/repo-b', stars: 2, forks: 2, subscribers: 2, fetchedAt: 'cached', summaryImageTokenHash: verifiedTokenHash },
   },
   { source: 'dashboard', skipFullRefreshCoordination: true },
 );

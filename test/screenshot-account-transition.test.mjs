@@ -157,6 +157,113 @@ await exportSaved();
 assert.equal(downloads, 1);
 assert.ok(labels.includes('Account followers unavailable') && !labels.includes('@fictional-b'), 'verified repositories do not legitimize legacy account identity');
 
+// Upgrade regression: six legacy entries and recent coordinated repository
+// completions. Exercise the production manual coordinator, storage and renderer.
+const repos = Array.from({ length: 6 }, (_, i) => `fictional/upgrade-${i}`);
+saved.githubToken = 'fictional-upgrade';
+saved.repositories = repos;
+const legacyTime = '2026-01-01T00:00:00.000Z';
+saved.latestStats = Object.fromEntries(repos.map((repository, i) => [repository, {
+  repository, stars: i === 0 ? 4 : 0, forks: i === 0 ? 2 : 0, subscribers: 0,
+  fetchedAt: legacyTime, views: 8, uniqueVisitors: 2, trafficFetchedAt: legacyTime,
+  clones: 1, clonesFetchedAt: legacyTime, referrers: [], referrersFetchedAt: legacyTime,
+}]));
+function recentCompletions() {
+  return { completedRepositoryRefreshes: Object.fromEntries(repos.map((repository) =>
+    [repository, { repository, completedAt: new Date().toISOString(), source: 'dashboard-repository' }])) };
+}
+saved.fullRefreshCoordination = recentCompletions();
+await saveAccountStats({ login: 'fictional-upgrade', followers: 3, fetchedAt: legacyTime }, saved.githubToken);
+await exportSaved();
+assert.ok(labels.includes('Statistics available for 0 of 6 repositories'), 'pre-refresh legacy cache reproduces the reported mismatch');
+assert.match(status.textContent, /6 of 6 repositories omitted.*unverified/);
+const upgradeCalls = [];
+let deniedRepo = '';
+globalThis.fetch = async (url, options) => {
+  assert.equal(exporting, false, 'screenshot remains offline');
+  calls += 1;
+  const path = new URL(url).pathname;
+  upgradeCalls.push(path);
+  assert.equal(options.headers.Authorization, `Bearer ${saved.githubToken}`);
+  const denied = path === `/repos/${deniedRepo}`;
+  return { ok: !denied, status: denied ? 404 : 200, headers: new Headers(),
+    json: async () => denied ? { message: 'Not Found' }
+      : path === '/user' ? { login: 'fictional-upgrade', followers: 3 }
+        : path.endsWith('/referrers') ? []
+          : path.includes('/traffic/') ? { count: 0, uniques: 0, views: [], clones: [] }
+            : { stargazers_count: path.endsWith('upgrade-0') ? 4 : 0, forks_count: path.endsWith('upgrade-0') ? 2 : 0, subscribers_count: 0 },
+  };
+};
+async function manualRefresh() {
+  return refreshStatsCache(clone(saved), await getLatestStats(), {
+    source: 'quick-summary', accountStats: saved.accountStats, detectActivity: true,
+  });
+}
+const activityBefore = clone(saved.pendingActivity), viewedBefore = clone(saved.viewedBaselines);
+const upgraded = await manualRefresh();
+const upgradeHash = await summaryImageTokenHash(saved.githubToken);
+assert.equal(upgraded.complete, true);
+assert.equal(upgraded.pendingActivity, null, 'verification alone creates no activity delta');
+assert.equal(upgradeCalls.length, 7, 'one account and six metadata requests; recent traffic is reused');
+assert.equal(new Set(upgradeCalls).size, 7, 'no duplicate metadata requests');
+for (const repository of repos) {
+  assert.equal(saved.latestStats[repository].summaryImageTokenHash, upgradeHash);
+  assert.equal(saved.latestStats[repository].trafficFetchedAt, legacyTime, 'reused traffic retains conservative freshness');
+  assert.equal(saved.latestStats[repository].views, 8);
+  assert.equal(saved.notificationBaselines.repositories[repository].stars, saved.latestStats[repository].stars);
+}
+assert.deepEqual(saved.pendingActivity, activityBefore);
+assert.deepEqual(saved.viewedBaselines, viewedBefore);
+const upgradeData = prepareSummaryImageData({ ...saved, latestStats: selectSummaryImageRepositories(saved.latestStats, upgradeHash) });
+assert.deepEqual([upgradeData.followers, upgradeData.stars, upgradeData.forks, upgradeData.watchers, upgradeData.validRepositories, upgradeData.configuredRepositories], [3, 4, 2, 0, 6, 6]);
+await exportSaved();
+assert.equal(downloads, 1);
+assert.ok(['3', '4', '2', '0', '6'].every((value) => labels.includes(value)));
+assert.ok(!labels.some((value) => value.startsWith('Statistics available for')));
+assert.equal(status.textContent, 'Download requested. Check Chrome Downloads.');
+assert.equal((await manualRefresh()).skipped, true, 'recent full-refresh window remains enforced');
+assert.equal(upgradeCalls.length, 7);
+saved.fullRefreshCoordination = recentCompletions();
+await manualRefresh();
+assert.equal(upgradeCalls.length, 8, 'already verified recent repositories require only the normal account request');
+
+// Legacy full-refresh completion is not permission to bypass the quiet/reuse
+// window. Export tells the user why data is omitted until Refresh is admitted.
+delete saved.latestStats[repos[0]].summaryImageTokenHash;
+assert.equal((await manualRefresh()).skipped, true);
+await exportSaved();
+assert.match(status.textContent, /1 of 6 repositories omitted.*wait at least one minute/);
+saved.fullRefreshCoordination = recentCompletions();
+deniedRepo = repos[0];
+const beforeFailure = clone(saved.latestStats[repos[0]]);
+const failed = await manualRefresh();
+assert.equal(failed.complete, false);
+assert.equal(saved.latestStats[repos[0]].stars, 4);
+assert.equal(saved.latestStats[repos[0]].fetchedAt, beforeFailure.fetchedAt);
+assert.equal(saved.latestStats[repos[0]].summaryImageTokenHash, undefined);
+await exportSaved();
+assert.ok(labels.includes('Statistics available for 5 of 6 repositories'));
+assert.match(status.textContent, /unverified/);
+assert.equal(saved.fullRefreshCoordination.completedRepositoryRefreshes[repos[0]], undefined, 'failed verification retires reusable success');
+
+// Other-account recent entries also need actual metadata; denied private data
+// remains saved under its original ownership and cannot enter the new image.
+await saveSettings({ ...saved, githubToken: 'fictional-upgrade-B' });
+saved.fullRefreshCoordination = recentCompletions();
+const switched = await manualRefresh();
+assert.equal(switched.complete, false);
+assert.equal(saved.latestStats[repos[0]].stars, 4);
+assert.equal(saved.latestStats[repos[1]].summaryImageTokenHash, await summaryImageTokenHash(saved.githubToken));
+await exportSaved();
+assert.ok(labels.includes('Statistics available for 5 of 6 repositories'));
+assert.ok(!labels.includes('4'), 'denied cached stars cannot cross accounts');
+deniedRepo = '';
+saved.fullRefreshCoordination = {};
+assert.equal((await manualRefresh()).complete, true);
+await exportSaved();
+assert.ok(!labels.some((value) => value.startsWith('Statistics available for')));
+console.log('sanitized upgrade evidence: followers=3 stars=4 forks=2 watchers=0 monitored=6 coverage=6/6; export requests=0');
+
 // A changing snapshot never downloads, even if both versions are independently
 // eligible. Existing broader controller tests also cover token A -> B -> A.
 onRead = (count) => {

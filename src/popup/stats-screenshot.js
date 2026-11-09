@@ -82,10 +82,11 @@ export function initializeStatsScreenshot() {
       }
       failureMessage = 'Saved statistics are unavailable, unverified or invalid. Use Refresh, then try again.';
       const tokenHash = await summaryImageTokenHash(snapshot.githubToken);
+      const eligibleStats = selectSummaryImageRepositories(snapshot.latestStats, tokenHash);
       const data = prepareSummaryImageData({
         ...snapshot,
         accountStats: context === 'legacy' ? null : snapshot.accountStats,
-        latestStats: selectSummaryImageRepositories(snapshot.latestStats, tokenHash),
+        latestStats: eligibleStats,
       });
       if (data.configuredRepositories === 0) {
         failureMessage = 'Add repositories in Settings before exporting a screenshot.';
@@ -113,7 +114,11 @@ export function initializeStatsScreenshot() {
       link.click();
       requested = true;
       pendingUrls.set(url, setTimeout(() => releaseUrl(url), 60000));
-      showStatus('Download requested. Check Chrome Downloads.');
+      const unverifiedCount = snapshot.repositories.filter((repository) =>
+        snapshot.latestStats[repository] && !Object.hasOwn(eligibleStats, repository)).length;
+      showStatus('Download requested. Check Chrome Downloads.' + (unverifiedCount
+        ? ` ${unverifiedCount} of ${data.configuredRepositories} repositories omitted because their saved statistics are unverified for the current account. Use Refresh; if recent data was reused, wait at least one minute and refresh again. Failed requests leave those statistics unverified.`
+        : ''));
     } catch {
       if (!closed) showStatus(accountChanged ? CHANGED_MESSAGE : failureMessage);
     } finally {

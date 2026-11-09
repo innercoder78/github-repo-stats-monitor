@@ -585,7 +585,7 @@ async function detectRefreshActivity(settings, previousLatestStats, nextLatestSt
   return detectedActivity;
 }
 
-async function refreshRepositoryStats(repository, githubToken, previousStats) {
+async function refreshRepositoryStats(repository, githubToken, previousStats, { reuseTraffic = false } = {}) {
   const stats = { ...previousStats, repository };
 
   try {
@@ -598,6 +598,10 @@ async function refreshRepositoryStats(repository, githubToken, previousStats) {
   } catch (error) {
     stats.error = error.message;
   }
+
+  // Recent coordinated repository work can supply traffic, but cannot prove
+  // ownership of legacy/other-token metadata. Only the request above can do so.
+  if (reuseTraffic) return { repository, stats };
 
   try {
     const traffic = await fetchRepositoryTrafficViews(repository, githubToken);
@@ -664,9 +668,13 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   const recentRepositoryRefreshes = isManualRefreshSource(source)
     ? getRecentCompletedRepositoryRefreshes(await getRefreshCoordination())
     : {};
+  const recentRepositories = new Set(repositories.filter((repository) =>
+    recentRepositoryRefreshes[normalizeRepositoryName(repository)] && latestStats[repository]));
+  const tokenHash = recentRepositories.size
+    ? await summaryImageTokenHash(githubToken).catch(() => null) : null;
   const skippedRepositories = repositories.filter((repository) => {
-    const normalizedRepository = normalizeRepositoryName(repository);
-    return Boolean(normalizedRepository && recentRepositoryRefreshes[normalizedRepository] && latestStats[repository]);
+    return recentRepositories.has(repository) && Boolean(tokenHash)
+      && latestStats[repository].summaryImageTokenHash === tokenHash;
   });
   const skippedRepositorySet = new Set(skippedRepositories);
   const repositoriesToRefresh = repositories.filter((repository) => !skippedRepositorySet.has(repository));
@@ -674,7 +682,9 @@ export async function refreshStatsCache(settings, currentLatestStats, options = 
   let completed = skippedRepositories.length;
   const resultsPromise = mapWithConcurrency(repositoriesToRefresh, REPOSITORY_REQUEST_CONCURRENCY_LIMIT, async (repository) => {
     const previousStats = latestStats[repository] || { repository };
-    const result = await refreshRepositoryStats(repository, githubToken, previousStats);
+    const result = await refreshRepositoryStats(repository, githubToken, previousStats, {
+      reuseTraffic: recentRepositories.has(repository),
+    });
 
     completed += 1;
     notifyProgress(onProgress, {
