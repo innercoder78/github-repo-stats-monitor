@@ -524,7 +524,7 @@ async function refreshAccountStats(githubToken, previousAccountStats) {
       attempted: true,
       refreshed: true,
       fetchedAt,
-      accountStats: await saveAccountStats(nextStats),
+      accountStats: await saveAccountStats(nextStats, githubToken),
       error: '',
     };
   } catch (error) {

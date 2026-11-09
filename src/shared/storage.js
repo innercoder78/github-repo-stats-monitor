@@ -1,4 +1,5 @@
 import { getDefaultDisplayPreferences, normalizeDisplayPreferences } from './display-format.js';
+import { summaryImageAccountContext } from './summary-image-account.js';
 
 const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   backgroundChecksEnabled: false,
@@ -142,7 +143,7 @@ export function getSettings() {
   });
 }
 
-export function saveSettings(settings) {
+export async function saveSettings(settings) {
   const nextSettings = {
     githubToken: typeof settings.githubToken === 'string' ? settings.githubToken : '',
     repositories: Array.isArray(settings.repositories)
@@ -153,8 +154,13 @@ export function saveSettings(settings) {
     displayPreferences: normalizeDisplayPreferences(settings.displayPreferences),
   };
 
+  const previousSettings = await getSettings();
+  // Invalidate export provenance atomically with a token change, before the
+  // existing asynchronous background account reset. No existing settings change.
+  const exportContext = previousSettings.githubToken !== nextSettings.githubToken
+    ? { summaryImageAccountContext: null } : {};
   return new Promise((resolve, reject) => {
-    getChromeStorage().set(nextSettings, () => {
+    getChromeStorage().set({ ...nextSettings, ...exportContext }, () => {
       const error = chrome.runtime.lastError;
 
       if (error) {
@@ -410,11 +416,15 @@ export function saveLatestStats(latestStats) {
   });
 }
 
-export function saveAccountStats(accountStats) {
+export async function saveAccountStats(accountStats, requestToken = '') {
   const nextAccountStats = normalizeAccountStats(accountStats);
+  // Bind to the token used by the request, not whichever token is saved now.
+  // A late old-account response remains identifiable to the screenshot reader.
+  // Provenance failure must not change existing refresh/save behavior.
+  const exportContext = await summaryImageAccountContext(requestToken, nextAccountStats).catch(() => null);
 
   return new Promise((resolve, reject) => {
-    getChromeStorage().set({ accountStats: nextAccountStats }, () => {
+    getChromeStorage().set({ accountStats: nextAccountStats, summaryImageAccountContext: exportContext }, () => {
       const error = chrome.runtime.lastError;
 
       if (error) {
