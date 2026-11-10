@@ -6,7 +6,7 @@ It is designed for manual review, optional background checks, a cleaner card-bas
 
 ## Current Version
 
-3.2
+3.3
 
 ## How to download
 
@@ -46,9 +46,9 @@ The Chrome toolbar popup provides a compact card layout for saved repository and
 
 Views and Clones are shown as saved totals based on GitHub traffic data. They do not have activity pills.
 
-#### Stats Screenshot (development code, not yet a stable release)
+#### Stats Screenshot
 
-The Phase 2 development code adds **Stats Screenshot** at the far left of Quick Summary's bottom row, opposite **Close** at the far right. This describes the feature proposed for main; stable release 3.2 does not include it. Use the Releases page for stable availability.
+The repository version includes **Stats Screenshot** at the far left of Quick Summary's bottom row, opposite **Close** at the far right. Check [GitHub Releases](https://github.com/innercoder78/github-repo-stats-monitor/releases) for stable downloads.
 
 Click **Stats Screenshot** to export the latest saved statistics as a local **1080 × 1440 PNG (3:4)** named `repository-summary.png`. To update the values first, use the existing **Refresh** button and wait for it to finish, or use statistics already saved by optional background checks. Export itself makes no GitHub requests, has no refresh checkbox, and works offline with usable saved data. It does not clear activity pills or change activity baselines.
 
