@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
 
+// Fix the test's Intl defaults so 14:45Z renders as 2:45 PM on every host.
+const NativeDateTimeFormat = Intl.DateTimeFormat;
+Intl.DateTimeFormat = function deterministicDateTimeFormat(locale = 'en-US', options = {}) {
+  return new NativeDateTimeFormat(locale, { timeZone: 'UTC', ...options });
+};
+
 const elements = new Map();
 const renderEvents = [];
 const messages = [];
