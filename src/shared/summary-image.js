@@ -174,7 +174,7 @@ export async function renderSummaryImage(input, { document: documentContext = gl
     icon(ctx, key, x + 82, y + 116, 90);
     line(ctx, x + 158, y + 45, x + 158, y + 178);
     text(ctx, label, x + 194, y + 58, 272, 34);
-    text(ctx, number(data[key]), x + 190, y + 139, 276, 90);
+    text(ctx, number(data[key]), x + 194, y + 139, 276, 90);
   }
   card(ctx, 46, 863, 989, 156, 33);
   icon(ctx, 'repositories', 197, 941, 90);
