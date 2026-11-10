@@ -30,7 +30,7 @@ const fixtureReady = crypto.subtle.digest('SHA-256', new TextEncoder().encode(sa
 });
 globalThis.chrome = {
   runtime: {
-    getManifest: () => ({ version: '3.2' }), getURL: (path) => `/${path}`,
+    getManifest: () => ({ version: '3.3' }), getURL: (path) => `/${path}`,
     onMessage: { addListener() {} },
     async sendMessage(message) {
       if (!message.action.startsWith('activity.')) throw new Error('GitHub refresh is unavailable in this fictional preview.');

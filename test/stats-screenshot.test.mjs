@@ -240,7 +240,7 @@ const css = await readFile(new URL('../src/popup/popup.css', import.meta.url), '
 assert.match(css, /\.utility-actions\s*\{[^}]*align-items: flex-start;[^}]*gap: 8px;[^}]*justify-content: space-between;/);
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 assert.deepEqual(manifest.permissions, ['storage', 'alarms', 'notifications']);
-assert.equal(manifest.version, '3.2');
+assert.equal(manifest.version, '3.3');
 globalThis.setTimeout = originalSetTimeout;
 globalThis.clearTimeout = originalClearTimeout;
 console.log('saved screenshot workflow, data, races, failures, cleanup and UI contracts passed (browser APIs simulated)');

@@ -14,7 +14,7 @@ const clone = (value) => structuredClone(value);
 let calls = 0, exporting = false, allowB = false, denyA = false, reads = 0, onRead;
 let listener = () => {};
 globalThis.chrome = {
-  runtime: { lastError: null, getManifest: () => ({ version: '3.2' }), sendMessage() { assert.fail('export cannot send messages'); } },
+  runtime: { lastError: null, getManifest: () => ({ version: '3.3' }), sendMessage() { assert.fail('export cannot send messages'); } },
   storage: {
     local: {
       get(defaults, callback) {
